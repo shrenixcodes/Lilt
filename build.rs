@@ -1,6 +1,12 @@
 use std::path::{Path, PathBuf};
 
 fn main() {
+    // Images are decoded at build time into the software renderer's texture format, so
+    // the application needs no image decoder for its own assets.
+    let config = slint_build::CompilerConfiguration::new()
+        .with_style("fluent-dark".into())
+        .embed_resources(slint_build::EmbedResourcesKind::EmbedForSoftwareRenderer);
+    slint_build::compile_with_config("ui/app.slint", config).expect("compile Slint UI");
     embed_windows_resources();
 }
 

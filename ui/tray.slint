@@ -1,0 +1,25 @@
+// Notification-area icon. Always present so Lilt can be shown and closed even when the
+// island is hidden or off-screen.
+export component Tray inherits SystemTrayIcon {
+    in property <bool> island-visible: true;
+    // True when the taskbar uses the light theme and needs a dark glyph.
+    in property <bool> light-taskbar: false;
+    callback toggle-island();
+    callback quit();
+
+    tooltip: "Lilt";
+    icon: root.light-taskbar ? @image-url("../assets/icons/tray-dark.png") : @image-url("../assets/icons/tray-light.png");
+    clicked => { root.toggle-island(); }
+
+    Menu {
+        MenuItem {
+            title: root.island-visible ? "Hide island" : "Show island";
+            activated => { root.toggle-island(); }
+        }
+        MenuSeparator {}
+        MenuItem {
+            title: "Quit Lilt";
+            activated => { root.quit(); }
+        }
+    }
+}

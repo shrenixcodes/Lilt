@@ -1,0 +1,12 @@
+// Data published by the Rust side. Views read from here instead of receiving every
+// value through a chain of component properties.
+export global AppState {
+    in property <length> compact-width: 196px;
+    in property <length> expanded-width: 440px;
+    in property <bool> allow-drag: true;
+}
+
+// User intents handled on the Rust side.
+export global AppActions {
+    callback start-drag();
+}

@@ -1,0 +1,57 @@
+// Design tokens for the Lilt Dark appearance.
+//
+// Every colour, radius, size and duration used by the island comes from here so that
+// future appearances only need to provide a different set of values.
+
+export global Theme {
+    // Surfaces
+    out property <color> surface: #0a0a0b;
+    out property <color> surface-hover: #111113;
+    out property <color> tile: #ffffff09;
+    out property <color> tile-hover: #ffffff10;
+    out property <color> control-hover: #ffffff14;
+    out property <color> control-pressed: #ffffff0b;
+    out property <color> border: #ffffff12;
+    out property <color> track: #ffffff1c;
+    out property <color> shadow-near: #0000004d;
+    out property <color> shadow-far: #00000024;
+
+    // Text
+    out property <color> text: #f3f3f5;
+    out property <color> text-secondary: #a0a0a8;
+    out property <color> text-tertiary: #6c6c75;
+    out property <color> live: #6fd39a;
+
+    // Ambient accent, derived from album artwork at runtime.
+    in-out property <color> accent: #e8e8ec;
+    in-out property <color> wash: #3a3a40;
+    in-out property <color> glow: #686870;
+    // 0..1, scales every ambient effect. Zero disables them.
+    in-out property <float> ambient: 0.6;
+
+    // Geometry
+    out property <length> compact-height: 38px;
+    out property <length> activity-height: 62px;
+    out property <length> expanded-radius: 28px;
+    out property <length> tile-radius: 16px;
+    out property <length> control-radius: 9px;
+    out property <length> padding: 14px;
+    out property <length> gap: 8px;
+    // Room around the island inside the window for the shadow.
+    out property <length> margin: 10px;
+
+    // Typography
+    out property <string> font: "Segoe UI Variable Text";
+    out property <length> font-xs: 10.5px;
+    out property <length> font-sm: 12px;
+    out property <length> font-md: 13px;
+    out property <length> font-lg: 15px;
+    out property <length> font-xl: 24px;
+
+    // Motion. `motion` is 0 when reduced motion is requested.
+    in-out property <float> motion: 1;
+    out property <duration> resize-duration: 420ms * motion;
+    out property <duration> fade-duration: 180ms * motion;
+    out property <duration> hover-duration: 140ms * motion;
+    out property <duration> ambient-duration: 700ms * motion;
+}

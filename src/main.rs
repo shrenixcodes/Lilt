@@ -2,9 +2,15 @@
 // console for development.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod app;
 mod instance;
 mod logging;
 mod paths;
+mod window;
+
+mod ui {
+    slint::include_modules!();
+}
 
 use std::process::ExitCode;
 
@@ -13,9 +19,19 @@ fn main() -> ExitCode {
 
     let Some(_instance) = instance::acquire() else {
         tracing::info!("another instance is already running");
+        window::signal_running_instance();
         return ExitCode::SUCCESS;
     };
 
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "Lilt started");
-    ExitCode::SUCCESS
+    match app::run() {
+        Ok(()) => {
+            tracing::info!("Lilt exited");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            tracing::error!(%err, "Lilt stopped because of an error");
+            ExitCode::FAILURE
+        }
+    }
 }

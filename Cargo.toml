@@ -9,6 +9,7 @@ repository = "https://github.com/shrenixcodes/Lilt"
 publish = false
 
 [dependencies]
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-software", "software-renderer-systemfonts", "system-tray"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
 
@@ -16,13 +17,21 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["f
 version = "0.62"
 features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
     "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
     "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ]
 
 [build-dependencies]
 embed-resource = "3"
+slint-build = "1.18"
 
 [profile.release]
 lto = true
