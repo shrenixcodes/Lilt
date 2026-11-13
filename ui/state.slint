@@ -4,6 +4,11 @@ export global AppState {
     in property <length> compact-width: 196px;
     in property <length> expanded-width: 440px;
     in property <bool> allow-drag: true;
+
+    // Clock
+    in property <string> time;
+    in property <string> weekday;
+    in property <string> date;
 }
 
 // User intents handled on the Rust side.

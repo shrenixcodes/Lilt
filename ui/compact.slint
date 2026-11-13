@@ -1,0 +1,26 @@
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+
+// The resting island: weekday and date on the left, the time on the right.
+export component CompactView inherits Rectangle {
+    HorizontalLayout {
+        padding-left: 17px;
+        padding-right: 17px;
+        alignment: space-between;
+
+        Text {
+            vertical-alignment: center;
+            text: AppState.weekday + " " + AppState.date;
+            color: Theme.text-secondary;
+            font-size: Theme.font-sm;
+        }
+
+        Text {
+            vertical-alignment: center;
+            text: AppState.time;
+            color: Theme.text;
+            font-size: Theme.font-md;
+            font-weight: 600;
+        }
+    }
+}

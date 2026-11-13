@@ -1,5 +1,6 @@
 import { Theme } from "theme.slint";
 import { AppState, AppActions } from "state.slint";
+import { CompactView } from "compact.slint";
 
 export component Island inherits Window {
     title: "Lilt";
@@ -62,6 +63,11 @@ export component Island inherits Window {
                     AppActions.start-drag();
                 }
             }
+        }
+
+        CompactView {
+            width: parent.width;
+            height: parent.height;
         }
     }
 }

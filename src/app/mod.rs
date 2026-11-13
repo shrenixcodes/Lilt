@@ -9,10 +9,13 @@ use slint::ComponentHandle;
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows::Win32::UI::Shell::{ABM_NEW, ABM_REMOVE, ABN_FULLSCREENAPP, APPBARDATA, SHAppBarMessage};
-use windows::Win32::UI::WindowsAndMessaging::{SPI_SETWORKAREA, WM_DISPLAYCHANGE, WM_SETTINGCHANGE};
+use windows::Win32::UI::WindowsAndMessaging::{
+    PBT_APMRESUMEAUTOMATIC, SPI_SETWORKAREA, WM_DISPLAYCHANGE, WM_POWERBROADCAST, WM_SETTINGCHANGE, WM_TIMECHANGE,
+};
 use windows::core::w;
 
-use crate::ui::{AppActions, Island, Tray};
+use crate::clock;
+use crate::ui::{AppActions, AppState, Island, Tray};
 use crate::window::{self, Notice, WindowKind, placement};
 
 /// Shell notifications for the app bar registration (full-screen detection).
@@ -41,6 +44,8 @@ pub struct App {
     placement: RefCell<Placement>,
     hidden_by_user: Cell<bool>,
     hidden_for_fullscreen: Cell<bool>,
+    clock_timer: slint::Timer,
+    h24: Cell<bool>,
 }
 
 /// Registration with the shell's app bar list, used only to be told when a full-screen
@@ -78,8 +83,11 @@ pub fn run() -> Result<(), slint::PlatformError> {
         placement: RefCell::new(Placement::default()),
         hidden_by_user: Cell::new(false),
         hidden_for_fullscreen: Cell::new(false),
+        clock_timer: slint::Timer::default(),
+        h24: Cell::new(clock::uses_24_hour_clock()),
     });
     App::connect(&app);
+    App::refresh_clock(&app);
     app.tray.set_light_taskbar(light_taskbar());
 
     app.island.show()?;
@@ -126,16 +134,26 @@ impl App {
 
         window::set_system_handler(move |msg, wparam, lparam| {
             let app = weak.upgrade()?;
-            app.system_message(msg, wparam, lparam)
+            app.system_message(&app, msg, wparam, lparam)
         });
     }
 
-    fn system_message(&self, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+    fn system_message(&self, app: &Rc<Self>, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
         match msg {
             WM_DISPLAYCHANGE => self.place(),
             WM_SETTINGCHANGE if wparam.0 as u32 == SPI_SETWORKAREA.0 => self.place(),
-            // Broadcast with "ImmersiveColorSet" when the Windows colour mode changes.
-            WM_SETTINGCHANGE => self.tray.set_light_taskbar(light_taskbar()),
+            WM_SETTINGCHANGE => match setting_name(lparam).as_deref() {
+                // Regional format changed: the 12/24-hour preference may differ.
+                Some("intl") => {
+                    self.h24.set(clock::uses_24_hour_clock());
+                    App::refresh_clock(app);
+                }
+                // The Windows colour mode changed.
+                Some("ImmersiveColorSet") => self.tray.set_light_taskbar(light_taskbar()),
+                _ => {}
+            },
+            WM_TIMECHANGE => App::refresh_clock(app),
+            WM_POWERBROADCAST if wparam.0 as u32 == PBT_APMRESUMEAUTOMATIC => App::refresh_clock(app),
             WM_APP_APPBAR if wparam.0 as u32 == ABN_FULLSCREENAPP => {
                 let fullscreen = lparam.0 != 0;
                 tracing::debug!(fullscreen, "full-screen application state changed");
@@ -163,6 +181,24 @@ impl App {
         if visible {
             self.place();
         }
+    }
+
+    /// Updates the clock text and schedules the next update for the start of the next
+    /// minute. Re-arming per minute keeps the clock aligned after sleep or time changes.
+    fn refresh_clock(app: &Rc<Self>) {
+        let text = clock::now(app.h24.get());
+        let state = app.island.global::<AppState>();
+        state.set_time(text.time.into());
+        state.set_weekday(text.weekday.into());
+        state.set_date(text.date.into());
+
+        let weak = Rc::downgrade(app);
+        let wait = Duration::from_millis(clock::millis_to_next_minute() + 20);
+        app.clock_timer.start(slint::TimerMode::SingleShot, wait, move || {
+            if let Some(app) = weak.upgrade() {
+                App::refresh_clock(&app);
+            }
+        });
     }
 
     /// Moves the island to its configured position on the chosen monitor.
@@ -200,6 +236,15 @@ impl App {
         }
         self.place();
     }
+}
+
+/// The setting name broadcast with `WM_SETTINGCHANGE`, if any.
+fn setting_name(lparam: LPARAM) -> Option<String> {
+    if lparam.0 == 0 {
+        return None;
+    }
+    // SAFETY: for WM_SETTINGCHANGE a non-null lParam points to a NUL-terminated string.
+    unsafe { windows::core::PCWSTR(lparam.0 as *const u16).to_string().ok() }
 }
 
 /// Whether the taskbar uses the light theme ("Choose your default Windows mode").
