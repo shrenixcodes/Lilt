@@ -1,6 +1,8 @@
 //! Application controller: owns the island and tray, and keeps the island placed and
 //! visible according to the displays and the foreground application.
 
+mod media;
+
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
@@ -16,6 +18,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::w;
 
 use crate::clock;
+use crate::media::{MediaService, MediaState};
 use crate::ui::{AppActions, AppState, Island, Tray};
 use crate::window::{self, Notice, WindowKind, placement};
 
@@ -54,6 +57,28 @@ pub struct App {
     pointer_inside: Cell<bool>,
     /// Window that had the focus before the island was expanded, restored on collapse.
     previous_foreground: Cell<Option<HWND>>,
+    media: RefCell<Option<MediaService>>,
+    media_state: RefCell<Option<MediaState>>,
+    /// Source, title and artist of the current track, to detect track changes.
+    last_track: RefCell<Option<(String, String, String)>>,
+    /// False until the first media update, so the track playing at start-up is not announced.
+    media_ready: Cell<bool>,
+    activity_timer: slint::Timer,
+    progress_timer: slint::Timer,
+}
+
+thread_local! {
+    /// The running application, for work posted from other threads.
+    static CURRENT: RefCell<Weak<App>> = const { RefCell::new(Weak::new()) };
+}
+
+/// Runs `f` on the UI thread with the running application, if it still exists.
+fn post(f: impl FnOnce(&Rc<App>) + Send + 'static) {
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(app) = CURRENT.with(|c| c.borrow().upgrade()) {
+            f(&app);
+        }
+    });
 }
 
 /// Registration with the shell's app bar list, used only to be told when a full-screen
@@ -96,8 +121,16 @@ pub fn run() -> Result<(), slint::PlatformError> {
         collapse_timer: slint::Timer::default(),
         pointer_inside: Cell::new(false),
         previous_foreground: Cell::new(None),
+        media: RefCell::new(None),
+        media_state: RefCell::new(None),
+        last_track: RefCell::new(None),
+        media_ready: Cell::new(false),
+        activity_timer: slint::Timer::default(),
+        progress_timer: slint::Timer::default(),
     });
+    CURRENT.with(|c| *c.borrow_mut() = Rc::downgrade(&app));
     App::connect(&app);
+    App::connect_media(&app);
     App::refresh_clock(&app);
     app.tray.set_light_taskbar(light_taskbar());
 
@@ -105,9 +138,12 @@ pub fn run() -> Result<(), slint::PlatformError> {
     app.place();
     app.tray.show()?;
     let _app_bar = AppBar::register();
+    app.media.replace(Some(MediaService::start(|update| post(move |app| App::media_update(app, update)))));
 
     slint::run_event_loop()?;
     app.island.hide()?;
+    // Stops the media worker and unsubscribes from media session events.
+    app.media.replace(None);
     Ok(())
 }
 
@@ -115,7 +151,7 @@ impl App {
     fn connect(app: &Rc<Self>) {
         let weak = Rc::downgrade(app);
 
-        app.tray.on_toggle_island(with(&weak, |app| app.set_hidden_by_user(!app.hidden_by_user.get())));
+        app.tray.on_toggle_island(with(&weak, |app| App::set_hidden_by_user(app, !app.hidden_by_user.get())));
         app.tray.on_quit(|| {
             let _ = slint::quit_event_loop();
         });
@@ -176,9 +212,9 @@ impl App {
                 let fullscreen = lparam.0 != 0;
                 tracing::debug!(fullscreen, "full-screen application state changed");
                 self.hidden_for_fullscreen.set(fullscreen);
-                self.update_visibility();
+                App::update_visibility(app);
             }
-            window::WM_APP_ACTIVATE => self.set_hidden_by_user(false),
+            window::WM_APP_ACTIVATE => App::set_hidden_by_user(app, false),
             _ => return None,
         }
         Some(LRESULT(0))
@@ -188,12 +224,19 @@ impl App {
         self.island.global::<AppState>().get_expanded()
     }
 
+    fn island_visible(&self) -> bool {
+        !self.hidden_by_user.get() && !self.hidden_for_fullscreen.get()
+    }
+
     fn set_expanded(app: &Rc<Self>, expanded: bool) {
         if app.expanded() == expanded {
             return;
         }
-        app.island.global::<AppState>().set_expanded(expanded);
+        let state = app.island.global::<AppState>();
+        state.set_expanded(expanded);
+        state.set_activity(false);
         app.collapse_timer.stop();
+        App::update_progress_timer(app);
         let native = window::find(app.island.window());
         if expanded {
             // Taking the focus lets Escape close the island and a click elsewhere
@@ -229,21 +272,25 @@ impl App {
         });
     }
 
-    fn set_hidden_by_user(&self, hidden: bool) {
-        self.hidden_by_user.set(hidden);
-        self.tray.set_island_visible(!hidden);
-        self.update_visibility();
+    fn set_hidden_by_user(app: &Rc<Self>, hidden: bool) {
+        app.hidden_by_user.set(hidden);
+        app.tray.set_island_visible(!hidden);
+        App::update_visibility(app);
     }
 
-    fn update_visibility(&self) {
-        let visible = !self.hidden_by_user.get() && !self.hidden_for_fullscreen.get();
-        let result = if visible { self.island.show() } else { self.island.hide() };
+    fn update_visibility(app: &Rc<Self>) {
+        let visible = app.island_visible();
+        if !visible {
+            App::set_expanded(app, false);
+        }
+        let result = if visible { app.island.show() } else { app.island.hide() };
         if let Err(err) = result {
             tracing::warn!(%err, visible, "could not change island visibility");
         }
         if visible {
-            self.place();
+            app.place();
         }
+        App::update_progress_timer(app);
     }
 
     /// Updates the clock text and schedules the next update for the start of the next

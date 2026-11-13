@@ -1,0 +1,159 @@
+import { Theme } from "theme.slint";
+import { MediaAvailability } from "types.slint";
+import { AppState, AppActions } from "state.slint";
+import { Icon, Icons } from "components/icon.slint";
+import { IconButton, ProgressBar } from "components/controls.slint";
+import { ArtworkTile } from "artwork.slint";
+
+component PlayButton inherits Rectangle {
+    in property <bool> playing;
+    in property <bool> enabled;
+    callback clicked();
+    width: 34px;
+    height: 34px;
+    border-radius: 17px;
+    background: !root.enabled ? Theme.tile-hover : touch.pressed ? #d6d6da : touch.has-hover ? #ffffff : Theme.text;
+    animate background { duration: Theme.hover-duration; }
+    accessible-role: button;
+    accessible-label: root.playing ? "Pause" : "Play";
+
+    Icon {
+        // The play triangle is optically centred slightly right of the geometric centre.
+        x: (parent.width - self.width) / 2 + (root.playing ? 0 : 1px);
+        data: root.playing ? Icons.pause : Icons.play;
+        filled: true;
+        size: 14px;
+        color: root.enabled ? Theme.surface : Theme.text-tertiary;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// Now-playing view with transport controls, or an explanation when nothing plays.
+export component MediaPlayer inherits Rectangle {
+    property <bool> active: AppState.media.availability == MediaAvailability.active;
+
+    HorizontalLayout {
+        spacing: 14px;
+
+        ArtworkTile {
+            size: 72px;
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+
+            HorizontalLayout {
+                spacing: 4px;
+
+                Text {
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    text: !root.active
+                        ? (AppState.media.availability == MediaAvailability.idle ? "Nothing playing" : "Media controls unavailable")
+                        : AppState.media.title == "" ? "Unknown title" : AppState.media.title;
+                    color: Theme.text;
+                    font-size: Theme.font-lg;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+
+                if root.active: IconButton {
+                    icon: Icons.previous;
+                    icon-size: 14px;
+                    filled: true;
+                    enabled: AppState.media.can-previous;
+                    tooltip: "Previous track";
+                    clicked => {
+                        AppActions.previous-track();
+                    }
+                }
+
+                if root.active: PlayButton {
+                    playing: AppState.media.playing;
+                    enabled: AppState.media.can-play-pause;
+                    clicked => {
+                        AppActions.toggle-play();
+                    }
+                }
+
+                if root.active: IconButton {
+                    icon: Icons.next;
+                    icon-size: 14px;
+                    filled: true;
+                    enabled: AppState.media.can-next;
+                    tooltip: "Next track";
+                    clicked => {
+                        AppActions.next-track();
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 6px;
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: !root.active
+                        ? (AppState.media.availability == MediaAvailability.idle
+                            ? "Play something in Spotify, a browser or any media app."
+                            : "Windows did not allow access to media sessions.")
+                        : AppState.media.artist == "" ? AppState.media.source : AppState.media.artist + "  ·  " + AppState.media.source;
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-sm;
+                    overflow: elide;
+                }
+
+                // Several apps expose sessions: let the user pick which one to follow.
+                if root.active && AppState.media.session-count > 1: TouchArea {
+                    width: 18px;
+                    height: 16px;
+                    clicked => {
+                        AppActions.cycle-source();
+                    }
+
+                    Icon {
+                        data: Icons.switch;
+                        size: 13px;
+                        color: parent.has-hover ? Theme.text : Theme.text-tertiary;
+                    }
+                }
+            }
+
+            if root.active && AppState.media.has-timeline: VerticalLayout {
+                padding-top: 6px;
+                spacing: 1px;
+
+                ProgressBar {
+                    value: AppState.progress;
+                    seekable: AppState.media.can-seek;
+                    seek(fraction) => {
+                        AppActions.seek(fraction);
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    Text {
+                        text: AppState.position-text;
+                        color: Theme.text-tertiary;
+                        font-size: Theme.font-xs;
+                    }
+
+                    Text {
+                        text: AppState.duration-text;
+                        color: Theme.text-tertiary;
+                        font-size: Theme.font-xs;
+                    }
+                }
+            }
+        }
+    }
+}

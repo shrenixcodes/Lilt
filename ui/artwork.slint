@@ -1,0 +1,17 @@
+import { Theme } from "theme.slint";
+import { Icon, Icons } from "components/icon.slint";
+
+// Square tile that holds album artwork.
+export component ArtworkTile inherits Rectangle {
+    in property <length> size: 24px;
+    width: size;
+    height: size;
+    border-radius: size * 0.19;
+    background: Theme.tile-hover;
+
+    Icon {
+        data: Icons.disc;
+        size: root.size * 0.42;
+        color: Theme.text-tertiary;
+    }
+}

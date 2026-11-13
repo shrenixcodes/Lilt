@@ -6,6 +6,7 @@ mod app;
 mod clock;
 mod instance;
 mod logging;
+mod media;
 mod paths;
 mod window;
 

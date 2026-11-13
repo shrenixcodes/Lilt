@@ -1,0 +1,46 @@
+// Vector icons drawn as paths so they stay sharp at every scale factor and can be
+// tinted. Path data is from Lucide (https://lucide.dev), ISC licence; see
+// assets/icons/LICENSE-lucide.txt. Shapes were converted to absolute path commands.
+
+import { Theme } from "../theme.slint";
+
+export global Icons {
+    out property <string> play: "M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z";
+    out property <string> pause: "M15 3h3a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M6 3h3a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z";
+    out property <string> next: "M21 4v16 M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z";
+    out property <string> previous: "M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z M3 20V4";
+    out property <string> volume: "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z M16 9a5 5 0 0 1 0 6 M19.364 18.364a9 9 0 0 0 0-12.728";
+    out property <string> display: "M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M8 21h8 M12 17v4";
+    out property <string> bluetooth: "M7 7l10 10-5 5V2l5 5L7 17";
+    out property <string> wifi: "M12 20h.01 M2 8.82a15 15 0 0 1 20 0 M5 12.859a10 10 0 0 1 14 0 M8.5 16.429a5 5 0 0 1 7 0";
+    out property <string> settings: "M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915 M9 12a3 3 0 1 0 6 0a3 3 0 1 0-6 0";
+    out property <string> activity: "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2";
+    out property <string> scissors: "M3 6a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M8.12 8.12 12 12 M20 4 8.12 15.88 M3 18a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M14.8 14.8 20 20";
+    out property <string> folder: "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z";
+    out property <string> calendar: "M8 2v3 M16 2v3 M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M3 9h18";
+    out property <string> cpu: "M12 20v2 M12 2v2 M17 20v2 M17 2v2 M2 12h2 M2 17h2 M2 7h2 M20 12h2 M20 17h2 M20 7h2 M7 20v2 M7 2v2 M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M9 8h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z";
+    out property <string> memory: "M12 12v-2 M12 18v-2 M16 12v-2 M16 18v-2 M2 11h1.5 M20 18v-2 M20.5 11H22 M4 18v-2 M8 12v-2 M8 18v-2 M4 6h16a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z";
+    out property <string> disc: "M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M6 12c0-1.7.7-3.2 1.8-4.2 M10 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0 M18 12c0 1.7-.7 3.2-1.8 4.2";
+    out property <string> down: "M12 5v14 M19 12l-7 7-7-7";
+    out property <string> up: "M5 12l7-7 7 7 M12 19V5";
+    out property <string> back: "M15 18l-6-6 6-6";
+    out property <string> switch: "M8 3 4 7l4 4 M4 7h16 M16 21l4-4-4-4 M20 17H4";
+}
+
+export component Icon inherits Path {
+    in property <string> data;
+    in property <color> color: Theme.text;
+    in property <length> size: 16px;
+    in property <bool> filled: false;
+    width: size;
+    height: size;
+    commands: data;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    fill: filled ? color : transparent;
+    stroke: filled ? transparent : color;
+    stroke-width: max(1.25px, size * 0.1);
+    stroke-line-cap: round;
+    stroke-line-join: round;
+    animate fill, stroke { duration: Theme.hover-duration; }
+}

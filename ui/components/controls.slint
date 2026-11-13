@@ -1,0 +1,101 @@
+import { Theme } from "../theme.slint";
+import { Icon } from "icon.slint";
+
+// A small square icon button with a restrained hover state.
+export component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <length> icon-size: 15px;
+    in property <bool> filled: false;
+    in property <bool> enabled: true;
+    in property <color> tint: Theme.text;
+    in property <string> tooltip;
+    callback clicked();
+
+    width: 30px;
+    height: 30px;
+    border-radius: Theme.control-radius;
+    background: !enabled ? transparent : touch.pressed ? Theme.control-pressed : touch.has-hover ? Theme.control-hover : transparent;
+    animate background { duration: Theme.hover-duration; }
+    accessible-role: button;
+    accessible-label: tooltip;
+
+    Icon {
+        data: root.icon;
+        size: root.icon-size;
+        filled: root.filled;
+        color: root.enabled ? root.tint : Theme.text-tertiary;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Thin progress track with an accent fill. Optionally seekable.
+export component ProgressBar inherits Rectangle {
+    in property <float> value;
+    in property <bool> seekable: false;
+    in property <color> fill: Theme.accent;
+    callback seek(float);
+
+    height: 12px;
+    property <length> track-height: touch.has-hover && seekable ? 5px : 3px;
+
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: root.track-height;
+        border-radius: self.height / 2;
+        background: Theme.track;
+        animate height { duration: Theme.hover-duration; }
+
+        Rectangle {
+            x: 0;
+            width: parent.width * clamp(root.value, 0, 1);
+            border-radius: parent.border-radius;
+            background: root.fill;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.seekable;
+        mouse-cursor: root.seekable ? pointer : default;
+        clicked => { root.seek(clamp(self.mouse-x / root.width, 0, 1)); }
+    }
+}
+
+// Horizontal usage meter used by the system monitor.
+export component Meter inherits Rectangle {
+    in property <float> value;
+    height: 4px;
+    border-radius: 2px;
+    background: Theme.track;
+    Rectangle {
+        x: 0;
+        width: parent.width * clamp(root.value, 0, 1);
+        border-radius: parent.border-radius;
+        background: Theme.accent;
+        animate width { duration: Theme.fade-duration * 2; easing: ease-out; }
+    }
+}
+
+// Rounded dashboard tile. Clickable when `interactive` is set.
+export component Tile inherits Rectangle {
+    in property <bool> interactive: false;
+    in property <string> label;
+    callback clicked();
+
+    border-radius: Theme.tile-radius;
+    background: interactive && touch.has-hover ? Theme.tile-hover : Theme.tile;
+    animate background { duration: Theme.hover-duration; }
+    accessible-role: interactive ? button : groupbox;
+    accessible-label: label;
+
+    touch := TouchArea {
+        enabled: root.interactive;
+        clicked => { root.clicked(); }
+    }
+
+    @children
+}

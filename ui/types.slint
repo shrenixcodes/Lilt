@@ -1,5 +1,27 @@
 // Data types shared between Rust and the UI.
 
+export enum MediaAvailability {
+    // The Windows media session API could not be used.
+    unavailable,
+    // No application currently exposes a media session.
+    idle,
+    active,
+}
+
+export struct MediaInfo {
+    availability: MediaAvailability,
+    playing: bool,
+    title: string,
+    artist: string,
+    source: string,
+    can-play-pause: bool,
+    can-next: bool,
+    can-previous: bool,
+    can-seek: bool,
+    has-timeline: bool,
+    session-count: int,
+}
+
 export enum Page {
     dashboard,
 }

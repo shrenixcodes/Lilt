@@ -1,4 +1,4 @@
-import { Page } from "types.slint";
+import { MediaInfo, Page } from "types.slint";
 
 // Data published by the Rust side. Views read from here instead of receiving every
 // value through a chain of component properties.
@@ -12,6 +12,14 @@ export global AppState {
     in property <string> weekday;
     in property <string> date;
 
+    // Media
+    in property <MediaInfo> media;
+    in property <float> progress;
+    in property <string> position-text;
+    in property <string> duration-text;
+    // A short-lived banner after the track changes.
+    in property <bool> activity;
+
     // Set by Rust; the island only requests changes through AppActions.
     in property <bool> expanded;
     in-out property <Page> page: Page.dashboard;
@@ -22,4 +30,9 @@ export global AppActions {
     callback start-drag();
     callback toggle-expanded();
     callback collapse();
+    callback toggle-play();
+    callback next-track();
+    callback previous-track();
+    callback seek(float);
+    callback cycle-source();
 }

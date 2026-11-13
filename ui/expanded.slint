@@ -1,26 +1,48 @@
 import { Theme } from "theme.slint";
 import { AppState } from "state.slint";
+import { Tile } from "components/controls.slint";
+import { MediaPlayer } from "media-player.slint";
 
-// Content of the expanded island.
-export component ExpandedView inherits Rectangle {
+component ClockTile inherits Tile {
+    label: "Date and time";
+
     VerticalLayout {
-        padding: Theme.padding;
-        alignment: center;
-        spacing: 2px;
+        padding: 12px;
+        spacing: 1px;
 
         Text {
-            horizontal-alignment: center;
+            text: AppState.weekday + " " + AppState.date;
+            color: Theme.text-secondary;
+            font-size: Theme.font-xs;
+            font-weight: 600;
+        }
+
+        Text {
             text: AppState.time;
             color: Theme.text;
             font-size: Theme.font-xl;
             font-weight: 600;
         }
+    }
+}
 
-        Text {
-            horizontal-alignment: center;
-            text: AppState.weekday + " " + AppState.date;
-            color: Theme.text-secondary;
-            font-size: Theme.font-sm;
+// Content of the expanded island.
+export component ExpandedView inherits Rectangle {
+    VerticalLayout {
+        padding: Theme.padding;
+        spacing: 10px;
+
+        MediaPlayer {
+            height: 100px;
+        }
+
+        HorizontalLayout {
+            height: 108px;
+            spacing: Theme.gap;
+
+            ClockTile {
+                horizontal-stretch: 1;
+            }
         }
     }
 }

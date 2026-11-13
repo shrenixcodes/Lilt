@@ -1,7 +1,7 @@
 import { Theme } from "theme.slint";
-import { Page } from "types.slint";
+import { MediaAvailability, Page } from "types.slint";
 import { AppState, AppActions } from "state.slint";
-import { CompactView } from "compact.slint";
+import { CompactView, ActivityView } from "compact.slint";
 import { ExpandedView } from "expanded.slint";
 
 export component Island inherits Window {
@@ -16,11 +16,19 @@ export component Island inherits Window {
     width: max(AppState.expanded-width, 340px) + 2 * Theme.margin;
     height: 250px + 2 * Theme.margin;
 
-    out property <length> expanded-height: Theme.padding * 2 + 60px;
+    out property <length> expanded-height: Theme.padding * 2 + 100px + 10px + 108px;
+    property <length> activity-width: 340px;
 
+    property <bool> media-mode: AppState.media.availability == MediaAvailability.active;
+    property <bool> showing-activity: AppState.activity && !AppState.expanded && root.media-mode;
     property <bool> hovering: touch.has-hover && !AppState.expanded;
-    property <length> target-width: AppState.expanded ? AppState.expanded-width : AppState.compact-width;
-    property <length> target-height: AppState.expanded ? root.expanded-height : Theme.compact-height;
+    property <length> target-width: AppState.expanded ? AppState.expanded-width
+        : root.showing-activity ? root.activity-width
+        : root.media-mode ? AppState.compact-width + 58px
+        : AppState.compact-width;
+    property <length> target-height: AppState.expanded ? root.expanded-height
+        : root.showing-activity ? Theme.activity-height
+        : Theme.compact-height;
     // Set while the pointer drags the island so that the release is not a click.
     property <bool> dragging: false;
 
@@ -60,7 +68,9 @@ export component Island inherits Window {
         height: root.target-height + (root.hovering ? 2px : 0);
         // Bound to the target height rather than the animated height, so the corners
         // animate smoothly between the pill and the panel shape.
-        border-radius: AppState.expanded ? Theme.expanded-radius : (Theme.compact-height + (root.hovering ? 2px : 0)) / 2;
+        border-radius: AppState.expanded ? Theme.expanded-radius
+            : root.showing-activity ? 26px
+            : (Theme.compact-height + (root.hovering ? 2px : 0)) / 2;
         background: root.hovering ? Theme.surface-hover : Theme.surface;
         border-width: 1px;
         border-color: Theme.border;
@@ -95,8 +105,21 @@ export component Island inherits Window {
             y: 0;
             width: parent.width;
             height: AppState.expanded ? Theme.compact-height : parent.height;
-            opacity: AppState.expanded ? 0 : 1;
+            media-mode: root.media-mode;
+            opacity: AppState.expanded || root.showing-activity ? 0 : 1;
             animate opacity { duration: Theme.fade-duration; }
+        }
+
+        if root.showing-activity: ActivityView {
+            x: 0;
+            y: 0;
+            width: root.activity-width;
+            height: Theme.activity-height;
+            opacity: 0;
+            animate opacity { duration: Theme.fade-duration; delay: Theme.fade-duration / 2; }
+            init => {
+                self.opacity = 1;
+            }
         }
 
         // Created only while expanded, so the collapsed island keeps no hidden content.
