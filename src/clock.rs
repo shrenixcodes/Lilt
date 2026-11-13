@@ -51,7 +51,7 @@ pub fn format_time(hour: u32, minute: u32, h24: bool) -> String {
         format!("{hour:02}:{minute:02}")
     } else {
         let suffix = if hour < 12 { "AM" } else { "PM" };
-        let hour12 = if hour % 12 == 0 { 12 } else { hour % 12 };
+        let hour12 = if hour.is_multiple_of(12) { 12 } else { hour % 12 };
         format!("{hour12}:{minute:02} {suffix}")
     }
 }

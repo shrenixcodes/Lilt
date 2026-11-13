@@ -6,17 +6,21 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use slint::ComponentHandle;
-use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows::Win32::UI::Shell::{ABM_NEW, ABM_REMOVE, ABN_FULLSCREENAPP, APPBARDATA, SHAppBarMessage};
 use windows::Win32::UI::WindowsAndMessaging::{
-    PBT_APMRESUMEAUTOMATIC, SPI_SETWORKAREA, WM_DISPLAYCHANGE, WM_POWERBROADCAST, WM_SETTINGCHANGE, WM_TIMECHANGE,
+    PBT_APMRESUMEAUTOMATIC, SPI_SETWORKAREA, SetForegroundWindow, WM_DISPLAYCHANGE, WM_POWERBROADCAST,
+    WM_SETTINGCHANGE, WM_TIMECHANGE,
 };
 use windows::core::w;
 
 use crate::clock;
 use crate::ui::{AppActions, AppState, Island, Tray};
 use crate::window::{self, Notice, WindowKind, placement};
+
+/// How long the expanded island stays open after the pointer leaves it.
+const AUTO_COLLAPSE: Duration = Duration::from_secs(8);
 
 /// Shell notifications for the app bar registration (full-screen detection).
 const WM_APP_APPBAR: u32 = window::WM_APP_USER;
@@ -46,6 +50,10 @@ pub struct App {
     hidden_for_fullscreen: Cell<bool>,
     clock_timer: slint::Timer,
     h24: Cell<bool>,
+    collapse_timer: slint::Timer,
+    pointer_inside: Cell<bool>,
+    /// Window that had the focus before the island was expanded, restored on collapse.
+    previous_foreground: Cell<Option<HWND>>,
 }
 
 /// Registration with the shell's app bar list, used only to be told when a full-screen
@@ -85,6 +93,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
         hidden_for_fullscreen: Cell::new(false),
         clock_timer: slint::Timer::default(),
         h24: Cell::new(clock::uses_24_hour_clock()),
+        collapse_timer: slint::Timer::default(),
+        pointer_inside: Cell::new(false),
+        previous_foreground: Cell::new(None),
     });
     App::connect(&app);
     App::refresh_clock(&app);
@@ -109,8 +120,12 @@ impl App {
             let _ = slint::quit_event_loop();
         });
 
+        let actions = app.island.global::<AppActions>();
+        actions.on_toggle_expanded(with(&weak, |app| App::set_expanded(app, !app.expanded())));
+        actions.on_collapse(with(&weak, |app| App::set_expanded(app, false)));
+
         let island_window = app.island.as_weak();
-        app.island.global::<AppActions>().on_start_drag(move || {
+        actions.on_start_drag(move || {
             let island_window = island_window.clone();
             // The native move loop must not run inside Slint's pointer event dispatch.
             slint::Timer::single_shot(Duration::ZERO, move || {
@@ -127,7 +142,10 @@ impl App {
                 match notice {
                     Notice::MoveFinished => app.finish_move(),
                     Notice::ScaleChanged => app.place(),
+                    // A click elsewhere moved the focus away from the expanded island.
+                    Notice::Activated(false) if app.expanded() => App::set_expanded(&app, false),
                     Notice::Activated(_) => {}
+                    Notice::Pointer(inside) => App::pointer_moved(&app, inside),
                 }
             });
         }
@@ -164,6 +182,51 @@ impl App {
             _ => return None,
         }
         Some(LRESULT(0))
+    }
+
+    fn expanded(&self) -> bool {
+        self.island.global::<AppState>().get_expanded()
+    }
+
+    fn set_expanded(app: &Rc<Self>, expanded: bool) {
+        if app.expanded() == expanded {
+            return;
+        }
+        app.island.global::<AppState>().set_expanded(expanded);
+        app.collapse_timer.stop();
+        let native = window::find(app.island.window());
+        if expanded {
+            // Taking the focus lets Escape close the island and a click elsewhere
+            // collapse it; the user's window gets it back afterwards.
+            app.previous_foreground.set(native.as_ref().and_then(|n| n.activate()));
+            if !app.pointer_inside.get() {
+                App::schedule_collapse(app);
+            }
+        } else if let Some(previous) = app.previous_foreground.take()
+            && native.is_some_and(|n| n.is_foreground())
+        {
+            unsafe {
+                let _ = SetForegroundWindow(previous);
+            }
+        }
+    }
+
+    fn pointer_moved(app: &Rc<Self>, inside: bool) {
+        app.pointer_inside.set(inside);
+        if inside {
+            app.collapse_timer.stop();
+        } else if app.expanded() {
+            App::schedule_collapse(app);
+        }
+    }
+
+    fn schedule_collapse(app: &Rc<Self>) {
+        let weak = Rc::downgrade(app);
+        app.collapse_timer.start(slint::TimerMode::SingleShot, AUTO_COLLAPSE, move || {
+            if let Some(app) = weak.upgrade() {
+                App::set_expanded(&app, false);
+            }
+        });
     }
 
     fn set_hidden_by_user(&self, hidden: bool) {
@@ -232,7 +295,7 @@ impl App {
             let mut placement = self.placement.borrow_mut();
             placement.monitor = if monitor.primary { None } else { Some(monitor.device.clone()) };
             placement.offset_x = placement::offset_for(monitor, position.x, size.width as i32);
-            tracing::debug!(?placement, "island moved");
+            tracing::info!(?placement, "island moved");
         }
         self.place();
     }
@@ -266,7 +329,7 @@ fn light_taskbar() -> bool {
 }
 
 /// Wraps a method call on a weakly held `App` as a callback.
-fn with(weak: &Weak<App>, f: impl Fn(&App) + 'static) -> impl Fn() + 'static {
+fn with(weak: &Weak<App>, f: impl Fn(&Rc<App>) + 'static) -> impl Fn() + 'static {
     let weak = weak.clone();
     move || {
         if let Some(app) = weak.upgrade() {

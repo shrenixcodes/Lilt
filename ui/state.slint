@@ -1,3 +1,5 @@
+import { Page } from "types.slint";
+
 // Data published by the Rust side. Views read from here instead of receiving every
 // value through a chain of component properties.
 export global AppState {
@@ -9,9 +11,15 @@ export global AppState {
     in property <string> time;
     in property <string> weekday;
     in property <string> date;
+
+    // Set by Rust; the island only requests changes through AppActions.
+    in property <bool> expanded;
+    in-out property <Page> page: Page.dashboard;
 }
 
 // User intents handled on the Rust side.
 export global AppActions {
     callback start-drag();
+    callback toggle-expanded();
+    callback collapse();
 }

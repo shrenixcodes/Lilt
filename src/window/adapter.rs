@@ -36,6 +36,8 @@ pub enum WindowKind {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Notice {
     Activated(bool),
+    /// The pointer entered (`true`) or left (`false`) the window's visible pixels.
+    Pointer(bool),
     /// The user finished dragging the window.
     MoveFinished,
     ScaleChanged,
@@ -47,7 +49,6 @@ pub struct Win32Window {
     window: slint::Window,
     renderer: SoftwareRenderer,
     kind: WindowKind,
-    self_weak: Weak<Win32Window>,
     hwnd: Cell<Option<HWND>>,
     size: Cell<PhysicalSize>,
     min_size: Cell<PhysicalSize>,
@@ -62,19 +63,21 @@ pub struct Win32Window {
 }
 
 thread_local! {
-    static WINDOWS: RefCell<Vec<(isize, Weak<Win32Window>)>> = const { RefCell::new(Vec::new()) };
+    /// Every window adapter created on this thread, registered at creation so that it
+    /// can be found before its native window exists.
+    static WINDOWS: RefCell<Vec<Weak<Win32Window>>> = const { RefCell::new(Vec::new()) };
 }
 
 fn lookup(hwnd: HWND) -> Option<Rc<Win32Window>> {
-    WINDOWS.with(|w| w.borrow().iter().find(|(h, _)| *h == hwnd.0 as isize).and_then(|(_, w)| w.upgrade()))
+    all().into_iter().find(|w| w.hwnd.get() == Some(hwnd))
 }
 
 /// All live windows, for the event loop.
 pub(super) fn all() -> Vec<Rc<Win32Window>> {
     WINDOWS.with(|w| {
         let mut list = w.borrow_mut();
-        list.retain(|(_, w)| w.strong_count() > 0);
-        list.iter().filter_map(|(_, w)| w.upgrade()).collect()
+        list.retain(|w| w.strong_count() > 0);
+        list.iter().filter_map(Weak::upgrade).collect()
     })
 }
 
@@ -86,11 +89,10 @@ pub fn find(window: &slint::Window) -> Option<Rc<Win32Window>> {
 impl Win32Window {
     pub fn new(kind: WindowKind) -> Rc<Self> {
         let scale = unsafe { GetDpiForSystem() } as f32 / 96.0;
-        Rc::new_cyclic(|weak: &Weak<Self>| Self {
+        let window = Rc::new_cyclic(|weak: &Weak<Self>| Self {
             window: slint::Window::new(weak.clone() as Weak<dyn WindowAdapter>),
             renderer: SoftwareRenderer::new_with_repaint_buffer_type(RepaintBufferType::ReusedBuffer),
             kind,
-            self_weak: weak.clone(),
             hwnd: Cell::new(None),
             size: Cell::new(PhysicalSize::default()),
             min_size: Cell::new(PhysicalSize::default()),
@@ -102,7 +104,9 @@ impl Win32Window {
             last_pointer: Cell::new(LogicalPosition::default()),
             drag_top: Cell::new(None),
             notice: RefCell::new(None),
-        })
+        });
+        WINDOWS.with(|w| w.borrow_mut().push(Rc::downgrade(&window)));
+        window
     }
 
     pub fn set_notice_handler(&self, handler: impl Fn(Notice) + 'static) {
@@ -155,7 +159,6 @@ impl Win32Window {
             }
         };
         self.hwnd.set(Some(hwnd));
-        WINDOWS.with(|w| w.borrow_mut().push((hwnd.0 as isize, self.self_weak.clone())));
 
         if self.kind == WindowKind::Standard {
             let dark: i32 = 1;
@@ -283,6 +286,22 @@ impl Win32Window {
         true
     }
 
+    /// Brings the window to the foreground so it receives keyboard input. Returns the
+    /// window that was in the foreground before.
+    pub fn activate(&self) -> Option<HWND> {
+        let hwnd = self.hwnd.get()?;
+        unsafe {
+            let previous = GetForegroundWindow();
+            let _ = SetForegroundWindow(hwnd);
+            (!previous.is_invalid() && previous != hwnd).then_some(previous)
+        }
+    }
+
+    /// Whether this window is the foreground window.
+    pub fn is_foreground(&self) -> bool {
+        self.hwnd.get().is_some_and(|hwnd| unsafe { GetForegroundWindow() } == hwnd)
+    }
+
     /// Starts a native move loop. Must not be called from inside Slint event dispatch.
     pub fn begin_move(&self) {
         let Some(hwnd) = self.hwnd.get() else { return };
@@ -331,6 +350,7 @@ impl Win32Window {
             WM_MOUSEACTIVATE if self.kind == WindowKind::Island => Some(LRESULT(MA_NOACTIVATE as isize)),
             WM_MOUSEMOVE => {
                 if !self.tracking_mouse.replace(true) {
+                    self.notify(Notice::Pointer(true));
                     let mut tme = TRACKMOUSEEVENT {
                         cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
                         dwFlags: TME_LEAVE,
@@ -347,6 +367,7 @@ impl Win32Window {
             WM_MOUSELEAVE => {
                 self.tracking_mouse.set(false);
                 self.window.dispatch_event(WindowEvent::PointerExited);
+                self.notify(Notice::Pointer(false));
                 Some(LRESULT(0))
             }
             WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP => {
@@ -594,7 +615,6 @@ impl WindowAdapter for Win32Window {
 impl Drop for Win32Window {
     fn drop(&mut self) {
         if let Some(hwnd) = self.hwnd.take() {
-            WINDOWS.with(|w| w.borrow_mut().retain(|(h, _)| *h != hwnd.0 as isize));
             unsafe {
                 let _ = DestroyWindow(hwnd);
             }
