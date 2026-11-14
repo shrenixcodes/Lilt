@@ -16,10 +16,17 @@ export component Island inherits Window {
     width: max(AppState.expanded-width, 340px) + 2 * Theme.margin;
     height: 250px + 2 * Theme.margin;
 
-    out property <length> expanded-height: Theme.padding * 2 + 100px + 10px + 108px;
+    property <bool> tiles: AppState.show-calendar || AppState.show-system || AppState.show-actions;
+    // Height of the dashboard for the enabled widgets; detail pages need at least 214 px.
+    out property <length> dashboard-height: Theme.padding * 2
+        + (AppState.show-media ? 100px : 0)
+        + (AppState.show-media && root.tiles ? 10px : 0)
+        + (root.tiles ? 108px : 0)
+        + (!AppState.show-media && !root.tiles ? 64px : 0);
+    out property <length> expanded-height: AppState.page == Page.dashboard ? root.dashboard-height : max(root.dashboard-height, 214px);
     property <length> activity-width: 340px;
 
-    property <bool> media-mode: AppState.media.availability == MediaAvailability.active;
+    property <bool> media-mode: AppState.show-media && AppState.media.availability == MediaAvailability.active;
     property <bool> showing-activity: AppState.activity && !AppState.expanded && root.media-mode;
     property <bool> hovering: touch.has-hover && !AppState.expanded;
     property <length> target-width: AppState.expanded ? AppState.expanded-width

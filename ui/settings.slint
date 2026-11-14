@@ -1,0 +1,502 @@
+import { Switch, Slider, ComboBox, Button, ScrollView, AboutSlint, Palette } from "std-widgets.slint";
+
+// Settings as edited in the window. Converted to and from the Rust settings model.
+
+export struct SettingsData {
+    auto-collapse: bool,
+    auto-collapse-seconds: int,
+    collapse-on-outside-click: bool,
+    activity-banners: bool,
+    compact-width: int,
+    expanded-width: int,
+    // 0 = follow Windows, 1 = reduced, 2 = full
+    motion: int,
+    // 0 = primary monitor, n = monitors[n - 1]
+    monitor: int,
+    top-margin: int,
+    offset-x: int,
+    allow-drag: bool,
+    show-media: bool,
+    show-calendar: bool,
+    show-system: bool,
+    show-actions: bool,
+    show-artwork: bool,
+    show-progress: bool,
+    ambient-enabled: bool,
+    ambient-intensity: int,
+    low-power: bool,
+    hide-in-fullscreen: bool,
+    launch-at-startup: bool,
+    shortcut: string,
+    calendar-path: string,
+}
+
+component Section inherits VerticalLayout {
+    in property <string> title;
+    spacing: 2px;
+    padding-bottom: 18px;
+
+    Text {
+        text: root.title;
+        font-size: 13px;
+        font-weight: 600;
+        color: Palette.foreground;
+        height: 28px;
+        vertical-alignment: center;
+    }
+
+    @children
+}
+
+component Row inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> description;
+    spacing: 16px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    min-height: 44px;
+
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 1;
+        spacing: 2px;
+
+        Text {
+            text: root.label;
+            color: Palette.foreground;
+            font-size: 13px;
+            wrap: word-wrap;
+        }
+
+        if root.description != "" : Text {
+            text: root.description;
+            color: #9a9aa2;
+            font-size: 11.5px;
+            wrap: word-wrap;
+        }
+    }
+
+    @children
+}
+
+component SliderRow inherits Row {
+    in property <int> value;
+    in property <int> minimum;
+    in property <int> maximum;
+    in property <string> unit: "px";
+    callback edited(int);
+
+    Slider {
+        width: 180px;
+        minimum: root.minimum;
+        maximum: root.maximum;
+        value: root.value;
+        changed(v) => { root.edited(round(v)); }
+    }
+
+    Text {
+        width: 52px;
+        vertical-alignment: center;
+        horizontal-alignment: right;
+        text: root.value + root.unit;
+        color: #9a9aa2;
+        font-size: 12px;
+    }
+}
+
+component NavItem inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+    height: 34px;
+    border-radius: 6px;
+    background: selected ? #ffffff14 : touch.has-hover ? #ffffff0a : transparent;
+
+    Rectangle {
+        x: 0;
+        width: 3px;
+        height: 16px;
+        border-radius: 1.5px;
+        background: root.selected ? #f3f3f5 : transparent;
+    }
+
+    Text {
+        x: 14px;
+        text: root.text;
+        color: root.selected ? #f3f3f5 : #b4b4bc;
+        font-size: 13px;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component SettingsWindow inherits Window {
+    title: "Lilt Settings";
+    icon: @image-url("../assets/icons/lilt.png");
+    preferred-width: 760px;
+    preferred-height: 540px;
+    min-width: 620px;
+    min-height: 420px;
+    background: #151517;
+    default-font-family: "Segoe UI Variable Text";
+
+    in-out property <SettingsData> data;
+    in property <[string]> monitors: ["Primary display"];
+    in property <string> version;
+    in property <string> data-folder;
+    in property <bool> recording-shortcut;
+    in property <string> shortcut-message;
+    in-out property <int> section: 0;
+
+    // Any edit to `data`.
+    callback edited();
+    callback reset();
+    callback choose-calendar();
+    callback clear-calendar();
+    callback record-shortcut();
+    callback clear-shortcut();
+    callback shortcut-key(string, bool, bool, bool, bool);
+    callback open-data-folder();
+    callback reset-position();
+
+    property <[string]> sections: ["General", "Appearance", "Position", "Widgets", "Music", "Ambient visuals", "Performance", "Startup", "Keyboard shortcuts", "About"];
+
+    HorizontalLayout {
+        Rectangle {
+            width: 200px;
+            background: #111113;
+
+            VerticalLayout {
+                padding: 12px;
+                padding-top: 18px;
+                spacing: 2px;
+                alignment: start;
+
+                Text {
+                    text: "Lilt";
+                    font-size: 18px;
+                    font-weight: 700;
+                    color: #f3f3f5;
+                    height: 40px;
+                    vertical-alignment: center;
+                }
+
+                for name[i] in root.sections : NavItem {
+                    text: name;
+                    selected: root.section == i;
+                    clicked => { root.section = i; }
+                }
+            }
+        }
+
+        ScrollView {
+            horizontal-stretch: 1;
+
+            VerticalLayout {
+                padding: 28px;
+                padding-top: 24px;
+                alignment: start;
+
+                if root.section == 0 : Section {
+                    title: "General";
+                    Row {
+                        label: "Collapse automatically";
+                        description: "Return to the compact island after a period without interaction.";
+                        Switch {
+                            checked: root.data.auto-collapse;
+                            toggled => { root.data.auto-collapse = self.checked; root.edited(); }
+                        }
+                    }
+                    if root.data.auto-collapse : SliderRow {
+                        label: "Collapse after";
+                        value: root.data.auto-collapse-seconds;
+                        minimum: 3;
+                        maximum: 60;
+                        unit: " s";
+                        edited(v) => { root.data.auto-collapse-seconds = v; root.edited(); }
+                    }
+                    Row {
+                        label: "Collapse when clicking elsewhere";
+                        Switch {
+                            checked: root.data.collapse-on-outside-click;
+                            toggled => { root.data.collapse-on-outside-click = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Track change banners";
+                        description: "Briefly show the new track in the compact island.";
+                        Switch {
+                            checked: root.data.activity-banners;
+                            toggled => { root.data.activity-banners = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Reset all settings";
+                        description: "Restore the defaults. The calendar file choice and shortcut are reset too.";
+                        Button {
+                            text: "Reset";
+                            clicked => { root.reset(); }
+                        }
+                    }
+                }
+
+                if root.section == 1 : Section {
+                    title: "Appearance";
+                    Row {
+                        label: "Theme";
+                        description: "Additional appearances are planned for later releases.";
+                        ComboBox {
+                            width: 180px;
+                            model: ["Lilt Dark"];
+                            current-index: 0;
+                        }
+                    }
+                    SliderRow {
+                        label: "Compact width";
+                        value: root.data.compact-width;
+                        minimum: 160;
+                        maximum: 300;
+                        edited(v) => { root.data.compact-width = v; root.edited(); }
+                    }
+                    SliderRow {
+                        label: "Expanded width";
+                        value: root.data.expanded-width;
+                        minimum: 400;
+                        maximum: 560;
+                        edited(v) => { root.data.expanded-width = v; root.edited(); }
+                    }
+                    Row {
+                        label: "Motion";
+                        description: "Reduced motion removes size and fade animations.";
+                        ComboBox {
+                            width: 180px;
+                            model: ["Follow Windows", "Reduced", "Full"];
+                            current-index: root.data.motion;
+                            selected => { root.data.motion = self.current-index; root.edited(); }
+                        }
+                    }
+                }
+
+                if root.section == 2 : Section {
+                    title: "Position";
+                    Row {
+                        label: "Display";
+                        ComboBox {
+                            width: 220px;
+                            model: root.monitors;
+                            current-index: root.data.monitor;
+                            selected => { root.data.monitor = self.current-index; root.edited(); }
+                        }
+                    }
+                    SliderRow {
+                        label: "Distance from top";
+                        value: root.data.top-margin;
+                        minimum: 0;
+                        maximum: 48;
+                        edited(v) => { root.data.top-margin = v; root.edited(); }
+                    }
+                    Row {
+                        label: "Allow dragging";
+                        description: "Drag the compact island sideways to reposition it.";
+                        Switch {
+                            checked: root.data.allow-drag;
+                            toggled => { root.data.allow-drag = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Horizontal offset";
+                        description: root.data.offset-x == 0 ? "Centred on the display." : root.data.offset-x + " px from the centre.";
+                        Button {
+                            text: "Centre";
+                            enabled: root.data.offset-x != 0;
+                            clicked => { root.reset-position(); }
+                        }
+                    }
+                }
+
+                if root.section == 3 : Section {
+                    title: "Widgets";
+                    Row {
+                        label: "Music player";
+                        Switch {
+                            checked: root.data.show-media;
+                            toggled => { root.data.show-media = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Calendar";
+                        Switch {
+                            checked: root.data.show-calendar;
+                            toggled => { root.data.show-calendar = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "System monitor";
+                        description: "CPU, memory and network readings are only collected while visible.";
+                        Switch {
+                            checked: root.data.show-system;
+                            toggled => { root.data.show-system = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Quick actions";
+                        Switch {
+                            checked: root.data.show-actions;
+                            toggled => { root.data.show-actions = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Calendar file";
+                        description: root.data.calendar-path == "" ? "No .ics file selected." : root.data.calendar-path;
+                        Button {
+                            text: "Choose…";
+                            clicked => { root.choose-calendar(); }
+                        }
+                        if root.data.calendar-path != "" : Button {
+                            text: "Remove";
+                            clicked => { root.clear-calendar(); }
+                        }
+                    }
+                }
+
+                if root.section == 4 : Section {
+                    title: "Music";
+                    Row {
+                        label: "Show album artwork";
+                        Switch {
+                            checked: root.data.show-artwork;
+                            toggled => { root.data.show-artwork = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Show playback progress";
+                        description: "Shown when the media application reports a timeline.";
+                        Switch {
+                            checked: root.data.show-progress;
+                            toggled => { root.data.show-progress = self.checked; root.edited(); }
+                        }
+                    }
+                }
+
+                if root.section == 5 : Section {
+                    title: "Ambient visuals";
+                    Row {
+                        label: "Colours from album artwork";
+                        description: "Tint the expanded player with a restrained accent taken from the current artwork.";
+                        Switch {
+                            checked: root.data.ambient-enabled;
+                            toggled => { root.data.ambient-enabled = self.checked; root.edited(); }
+                        }
+                    }
+                    if root.data.ambient-enabled : SliderRow {
+                        label: "Intensity";
+                        value: root.data.ambient-intensity;
+                        minimum: 0;
+                        maximum: 100;
+                        unit: "%";
+                        edited(v) => { root.data.ambient-intensity = v; root.edited(); }
+                    }
+                }
+
+                if root.section == 6 : Section {
+                    title: "Performance";
+                    Row {
+                        label: "Low-power mode";
+                        description: "Turns off ambient effects and samples system readings less often.";
+                        Switch {
+                            checked: root.data.low-power;
+                            toggled => { root.data.low-power = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Hide during full-screen apps";
+                        description: "Keeps games, videos and presentations unobstructed.";
+                        Switch {
+                            checked: root.data.hide-in-fullscreen;
+                            toggled => { root.data.hide-in-fullscreen = self.checked; root.edited(); }
+                        }
+                    }
+                }
+
+                if root.section == 7 : Section {
+                    title: "Startup";
+                    Row {
+                        label: "Start Lilt when you sign in";
+                        Switch {
+                            checked: root.data.launch-at-startup;
+                            toggled => { root.data.launch-at-startup = self.checked; root.edited(); }
+                        }
+                    }
+                }
+
+                if root.section == 8 : Section {
+                    title: "Keyboard shortcuts";
+                    Row {
+                        label: "Expand or collapse the island";
+                        description: root.recording-shortcut ? "Press the new shortcut, or Esc to cancel."
+                            : root.shortcut-message != "" ? root.shortcut-message
+                            : root.data.shortcut == "" ? "No shortcut assigned." : root.data.shortcut;
+                        Button {
+                            text: root.recording-shortcut ? "Listening…" : "Change";
+                            clicked => {
+                                root.record-shortcut();
+                                capture.focus();
+                            }
+                        }
+                        if root.data.shortcut != "" : Button {
+                            text: "Clear";
+                            clicked => { root.clear-shortcut(); }
+                        }
+                    }
+                    capture := FocusScope {
+                        width: 0;
+                        height: 0;
+                        key-pressed(event) => {
+                            if !root.recording-shortcut {
+                                return reject;
+                            }
+                            root.shortcut-key(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
+                            accept
+                        }
+                    }
+                }
+
+                if root.section == 9 : Section {
+                    title: "About";
+                    Text {
+                        text: "Lilt " + root.version;
+                        color: #f3f3f5;
+                        font-size: 15px;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: "A little more, at a glance.";
+                        color: #9a9aa2;
+                        font-size: 12px;
+                    }
+                    Row {
+                        label: "Settings and logs";
+                        description: root.data-folder;
+                        Button {
+                            text: "Open folder";
+                            clicked => { root.open-data-folder(); }
+                        }
+                    }
+                    Text {
+                        text: "Lilt runs entirely on this PC. It sends no telemetry and makes no network requests.";
+                        color: #9a9aa2;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                    Rectangle { height: 12px; }
+                    AboutSlint {
+                        height: 160px;
+                    }
+                }
+            }
+        }
+    }
+}

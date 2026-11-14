@@ -98,7 +98,7 @@ impl App {
     }
 
     fn show_activity(app: &Rc<Self>) {
-        if app.expanded() {
+        if app.expanded() || !app.settings.borrow().general.activity_banners {
             return;
         }
         let state = app.island.global::<AppState>();

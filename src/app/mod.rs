@@ -3,6 +3,7 @@
 
 mod calendar;
 mod media;
+mod preferences;
 mod system;
 
 use std::cell::{Cell, RefCell};
@@ -18,48 +19,35 @@ use windows::Win32::UI::Shell::{
     QUNS_RUNNING_D3D_FULL_SCREEN, SHAppBarMessage, SHQueryUserNotificationState,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    PBT_APMRESUMEAUTOMATIC, SPI_SETWORKAREA, SetForegroundWindow, WM_DISPLAYCHANGE, WM_POWERBROADCAST,
-    WM_SETTINGCHANGE, WM_TIMECHANGE,
+    PBT_APMRESUMEAUTOMATIC, SPI_SETCLIENTAREAANIMATION, SPI_SETWORKAREA, SetForegroundWindow, WM_DISPLAYCHANGE,
+    WM_HOTKEY, WM_POWERBROADCAST, WM_SETTINGCHANGE, WM_TIMECHANGE,
 };
 use windows::core::w;
 
 use crate::actions::QuickAction;
 use crate::calendar::{CalendarFile, WindowsZones};
 use crate::clock;
+use crate::hotkey;
 use crate::media::{MediaService, MediaState};
+use crate::settings::Settings;
 use crate::system::{SamplingPolicy, SystemMonitor};
-use crate::ui::{AppActions, AppState, Island, Tray};
+use crate::ui::{AppActions, AppState, Island, SettingsWindow, Theme, Tray};
 use crate::window::{self, Notice, WindowKind, placement};
-
-/// How long the expanded island stays open after the pointer leaves it.
-const AUTO_COLLAPSE: Duration = Duration::from_secs(8);
 
 /// Shell notifications for the app bar registration (full-screen detection).
 const WM_APP_APPBAR: u32 = window::WM_APP_USER;
 
-/// Where the island sits. Persisted with the settings.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Placement {
-    /// Device name of the chosen monitor; `None` follows the primary monitor.
-    pub monitor: Option<String>,
-    /// Logical pixels from the centre of the work area.
-    pub offset_x: i32,
-    /// Logical pixels below the top of the work area.
-    pub top_margin: u32,
-}
-
-impl Default for Placement {
-    fn default() -> Self {
-        Self { monitor: None, offset_x: 0, top_margin: 8 }
-    }
-}
-
 pub struct App {
     island: Island,
     tray: Tray,
-    placement: RefCell<Placement>,
+    settings: RefCell<Settings>,
+    save_timer: slint::Timer,
+    settings_window: RefCell<Option<SettingsWindow>>,
+    /// Why the configured shortcut could not be registered, shown in the settings window.
+    shortcut_problem: RefCell<Option<String>>,
     hidden_by_user: Cell<bool>,
-    hidden_for_fullscreen: Cell<bool>,
+    /// A full-screen application, game or presentation owns the display.
+    fullscreen_active: Cell<bool>,
     clock_timer: slint::Timer,
     h24: Cell<bool>,
     collapse_timer: slint::Timer,
@@ -79,8 +67,6 @@ pub struct App {
     cpu_timer: slint::Timer,
     memory_timer: slint::Timer,
     network_timer: slint::Timer,
-    /// Lengthens sampling intervals and disables non-essential effects.
-    low_power: Cell<bool>,
     calendar: RefCell<Option<CalendarFile>>,
     zones: WindowsZones,
 }
@@ -133,9 +119,12 @@ pub fn run() -> Result<(), slint::PlatformError> {
     let app = Rc::new(App {
         island,
         tray,
-        placement: RefCell::new(Placement::default()),
+        settings: RefCell::new(App::load_settings()),
+        save_timer: slint::Timer::default(),
+        settings_window: RefCell::new(None),
+        shortcut_problem: RefCell::new(None),
         hidden_by_user: Cell::new(false),
-        hidden_for_fullscreen: Cell::new(false),
+        fullscreen_active: Cell::new(false),
         clock_timer: slint::Timer::default(),
         h24: Cell::new(clock::uses_24_hour_clock()),
         collapse_timer: slint::Timer::default(),
@@ -154,7 +143,6 @@ pub fn run() -> Result<(), slint::PlatformError> {
         cpu_timer: slint::Timer::default(),
         memory_timer: slint::Timer::default(),
         network_timer: slint::Timer::default(),
-        low_power: Cell::new(false),
         calendar: RefCell::new(None),
         zones: WindowsZones::default(),
     });
@@ -162,22 +150,24 @@ pub fn run() -> Result<(), slint::PlatformError> {
     App::connect(&app);
     App::connect_media(&app);
     App::connect_calendar(&app);
+    App::connect_preferences(&app);
     App::refresh_clock(&app);
     app.tray.set_light_taskbar(light_taskbar());
 
     // The shell reports full-screen changes only as they happen, so ask once whether one
     // is already in progress before showing the island.
-    app.hidden_for_fullscreen.set(full_screen_app_active());
-    if app.island_visible() {
-        app.island.show()?;
-        app.place();
-    }
+    app.fullscreen_active.set(full_screen_app_active());
+    App::apply_settings(&app);
     app.tray.show()?;
     let _app_bar = AppBar::register();
     app.media.replace(Some(MediaService::start(|update| post(move |app| App::media_update(app, update)))));
 
     slint::run_event_loop()?;
     app.island.hide()?;
+    hotkey::unregister(window::control_window());
+    if app.save_timer.running() {
+        app.save_now();
+    }
     // Stops the media worker and unsubscribes from media session events.
     app.media.replace(None);
     Ok(())
@@ -223,10 +213,14 @@ impl App {
             native.set_notice_handler(move |notice| {
                 let Some(app) = weak.upgrade() else { return };
                 match notice {
-                    Notice::MoveFinished => app.finish_move(),
+                    Notice::MoveFinished => App::finish_move(&app),
                     Notice::ScaleChanged => app.place(),
                     // A click elsewhere moved the focus away from the expanded island.
-                    Notice::Activated(false) if app.expanded() => App::set_expanded(&app, false),
+                    Notice::Activated(false)
+                        if app.expanded() && app.settings.borrow().general.collapse_on_outside_click =>
+                    {
+                        App::set_expanded(&app, false)
+                    }
                     Notice::Activated(_) => {}
                     Notice::Pointer(inside) => App::pointer_moved(&app, inside),
                 }
@@ -243,6 +237,11 @@ impl App {
         match msg {
             WM_DISPLAYCHANGE => self.place(),
             WM_SETTINGCHANGE if wparam.0 as u32 == SPI_SETWORKAREA.0 => self.place(),
+            // "Animation effects" was switched in Windows.
+            WM_SETTINGCHANGE if wparam.0 as u32 == SPI_SETCLIENTAREAANIMATION.0 => {
+                let reduced = preferences::reduced_motion(self.settings.borrow().appearance.motion);
+                self.island.global::<Theme>().set_motion(if reduced { 0.0 } else { 1.0 });
+            }
             WM_SETTINGCHANGE => match setting_name(lparam).as_deref() {
                 // Regional format changed: the 12/24-hour preference may differ.
                 Some("intl") => {
@@ -258,8 +257,16 @@ impl App {
             WM_APP_APPBAR if wparam.0 as u32 == ABN_FULLSCREENAPP => {
                 let fullscreen = lparam.0 != 0;
                 tracing::debug!(fullscreen, "full-screen application state changed");
-                self.hidden_for_fullscreen.set(fullscreen);
+                self.fullscreen_active.set(fullscreen);
                 App::update_visibility(app);
+            }
+            WM_HOTKEY if wparam.0 as i32 == hotkey::TOGGLE_ID => {
+                if self.hidden_by_user.get() {
+                    App::set_hidden_by_user(app, false);
+                }
+                if self.island_visible() {
+                    App::set_expanded(app, !self.expanded());
+                }
             }
             window::WM_APP_ACTIVATE => App::set_hidden_by_user(app, false),
             _ => return None,
@@ -272,7 +279,9 @@ impl App {
     }
 
     fn island_visible(&self) -> bool {
-        !self.hidden_by_user.get() && !self.hidden_for_fullscreen.get()
+        let hidden_for_fullscreen =
+            self.fullscreen_active.get() && self.settings.borrow().performance.hide_in_fullscreen;
+        !self.hidden_by_user.get() && !hidden_for_fullscreen
     }
 
     fn set_expanded(app: &Rc<Self>, expanded: bool) {
@@ -313,8 +322,13 @@ impl App {
     }
 
     fn schedule_collapse(app: &Rc<Self>) {
+        let general = app.settings.borrow().general.clone();
+        if !general.auto_collapse {
+            return;
+        }
         let weak = Rc::downgrade(app);
-        app.collapse_timer.start(slint::TimerMode::SingleShot, AUTO_COLLAPSE, move || {
+        let delay = Duration::from_secs(general.auto_collapse_seconds as u64);
+        app.collapse_timer.start(slint::TimerMode::SingleShot, delay, move || {
             if let Some(app) = weak.upgrade() {
                 App::set_expanded(&app, false);
             }
@@ -365,7 +379,8 @@ impl App {
     /// Moves the island to its configured position on the chosen monitor.
     pub fn place(&self) {
         let monitors = placement::monitors();
-        let placement = self.placement.borrow();
+        let settings = self.settings.borrow();
+        let placement = &settings.position;
         let Some(monitor) = placement::choose(&monitors, placement.monitor.as_deref()) else { return };
         let size = self.island.window().size();
         let (x, y) = placement::island_origin(
@@ -378,24 +393,28 @@ impl App {
     }
 
     /// Records where the user dropped the island and snaps it back to the top edge.
-    fn finish_move(&self) {
+    fn finish_move(app: &Rc<Self>) {
+        app.record_move();
+        app.place();
+        App::schedule_save(app);
+    }
+
+    fn record_move(&self) {
         let position = self.island.window().position();
         let size = self.island.window().size();
         let monitors = placement::monitors();
         let centre = position.x + size.width as i32 / 2;
-        let current = self.placement.borrow().monitor.clone();
+        let current = self.settings.borrow().position.monitor.clone();
         let Some(monitor) = placement::monitor_at(&monitors, centre, position.y + 1)
             .or_else(|| placement::choose(&monitors, current.as_deref()))
         else {
             return;
         };
-        {
-            let mut placement = self.placement.borrow_mut();
-            placement.monitor = if monitor.primary { None } else { Some(monitor.device.clone()) };
-            placement.offset_x = placement::offset_for(monitor, position.x, size.width as i32);
-            tracing::info!(?placement, "island moved");
-        }
-        self.place();
+        let mut settings = self.settings.borrow_mut();
+        let placement = &mut settings.position;
+        placement.monitor = if monitor.primary { None } else { Some(monitor.device.clone()) };
+        placement.offset_x = placement::offset_for(monitor, position.x, size.width as i32);
+        tracing::info!(monitor = ?placement.monitor, offset_x = placement.offset_x, "island moved");
     }
 }
 
@@ -432,6 +451,17 @@ fn light_taskbar() -> bool {
         )
     };
     result.is_ok() && value == 1
+}
+
+/// Close handler for the settings window: releases it instead of keeping it hidden.
+fn with_close(weak: &Weak<App>) -> impl Fn() -> slint::CloseRequestResponse + 'static {
+    let weak = weak.clone();
+    move || {
+        if let Some(app) = weak.upgrade() {
+            app.close_settings();
+        }
+        slint::CloseRequestResponse::HideWindow
+    }
 }
 
 /// Wraps a method call on a weakly held `App` as a callback.

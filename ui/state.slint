@@ -7,6 +7,14 @@ export global AppState {
     in property <length> expanded-width: 460px;
     in property <bool> allow-drag: true;
 
+    // Widgets enabled in Settings.
+    in property <bool> show-media: true;
+    in property <bool> show-calendar: true;
+    in property <bool> show-system: true;
+    in property <bool> show-actions: true;
+    in property <bool> show-artwork: true;
+    in property <bool> show-progress: true;
+
     // Clock
     in property <string> time;
     in property <string> weekday;
@@ -50,4 +58,5 @@ export global AppActions {
     callback choose-calendar();
     // Index into the actions listed in ui/quick-actions.slint.
     callback quick-action(int);
+    callback open-settings();
 }

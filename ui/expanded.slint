@@ -8,26 +8,29 @@ import { QuickActions } from "quick-actions.slint";
 
 // Content of the expanded island.
 export component ExpandedView inherits Rectangle {
+    property <bool> tiles: AppState.show-calendar || AppState.show-system || AppState.show-actions;
+
     if AppState.page == Page.dashboard: VerticalLayout {
         padding: Theme.padding;
         spacing: 10px;
+        alignment: start;
 
-        MediaPlayer {
+        if AppState.show-media: MediaPlayer {
             height: 100px;
         }
 
-        HorizontalLayout {
+        if root.tiles: HorizontalLayout {
             height: 108px;
             spacing: Theme.gap;
 
-            CalendarTile {
+            if AppState.show-calendar: CalendarTile {
                 horizontal-stretch: 1;
                 clicked => {
                     AppState.page = Page.calendar;
                 }
             }
 
-            SystemTile {
+            if AppState.show-system: SystemTile {
                 horizontal-stretch: 1;
                 info: AppState.system;
                 clicked => {
@@ -35,11 +38,32 @@ export component ExpandedView inherits Rectangle {
                 }
             }
 
-            QuickActions {
+            if AppState.show-actions: QuickActions {
                 width: 144px;
                 activate(index) => {
                     AppActions.quick-action(index);
                 }
+            }
+        }
+
+        // Every widget turned off: the island remains a clock.
+        if !AppState.show-media && !root.tiles: VerticalLayout {
+            height: 64px;
+            alignment: center;
+
+            Text {
+                horizontal-alignment: center;
+                text: AppState.time;
+                color: Theme.text;
+                font-size: Theme.font-xl;
+                font-weight: 600;
+            }
+
+            Text {
+                horizontal-alignment: center;
+                text: AppState.weekday + " " + AppState.date;
+                color: Theme.text-secondary;
+                font-size: Theme.font-sm;
             }
         }
     }

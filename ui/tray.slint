@@ -5,6 +5,7 @@ export component Tray inherits SystemTrayIcon {
     // True when the taskbar uses the light theme and needs a dark glyph.
     in property <bool> light-taskbar: false;
     callback toggle-island();
+    callback open-settings();
     callback quit();
 
     tooltip: "Lilt";
@@ -15,6 +16,12 @@ export component Tray inherits SystemTrayIcon {
         MenuItem {
             title: root.island-visible ? "Hide island" : "Show island";
             activated => { root.toggle-island(); }
+        }
+        MenuItem {
+            title: "Settings";
+            activated => {
+                root.open-settings();
+            }
         }
         MenuSeparator {}
         MenuItem {

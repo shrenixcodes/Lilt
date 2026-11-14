@@ -15,7 +15,10 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, PremultipliedRgb
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, PhysicalSize, PlatformError};
 
-use crate::ui::{AgendaEntry, AppState, CalendarState, Island, MediaAvailability, MediaInfo, Page, SystemInfo, Theme};
+use crate::ui::{
+    AgendaEntry, AppState, CalendarState, Island, MediaAvailability, MediaInfo, Page, SettingsData, SettingsWindow,
+    SystemInfo, Theme,
+};
 
 /// Desktop-like backdrop the transparent island is composited onto.
 const BACKDROP: [u8; 3] = [214, 219, 228];
@@ -283,4 +286,62 @@ fn agenda_without_calendar_explains_itself() {
     h.state().set_page(Page::Calendar);
     let image = h.render();
     save(&image, "expanded-agenda-empty");
+}
+
+#[test]
+fn settings_sections_render() {
+    let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    let clock = Rc::new(Cell::new(Duration::ZERO));
+    slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), clock: clock.clone() }))
+        .expect("one platform per test thread");
+    let settings = SettingsWindow::new().expect("create settings window");
+    settings.set_version("0.1.0".into());
+    settings.set_data_folder("%APPDATA%/Lilt".into());
+    settings.set_data(SettingsData {
+        auto_collapse: true,
+        auto_collapse_seconds: 8,
+        collapse_on_outside_click: true,
+        activity_banners: true,
+        compact_width: 196,
+        expanded_width: 460,
+        allow_drag: true,
+        show_media: true,
+        show_calendar: true,
+        show_system: true,
+        show_actions: true,
+        show_artwork: true,
+        show_progress: true,
+        ambient_enabled: true,
+        ambient_intensity: 60,
+        hide_in_fullscreen: true,
+        top_margin: 8,
+        shortcut: "Ctrl+Alt+Space".into(),
+        ..Default::default()
+    });
+    settings.show().expect("show settings");
+    let size = PhysicalSize::new(760, 540);
+    window.set_size(size);
+    let mut previous: Option<Vec<PremultipliedRgbaColor>> = None;
+    for section in 0..10 {
+        settings.set_section(section);
+        let mut buffer = vec![PremultipliedRgbaColor::default(); (size.width * size.height) as usize];
+        for _ in 0..2 {
+            clock.set(clock.get() + Duration::from_secs(1));
+            slint::platform::update_timers_and_animations();
+            window.request_redraw();
+            window.draw_if_needed(|renderer| {
+                renderer.render(&mut buffer, size.width as usize);
+            });
+        }
+        let image = RgbaImage::from_fn(size.width, size.height, |x, y| {
+            let p = buffer[(y * size.width + x) as usize];
+            Rgba([p.red, p.green, p.blue, 255])
+        });
+        save(&image, &format!("settings-{section}"));
+        let same = previous.as_ref().is_some_and(|p| {
+            p.iter().zip(&buffer).all(|(a, b)| a.red == b.red && a.green == b.green && a.blue == b.blue)
+        });
+        assert!(!same, "section {section} rendered the same as the previous one");
+        previous = Some(buffer);
+    }
 }

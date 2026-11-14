@@ -44,6 +44,15 @@ pub struct Monitor {
     pub primary: bool,
 }
 
+impl Monitor {
+    /// e.g. `Display 2 · 2560 × 1440 (primary)`.
+    pub fn label(&self, index: usize) -> String {
+        let height = self.bounds.bottom - self.bounds.top;
+        let primary = if self.primary { " (primary)" } else { "" };
+        format!("Display {} · {} × {}{}", index + 1, self.bounds.width(), height, primary)
+    }
+}
+
 /// All attached monitors in system enumeration order.
 pub fn monitors() -> Vec<Monitor> {
     unsafe extern "system" fn collect(monitor: HMONITOR, _: HDC, _: *mut RECT, data: LPARAM) -> BOOL {

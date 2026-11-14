@@ -21,7 +21,7 @@ impl App {
     /// pause is the average over the pause, and the next follows within the interval.
     pub(super) fn update_sampling(app: &Rc<Self>) {
         let policy = if app.system_monitor.borrow().is_some() {
-            SamplingPolicy::for_state(app.island_visible(), app.expanded(), app.low_power.get())
+            SamplingPolicy::for_state(app.island_visible(), app.expanded(), app.settings.borrow().performance.low_power)
         } else {
             SamplingPolicy::OFF
         };

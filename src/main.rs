@@ -9,12 +9,15 @@ mod artwork;
 mod calendar;
 mod clock;
 mod dialogs;
+mod hotkey;
 mod instance;
 mod logging;
 mod media;
 mod paths;
+mod settings;
 #[cfg(test)]
 mod snapshots;
+mod startup;
 mod system;
 mod window;
 

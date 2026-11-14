@@ -42,7 +42,7 @@ export component MediaPlayer inherits Rectangle {
 
     // A restrained accent behind the artwork. Static: it only changes when the artwork
     // does, through the colour animation above.
-    if root.active && AppState.has-artwork && Theme.ambient > 0: Rectangle {
+    if root.active && AppState.show-artwork && AppState.has-artwork && Theme.ambient > 0: Rectangle {
         x: -40px;
         y: (root.height - self.height) / 2;
         width: 152px;
@@ -53,7 +53,7 @@ export component MediaPlayer inherits Rectangle {
     HorizontalLayout {
         spacing: 14px;
 
-        ArtworkTile {
+        if AppState.show-artwork: ArtworkTile {
             size: 72px;
         }
 
@@ -138,7 +138,7 @@ export component MediaPlayer inherits Rectangle {
                 }
             }
 
-            if root.active && AppState.media.has-timeline: VerticalLayout {
+            if root.active && AppState.show-progress && AppState.media.has-timeline: VerticalLayout {
                 padding-top: 6px;
                 spacing: 1px;
 

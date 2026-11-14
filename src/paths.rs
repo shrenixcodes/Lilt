@@ -11,6 +11,11 @@ fn known_dir(variable: &str) -> PathBuf {
         .join("Lilt")
 }
 
+/// `%APPDATA%\Lilt`: user settings, which roam with the Windows profile.
+pub fn roaming_data_dir() -> PathBuf {
+    known_dir("APPDATA")
+}
+
 /// `%LOCALAPPDATA%\Lilt`: machine-specific data such as logs.
 pub fn local_data_dir() -> PathBuf {
     known_dir("LOCALAPPDATA")
@@ -22,6 +27,7 @@ mod tests {
 
     #[test]
     fn directories_are_named_after_the_app() {
+        assert!(roaming_data_dir().ends_with("Lilt"));
         assert!(local_data_dir().ends_with("Lilt"));
     }
 }
