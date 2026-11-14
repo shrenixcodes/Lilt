@@ -2,9 +2,19 @@ name: Release
 
 # Builds a release for a version tag such as v0.1.0 and attaches the installer to a
 # draft GitHub release. The draft is published by a maintainer after review.
+#
+# It runs when a version tag is pushed, and can be run by hand for an existing tag
+# (Actions → Release → Run workflow), for example after fixing this workflow: the code is
+# always checked out from the tag, so the installer matches the tagged commit.
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing version tag to build, such as v0.2.0"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -15,9 +25,17 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
+      - name: Check the tag name
+        shell: pwsh
+        run: |
+          if ($env:TAG -notmatch '^v\d+\.\d+\.\d+$') { throw "not a version tag: $env:TAG" }
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
@@ -30,7 +48,7 @@ jobs:
         run: |
           $manifest = Get-Content Cargo.toml -Raw
           if ($manifest -notmatch '(?m)^version\s*=\s*"(\d+\.\d+\.\d+)"') { throw 'version not found' }
-          if ("v$($Matches[1])" -ne $env:GITHUB_REF_NAME) { throw "tag $env:GITHUB_REF_NAME does not match Cargo.toml version $($Matches[1])" }
+          if ("v$($Matches[1])" -ne $env:TAG) { throw "tag $env:TAG does not match Cargo.toml version $($Matches[1])" }
 
       - name: Lints
         run: cargo clippy --all-targets --locked -- -D warnings
@@ -50,10 +68,14 @@ jobs:
       - name: Release notes from the changelog
         shell: pwsh
         run: |
-          $version = $env:GITHUB_REF_NAME.TrimStart('v')
-          $lines = Get-Content CHANGELOG.md
-          $start = [array]::IndexOf($lines, "## [$version]")
-          if ($start -lt 0) { throw "CHANGELOG.md has no section for $version" }
+          # The section heading is "## [x.y.z]", optionally followed by " - date".
+          $version = [regex]::Escape($env:TAG.TrimStart('v'))
+          $lines = @(Get-Content CHANGELOG.md)
+          $start = -1
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match "^## \[$version\](\s|$)") { $start = $i; break }
+          }
+          if ($start -lt 0) { throw "CHANGELOG.md has no section for $env:TAG" }
           $notes = $lines[($start + 1)..($lines.Count - 1)] | ForEach-Object -Begin { $done = $false } -Process {
             if ($_ -match '^## \[') { $done = $true }
             if (-not $done) { $_ }
@@ -64,7 +86,8 @@ jobs:
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           draft: true
-          name: Lilt ${{ github.ref_name }}
+          tag_name: ${{ env.TAG }}
+          name: Lilt ${{ env.TAG }}
           body_path: release-notes.md
           files: |
             target/installer/*.exe

@@ -12,7 +12,7 @@ entry.
 
 1. Update `version` in `Cargo.toml` and run `cargo build` so `Cargo.lock` follows.
 2. Move the entries under `[Unreleased]` in `CHANGELOG.md` into a new `## [x.y.z]`
-   section.
+   section (a date may follow: `## [x.y.z] - YYYY-MM-DD`).
 3. Check the build locally:
 
    ```powershell
@@ -37,6 +37,11 @@ entry.
    tests, builds the installer, writes its SHA-256 checksum and creates a **draft**
    release with the changelog section as notes.
 6. Review the draft, download the installer from it, and publish it.
+
+If the workflow fails after the tag is pushed (for example on the changelog section),
+fix the problem on `main` and run **Release** by hand from the Actions tab, giving the
+existing tag. The code is always checked out from the tag, so the installer still
+matches the tagged commit; tags are never moved.
 
 Nothing is published automatically: the workflow only creates drafts.
 

@@ -8,8 +8,8 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [0.2.0] - 2026-11-15
 
-The first build published on GitHub. It includes everything listed under 0.1.0 below,
-plus the following.
+The first build published on GitHub. It includes everything listed under 0.1.0 in the
+changelog, plus the following.
 
 ### Added
 
