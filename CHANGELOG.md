@@ -15,6 +15,10 @@ All notable changes to Lilt are documented here. The format follows
   or low-power mode rule out the blur, or when *Reduce transparency* is on.
 - *Settings → Appearance* shows both appearances as cards with previews drawn from their
   own design tokens. Switching is immediate and needs no restart.
+- The "now playing" bars in the compact island move like a quiet equalizer while music
+  plays. They step about 14 times a second on a timer, only while the compact island is
+  on screen, settle into the flat idle bars when playback pauses, and stay still with
+  reduced motion.
 
 ### Changed
 

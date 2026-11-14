@@ -120,6 +120,7 @@ DWM draws no blur.
 | Memory | not sampled | every 5 s | every 10 s |
 | Network | not sampled | every 1 s | every 5 s |
 | Playback position | not updated | every 1 s while playing | every 1 s while playing |
+| Playing bars | about 14 steps/s while playing and on screen | not drawn | about 14 steps/s while playing |
 | Media metadata | Windows events | Windows events | Windows events |
 | Calendar | not refreshed | on expand and every minute (file re-read only if changed) | same |
 

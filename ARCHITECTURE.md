@@ -109,6 +109,7 @@ uses the native move loop with the top edge held fixed.
 | Artwork | Read only when the track changes (or, if it had none, when its properties change); decoded once and cached by content hash |
 | Accent palette | Computed once per new artwork on the media thread |
 | Playback progress | Extrapolated from the session timeline; refreshed once a second only while expanded and playing |
+| Playing bars | A Slint timer steps them about 14 times a second (no per-frame animation) while media plays, the compact island is on screen and motion is not reduced; stopped otherwise |
 | CPU / memory / network | 2 s / 5 s / 1 s, only while the expanded island is visible; 5 s / 10 s / 5 s in low-power mode; off otherwise |
 | Calendar | Rebuilt when the island expands and each minute while expanded; the file is re-read only if its modification time changed |
 | Full-screen state | Shell app-bar notification, plus one query at start-up |
@@ -128,7 +129,7 @@ by how vivid and how common they are, de-emphasising near-black and near-white a
 The winning hue is kept while lightness and chroma are clamped in OKLCH, and the accent
 is lightened until it reaches 4.5:1 contrast with the island surface. The UI uses it for
 a radial glow behind the artwork, a faint tint of the expanded surface and accents, and
-cross-fades to new colours over 700 ms; otherwise nothing moves.
+cross-fades to new colours over 700 ms; otherwise nothing moves except the playing bars.
 
 The software renderer draws gradients and clipped children as rectangles, ignoring
 corner radii. Effects are therefore kept inside the rounded shape: the glow fades out

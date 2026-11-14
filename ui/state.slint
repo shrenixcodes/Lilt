@@ -42,6 +42,8 @@ export global AppState {
 
     // Set by Rust; the island only requests changes through AppActions.
     in property <bool> expanded;
+    // The island is shown (not hidden by the user or for a full-screen application).
+    in property <bool> on-screen: true;
     in-out property <Page> page: Page.dashboard;
 }
 

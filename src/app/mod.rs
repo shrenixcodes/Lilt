@@ -374,6 +374,7 @@ impl App {
         if !visible {
             App::set_expanded(app, false);
         }
+        app.island.global::<AppState>().set_on_screen(visible);
         let result = if visible { app.island.show() } else { app.island.hide() };
         if let Err(err) = result {
             tracing::warn!(%err, visible, "could not change island visibility");

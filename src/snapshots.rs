@@ -41,7 +41,7 @@ impl Platform for TestPlatform {
 pub struct Harness {
     pub island: Island,
     window: Rc<MinimalSoftwareWindow>,
-    clock: Rc<Cell<Duration>>,
+    pub clock: Rc<Cell<Duration>>,
     scale: f32,
 }
 
@@ -430,6 +430,8 @@ fn playing_with_artwork(h: &Harness) {
 #[test]
 fn switching_appearance_is_instant_and_reversible() {
     let h = Harness::new(1.0);
+    // Still bars, so that renders taken at different times can be compared.
+    h.theme().set_motion(0.0);
     playing_with_artwork(&h);
     let compact = h.render();
     h.state().set_expanded(true);
@@ -551,6 +553,57 @@ fn liquid_glass_showcase() {
     image::imageops::overlay(&mut sheet, &compact, 20, 10);
     image::imageops::overlay(&mut sheet, &expanded, 530, 10);
     save(&sheet, "glass-overview");
+}
+
+/// Renders the compact island twice, letting `ms` of time pass in between.
+fn two_frames(h: &Harness, ms: u64) -> (RgbaImage, RgbaImage) {
+    let first = h.render();
+    h.clock.set(h.clock.get() + Duration::from_millis(ms));
+    slint::platform::update_timers_and_animations();
+    (first, h.render())
+}
+
+/// The playing glyph's area in the compact media island.
+fn glyph(image: &RgbaImage) -> Vec<u8> {
+    let (x, width) = ((image.width() + 254) / 2 - 30, 30);
+    image::imageops::crop_imm(image, x, 0, width, 38).to_image().into_raw()
+}
+
+#[test]
+fn playing_bars_move_only_while_playing_and_visible() {
+    let h = Harness::new(1.0);
+    h.state().set_media(playing("Blue Hours"));
+    let (a, b) = two_frames(&h, 70);
+    save(&b, "compact-visualizer");
+    assert_ne!(glyph(&a), glyph(&b), "the bars move while playing");
+
+    // Reduced motion: the original still bars.
+    h.theme().set_motion(0.0);
+    let (a, b) = two_frames(&h, 70);
+    assert_eq!(glyph(&a), glyph(&b));
+    h.theme().set_motion(1.0);
+
+    // Hidden or expanded: no updates.
+    h.state().set_on_screen(false);
+    let (a, b) = two_frames(&h, 70);
+    assert_eq!(glyph(&a), glyph(&b));
+    h.state().set_on_screen(true);
+
+    // Paused: settled and still.
+    h.state().set_media(MediaInfo { playing: false, ..playing("Blue Hours") });
+    let (a, b) = two_frames(&h, 70);
+    assert_eq!(glyph(&a), glyph(&b));
+    save(&b, "compact-visualizer-paused");
+}
+
+#[test]
+fn playing_bars_work_in_liquid_glass() {
+    let h = Harness::new(1.0);
+    h.theme().set_appearance(Appearance::LiquidGlass);
+    h.state().set_media(playing("Blue Hours"));
+    let (a, b) = two_frames(&h, 70);
+    save(&b, "glass-compact-visualizer");
+    assert_ne!(glyph(&a), glyph(&b));
 }
 
 /// WCAG relative luminance of an sRGB colour.
