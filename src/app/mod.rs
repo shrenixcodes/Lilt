@@ -19,8 +19,8 @@ use windows::Win32::UI::Shell::{
     QUNS_RUNNING_D3D_FULL_SCREEN, SHAppBarMessage, SHQueryUserNotificationState,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    PBT_APMRESUMEAUTOMATIC, SPI_SETCLIENTAREAANIMATION, SPI_SETWORKAREA, SetForegroundWindow, WM_DISPLAYCHANGE,
-    WM_HOTKEY, WM_POWERBROADCAST, WM_SETTINGCHANGE, WM_TIMECHANGE,
+    PBT_APMRESUMEAUTOMATIC, SPI_SETCLIENTAREAANIMATION, SPI_SETWORKAREA, SetForegroundWindow, WM_CLOSE,
+    WM_DISPLAYCHANGE, WM_HOTKEY, WM_POWERBROADCAST, WM_SETTINGCHANGE, WM_TIMECHANGE,
 };
 use windows::core::w;
 
@@ -269,6 +269,10 @@ impl App {
                 }
             }
             window::WM_APP_ACTIVATE => App::set_hidden_by_user(app, false),
+            // Sent by the installer and uninstaller to close a running copy gracefully.
+            WM_CLOSE => {
+                let _ = slint::quit_event_loop();
+            }
             _ => return None,
         }
         Some(LRESULT(0))

@@ -1,0 +1,4 @@
+# Link the C runtime statically for MSVC builds, so the installer does not depend on
+# the Visual C++ redistributable being present.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
