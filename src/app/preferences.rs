@@ -11,9 +11,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{BOOL, HSTRING, PCWSTR, w};
 
 use super::App;
+use crate::appearance::{self, Fallback, Material};
 use crate::hotkey::{self, Shortcut};
-use crate::settings::{self, LoadStatus, MotionPreference, Settings};
-use crate::ui::{AppActions, AppState, SettingsData, SettingsWindow, Theme};
+use crate::settings::{self, AppearanceMode, LoadStatus, MotionPreference, Settings};
+use crate::ui::{AppActions, AppState, Appearance, SettingsData, SettingsWindow, Theme};
 use crate::window::{self, WindowKind, placement};
 use crate::{dialogs, paths, startup};
 
@@ -57,6 +58,7 @@ impl App {
         let ambient = settings.ambient.enabled && !settings.performance.low_power;
         theme.set_ambient(if ambient { settings.ambient.intensity as f32 / 100.0 } else { 0.0 });
         theme.set_motion(if reduced_motion(settings.appearance.motion) { 0.0 } else { 1.0 });
+        App::apply_appearance(app);
 
         let path = settings.calendar.ics_path.clone();
         let current = app.calendar.borrow().as_ref().map(|c| c.path().to_path_buf());
@@ -73,6 +75,48 @@ impl App {
         app.shortcut_problem.replace(problem);
         App::update_visibility(app);
         App::update_sampling(app);
+    }
+
+    /// Applies the appearance and chooses its material: solid, frosted or the live blur.
+    /// Called when settings change and when Windows' transparency or power state does.
+    pub(super) fn apply_appearance(app: &Rc<Self>) {
+        let settings = app.settings.borrow().clone();
+        let env = appearance::Environment::current();
+        let (material, mut fallback) = appearance::material(&settings, &env);
+        let wanted = material == Material::LiveBlur;
+        let live = window::find(app.island.window()).is_some_and(|native| native.set_live_backdrop(wanted));
+        if wanted && !live {
+            fallback = Some(Fallback::Failed);
+        }
+        let theme = app.island.global::<Theme>();
+        theme.set_appearance(ui_appearance(settings.appearance.theme));
+        theme.set_live_blur(live);
+        app.glass_fallback.set(fallback);
+        app.window_blur.set(live && appearance::window_backdrop_supported(&env));
+        if material != Material::Solid {
+            tracing::debug!(?material, live, ?fallback, "appearance applied");
+        }
+        app.apply_window_appearance();
+    }
+
+    /// Gives the settings window the island's appearance, with the system acrylic behind
+    /// it where the live blur is in use and Windows supports it for ordinary windows.
+    pub(super) fn apply_window_appearance(&self) {
+        let window = self.settings_window.borrow();
+        let Some(window) = window.as_ref() else { return };
+        let island = self.island.global::<Theme>();
+        let theme = window.global::<Theme>();
+        theme.set_appearance(island.get_appearance());
+        theme.set_motion(island.get_motion());
+        let blur =
+            window::find(window.window()).is_some_and(|native| native.set_system_backdrop(self.window_blur.get()));
+        theme.set_live_blur(blur);
+        let note = match self.glass_fallback.get() {
+            // The switch right below the cards already says so.
+            Some(Fallback::UserReduced) | None => "",
+            Some(reason) => reason.explanation(),
+        };
+        window.set_appearance_note(note.into());
     }
 
     /// Registers the configured shortcut. Returns an explanation if it could not be.
@@ -130,6 +174,7 @@ impl App {
         settings_window.set_data_folder(paths::roaming_data_dir().display().to_string().into());
         App::connect_settings_window(app, &settings_window);
         app.settings_window.replace(Some(settings_window));
+        app.apply_window_appearance();
         app.refresh_settings_window();
         if let Some(window) = app.settings_window.borrow().as_ref() {
             let _ = window.show();
@@ -300,6 +345,20 @@ pub(super) fn reduced_motion(preference: MotionPreference) -> bool {
     }
 }
 
+fn ui_appearance(mode: AppearanceMode) -> Appearance {
+    match mode {
+        AppearanceMode::Midnight => Appearance::Midnight,
+        AppearanceMode::LiquidGlass => Appearance::LiquidGlass,
+    }
+}
+
+fn appearance_index(mode: AppearanceMode) -> i32 {
+    match mode {
+        AppearanceMode::Midnight => 0,
+        AppearanceMode::LiquidGlass => 1,
+    }
+}
+
 fn motion_index(preference: MotionPreference) -> i32 {
     match preference {
         MotionPreference::System => 0,
@@ -316,6 +375,8 @@ fn to_data(s: &Settings, monitors: &[placement::Monitor]) -> SettingsData {
         .and_then(|device| monitors.iter().position(|m| &m.device == device))
         .map_or(0, |i| i as i32 + 1);
     SettingsData {
+        appearance: appearance_index(s.appearance.theme),
+        reduce_transparency: s.appearance.reduce_transparency,
         auto_collapse: s.general.auto_collapse,
         auto_collapse_seconds: s.general.auto_collapse_seconds as i32,
         collapse_on_outside_click: s.general.collapse_on_outside_click,
@@ -347,6 +408,11 @@ fn to_data(s: &Settings, monitors: &[placement::Monitor]) -> SettingsData {
 /// their own actions and carried over from `previous`.
 fn from_data(d: &SettingsData, monitors: &[placement::Monitor], previous: &Settings) -> Settings {
     let mut s = previous.clone();
+    s.appearance.theme = match d.appearance {
+        1 => AppearanceMode::LiquidGlass,
+        _ => AppearanceMode::Midnight,
+    };
+    s.appearance.reduce_transparency = d.reduce_transparency;
     s.general.auto_collapse = d.auto_collapse;
     s.general.auto_collapse_seconds = d.auto_collapse_seconds.max(0) as u32;
     s.general.collapse_on_outside_click = d.collapse_on_outside_click;
@@ -391,11 +457,24 @@ mod tests {
         s.position.monitor = Some(r"\\.\DISPLAY2".into());
         s.ambient.intensity = 35;
         s.appearance.motion = MotionPreference::Reduced;
+        s.appearance.theme = AppearanceMode::LiquidGlass;
+        s.appearance.reduce_transparency = true;
         s.widgets.system = false;
         s.shortcuts.toggle = Some("Ctrl+Alt+K".into());
         let data = to_data(&s, &monitors);
         assert_eq!(data.monitor, 1);
         assert_eq!(from_data(&data, &monitors, &s), s);
+    }
+
+    #[test]
+    fn appearance_choice_maps_to_the_settings() {
+        let mut data = to_data(&Settings::default(), &[]);
+        assert_eq!(data.appearance, 0);
+        data.appearance = 1;
+        assert_eq!(from_data(&data, &[], &Settings::default()).appearance.theme, AppearanceMode::LiquidGlass);
+        // An index this version does not know is treated as Midnight.
+        data.appearance = 7;
+        assert_eq!(from_data(&data, &[], &Settings::default()).appearance.theme, AppearanceMode::Midnight);
     }
 
     #[test]

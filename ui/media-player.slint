@@ -23,7 +23,7 @@ component PlayButton inherits Rectangle {
         data: root.playing ? Icons.pause : Icons.play;
         filled: true;
         size: 14px;
-        color: root.enabled ? Theme.surface : Theme.text-tertiary;
+        color: root.enabled ? Theme.text-on-light : Theme.text-tertiary;
     }
 
     touch := TouchArea {

@@ -1,8 +1,14 @@
 import { Switch, Slider, ComboBox, Button, ScrollView, AboutSlint, Palette } from "std-widgets.slint";
+import { Theme, AppearanceTokens } from "theme.slint";
+import { Icon, Icons } from "components/icon.slint";
+import { GlassSheen, GlassRim } from "components/glass.slint";
 
 // Settings as edited in the window. Converted to and from the Rust settings model.
 
 export struct SettingsData {
+    // 0 = Midnight, 1 = Liquid Glass
+    appearance: int,
+    reduce-transparency: bool,
     auto-collapse: bool,
     auto-collapse-seconds: int,
     collapse-on-outside-click: bool,
@@ -31,6 +37,8 @@ export struct SettingsData {
     calendar-path: string,
 }
 
+// A titled group of rows. Liquid Glass draws each group as a frosted card; Midnight
+// keeps plain rows.
 component Section inherits VerticalLayout {
     in property <string> title;
     spacing: 2px;
@@ -45,7 +53,22 @@ component Section inherits VerticalLayout {
         vertical-alignment: center;
     }
 
-    @children
+    Rectangle {
+        background: Theme.group-background;
+        border-radius: Theme.group-radius;
+        border-width: Theme.group-radius > 0 ? 1px : 0px;
+        border-color: Theme.group-border;
+
+        VerticalLayout {
+            spacing: 2px;
+            padding-left: Theme.group-padding;
+            padding-right: Theme.group-padding;
+            padding-top: Theme.group-padding / 3;
+            padding-bottom: Theme.group-padding / 3;
+
+            @children
+        }
+    }
 }
 
 component Row inherits HorizontalLayout {
@@ -70,7 +93,7 @@ component Row inherits HorizontalLayout {
 
         if root.description != "" : Text {
             text: root.description;
-            color: #9a9aa2;
+            color: Theme.window-text-secondary;
             font-size: 11.5px;
             wrap: word-wrap;
         }
@@ -99,7 +122,7 @@ component SliderRow inherits Row {
         vertical-alignment: center;
         horizontal-alignment: right;
         text: root.value + root.unit;
-        color: #9a9aa2;
+        color: Theme.window-text-secondary;
         font-size: 12px;
     }
 }
@@ -110,26 +133,285 @@ component NavItem inherits Rectangle {
     callback clicked();
     height: 34px;
     border-radius: 6px;
-    background: selected ? #ffffff14 : touch.has-hover ? #ffffff0a : transparent;
+    background: selected ? Theme.nav-selected : touch.has-hover ? Theme.nav-hover : transparent;
 
     Rectangle {
         x: 0;
         width: 3px;
         height: 16px;
         border-radius: 1.5px;
-        background: root.selected ? #f3f3f5 : transparent;
+        background: root.selected ? Theme.window-text : transparent;
     }
 
     Text {
         x: 14px;
         text: root.text;
-        color: root.selected ? #f3f3f5 : #b4b4bc;
+        color: root.selected ? Theme.window-text : Theme.nav-text;
         font-size: 13px;
         vertical-alignment: center;
     }
 
     touch := TouchArea {
         clicked => { root.clicked(); }
+    }
+}
+
+// A small desktop showing the compact island and the expanded player, drawn with an
+// appearance's own tokens. The wallpaper stands in for the blurred desktop behind glass.
+component AppearancePreview inherits Rectangle {
+    in property <AppearanceTokens> tokens;
+    // Glass shows its translucent surfaces as they appear over the blur.
+    in property <bool> glass;
+    property <color> panel: root.glass ? root.tokens.blurred-surface : root.tokens.surface;
+    property <length> pink-x: root.width * 0.3;
+    property <length> amber-x: root.width * 0.74;
+    property <length> teal-x: root.width * 0.55;
+
+    border-radius: 8px;
+    background: #22305c;
+
+    // Soft colour fields. Each fades out before it reaches a rounded corner.
+    Rectangle {
+        background: @radial-gradient(circle 46px at root.pink-x 74px, #d6508c 0%, #d6508c00 100%);
+    }
+    Rectangle {
+        background: @radial-gradient(circle 40px at root.amber-x 36px, #f2a33c 0%, #f2a33c00 100%);
+    }
+    Rectangle {
+        background: @radial-gradient(circle 38px at root.teal-x 60px, #3fb4cc 0%, #3fb4cc00 100%);
+    }
+
+    pill := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 8px;
+        width: 92px;
+        height: 20px;
+        border-radius: 10px;
+        background: root.panel;
+        border-width: 1px;
+        border-color: root.tokens.border;
+
+        if root.tokens.reflections : GlassSheen {
+            width: parent.width;
+            height: parent.height;
+            radius: parent.border-radius;
+            sheen: root.tokens.sheen;
+        }
+
+        Text {
+            text: "14:05";
+            color: root.tokens.text;
+            font-size: 9px;
+            font-weight: 600;
+        }
+    }
+
+    if root.tokens.reflections : GlassRim {
+        x: pill.x;
+        y: pill.y;
+        width: pill.width;
+        full-height: pill.height;
+        radius: pill.border-radius;
+        rim: root.tokens.rim;
+    }
+
+    panel-rect := Rectangle {
+        x: 14px;
+        y: 36px;
+        width: parent.width - 28px;
+        height: parent.height - 46px;
+        border-radius: 14px;
+        background: root.panel;
+        border-width: 1px;
+        border-color: root.tokens.border;
+
+        if root.tokens.reflections : GlassSheen {
+            width: parent.width;
+            height: parent.height;
+            radius: parent.border-radius;
+            sheen: root.tokens.sheen;
+        }
+
+        // Artwork
+        Rectangle {
+            x: 10px;
+            y: (parent.height - self.height) / 2;
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            background: #4f6fd8;
+        }
+
+        // Title, artist and progress
+        Rectangle {
+            x: 52px;
+            y: parent.height / 2 - 13px;
+            width: min(70px, parent.width - 120px);
+            height: 5px;
+            border-radius: 2.5px;
+            background: root.tokens.text;
+        }
+        Rectangle {
+            x: 52px;
+            y: parent.height / 2 - 3px;
+            width: min(46px, parent.width - 120px);
+            height: 4px;
+            border-radius: 2px;
+            background: root.tokens.text-secondary;
+        }
+        Rectangle {
+            x: 52px;
+            y: parent.height / 2 + 8px;
+            width: parent.width - 120px;
+            height: 3px;
+            border-radius: 1.5px;
+            background: root.tokens.track;
+
+            Rectangle {
+                x: 0;
+                width: parent.width * 0.4;
+                border-radius: 1.5px;
+                background: root.tokens.text;
+            }
+        }
+
+        // A dashboard tile
+        Rectangle {
+            x: parent.width - 58px;
+            y: (parent.height - self.height) / 2;
+            width: 48px;
+            height: 38px;
+            border-radius: 9px;
+            background: root.tokens.tile;
+        }
+    }
+
+    if root.tokens.reflections : GlassRim {
+        x: panel-rect.x;
+        y: panel-rect.y;
+        width: panel-rect.width;
+        full-height: panel-rect.height;
+        radius: panel-rect.border-radius;
+        rim: root.tokens.rim;
+    }
+}
+
+// One selectable appearance: a preview, its name and a short description.
+component AppearanceCard inherits Rectangle {
+    in property <string> name;
+    in property <string> badge;
+    in property <string> description;
+    in property <AppearanceTokens> tokens;
+    in property <bool> glass;
+    in property <bool> selected;
+    callback select();
+
+    min-width: 200px;
+    horizontal-stretch: 1;
+    height: 206px;
+    border-radius: 12px;
+    background: touch.has-hover ? Theme.card-hover : Theme.card;
+    border-width: root.selected ? 2px : 1px;
+    border-color: root.selected ? Theme.window-text : focus.has-focus ? Theme.window-text-secondary : Theme.card-border;
+    animate background, border-color { duration: Theme.hover-duration; }
+    accessible-role: button;
+    accessible-label: root.name;
+    accessible-description: root.description;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-action-default => { root.select(); }
+
+    AppearancePreview {
+        x: 10px;
+        y: 10px;
+        width: parent.width - 20px;
+        height: 112px;
+        tokens: root.tokens;
+        glass: root.glass;
+    }
+
+    VerticalLayout {
+        x: 14px;
+        y: 130px;
+        width: parent.width - 28px;
+        height: parent.height - 138px;
+        spacing: 4px;
+        alignment: start;
+
+        HorizontalLayout {
+            spacing: 8px;
+            height: 20px;
+
+            Text {
+                text: root.name;
+                font-size: 13px;
+                font-weight: 600;
+                color: Theme.window-text;
+                vertical-alignment: center;
+            }
+
+            if root.badge != "" : Rectangle {
+                width: badge-text.preferred-width + 12px;
+                height: 18px;
+                y: 1px;
+                border-radius: 9px;
+                background: Theme.card-border;
+
+                badge-text := Text {
+                    text: root.badge;
+                    font-size: 10.5px;
+                    color: Theme.window-text-secondary;
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            // Selection indicator
+            Rectangle {
+                width: 18px;
+                height: 18px;
+                y: 1px;
+                border-radius: 9px;
+                border-width: root.selected ? 0px : 1.5px;
+                border-color: Theme.window-text-secondary;
+                background: root.selected ? Theme.window-text : transparent;
+
+                if root.selected : Icon {
+                    data: Icons.check;
+                    size: 12px;
+                    color: Theme.text-on-light;
+                }
+            }
+        }
+
+        Text {
+            text: root.description;
+            wrap: word-wrap;
+            font-size: 11.5px;
+            color: Theme.window-text-secondary;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            focus.focus();
+            root.select();
+        }
+    }
+
+    focus := FocusScope {
+        width: 0;
+        height: 0;
+        key-pressed(event) => {
+            if event.text == " " || event.text == Key.Return {
+                root.select();
+                return accept;
+            }
+            reject
+        }
     }
 }
 
@@ -140,7 +422,7 @@ export component SettingsWindow inherits Window {
     preferred-height: 540px;
     min-width: 620px;
     min-height: 420px;
-    background: #151517;
+    background: Theme.window-background;
     default-font-family: "Segoe UI Variable Text";
 
     in-out property <SettingsData> data;
@@ -149,6 +431,8 @@ export component SettingsWindow inherits Window {
     in property <string> data-folder;
     in property <bool> recording-shortcut;
     in property <string> shortcut-message;
+    // Why Liquid Glass is not using the live blur, if it is not.
+    in property <string> appearance-note;
     in-out property <int> section: 0;
 
     // Any edit to `data`.
@@ -167,7 +451,7 @@ export component SettingsWindow inherits Window {
     HorizontalLayout {
         Rectangle {
             width: 200px;
-            background: #111113;
+            background: Theme.sidebar;
 
             VerticalLayout {
                 padding: 12px;
@@ -179,7 +463,7 @@ export component SettingsWindow inherits Window {
                     text: "Lilt";
                     font-size: 18px;
                     font-weight: 700;
-                    color: #f3f3f5;
+                    color: Theme.window-text;
                     height: 40px;
                     vertical-alignment: center;
                 }
@@ -245,13 +529,41 @@ export component SettingsWindow inherits Window {
 
                 if root.section == 1 : Section {
                     title: "Appearance";
-                    Row {
-                        label: "Theme";
-                        description: "Additional appearances are planned for later releases.";
-                        ComboBox {
-                            width: 180px;
-                            model: ["Lilt Dark"];
-                            current-index: 0;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        padding-top: 6px;
+                        padding-bottom: 10px;
+
+                        AppearanceCard {
+                            name: "Midnight";
+                            badge: "Original";
+                            description: "Minimal near-black surfaces with quiet borders.";
+                            tokens: Theme.midnight;
+                            selected: root.data.appearance == 0;
+                            select => { root.data.appearance = 0; root.edited(); }
+                        }
+
+                        AppearanceCard {
+                            name: "Liquid Glass";
+                            description: "Smoked translucent glass with soft reflections.";
+                            tokens: Theme.liquid-glass;
+                            glass: true;
+                            selected: root.data.appearance == 1;
+                            select => { root.data.appearance = 1; root.edited(); }
+                        }
+                    }
+                    if root.data.appearance == 1 && root.appearance-note != "" : Text {
+                        text: root.appearance-note;
+                        color: Theme.window-text-secondary;
+                        font-size: 11.5px;
+                        wrap: word-wrap;
+                    }
+                    if root.data.appearance == 1 : Row {
+                        label: "Reduce transparency";
+                        description: "Use frosted surfaces instead of blurring the desktop behind Lilt.";
+                        Switch {
+                            checked: root.data.reduce-transparency;
+                            toggled => { root.data.reduce-transparency = self.checked; root.edited(); }
                         }
                     }
                     SliderRow {
@@ -405,7 +717,7 @@ export component SettingsWindow inherits Window {
                     title: "Performance";
                     Row {
                         label: "Low-power mode";
-                        description: "Turns off ambient effects and samples system readings less often.";
+                        description: "Turns off ambient effects and the Liquid Glass blur, and samples system readings less often.";
                         Switch {
                             checked: root.data.low-power;
                             toggled => { root.data.low-power = self.checked; root.edited(); }
@@ -468,13 +780,13 @@ export component SettingsWindow inherits Window {
                     title: "About";
                     Text {
                         text: "Lilt " + root.version;
-                        color: #f3f3f5;
+                        color: Theme.window-text;
                         font-size: 15px;
                         font-weight: 600;
                     }
                     Text {
                         text: "A little more, at a glance.";
-                        color: #9a9aa2;
+                        color: Theme.window-text-secondary;
                         font-size: 12px;
                     }
                     Row {
@@ -487,7 +799,7 @@ export component SettingsWindow inherits Window {
                     }
                     Text {
                         text: "Lilt runs entirely on this PC. It sends no telemetry and makes no network requests.";
-                        color: #9a9aa2;
+                        color: Theme.window-text-secondary;
                         font-size: 12px;
                         wrap: word-wrap;
                     }

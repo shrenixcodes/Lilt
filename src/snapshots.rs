@@ -16,8 +16,8 @@ use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, PhysicalSize, PlatformError};
 
 use crate::ui::{
-    AgendaEntry, AppState, CalendarState, Island, MediaAvailability, MediaInfo, Page, SettingsData, SettingsWindow,
-    SystemInfo, Theme,
+    AgendaEntry, AppState, Appearance, AppearanceTokens, CalendarState, Island, MediaAvailability, MediaInfo, Page,
+    SettingsData, SettingsWindow, SystemInfo, Theme,
 };
 
 /// Desktop-like backdrop the transparent island is composited onto.
@@ -74,8 +74,17 @@ impl Harness {
         }
     }
 
+    pub fn theme(&self) -> Theme<'_> {
+        self.island.global::<Theme>()
+    }
+
     /// Renders the window composited over a light backdrop.
     pub fn render(&self) -> RgbaImage {
+        self.render_on(|_, _| BACKDROP)
+    }
+
+    /// Renders the window composited over the given wallpaper.
+    pub fn render_on(&self, wallpaper: impl Fn(u32, u32) -> [u8; 3]) -> RgbaImage {
         // The window is the expanded width plus a 10 px margin on each side, by 270 logical
         // pixels (see ui/island.slint).
         let width = self.state().get_expanded_width().max(340.0) + 20.0;
@@ -95,9 +104,17 @@ impl Harness {
             let p = buffer[(y * size.width + x) as usize];
             let inverse = 255 - p.alpha as u16;
             let over = |src: u8, dst: u8| (src as u16 + (dst as u16 * inverse) / 255) as u8;
-            Rgba([over(p.red, BACKDROP[0]), over(p.green, BACKDROP[1]), over(p.blue, BACKDROP[2]), 255])
+            let back = wallpaper(x, y);
+            Rgba([over(p.red, back[0]), over(p.green, back[1]), over(p.blue, back[2]), 255])
         })
     }
+}
+
+/// A smooth, colourful wallpaper, as the desktop looks once blurred behind glass.
+fn wallpaper(x: u32, y: u32) -> [u8; 3] {
+    let (u, v) = (x as f32 / 480.0, y as f32 / 270.0);
+    let mix = |a: f32, b: f32, t: f32| (a + (b - a) * t.clamp(0.0, 1.0)) as u8;
+    [mix(40.0, 236.0, u * 0.9 + v * 0.2), mix(70.0, 140.0, v), mix(190.0, 90.0, u)]
 }
 
 pub fn save(image: &RgbaImage, name: &str) {
@@ -288,16 +305,8 @@ fn agenda_without_calendar_explains_itself() {
     save(&image, "expanded-agenda-empty");
 }
 
-#[test]
-fn settings_sections_render() {
-    let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
-    let clock = Rc::new(Cell::new(Duration::ZERO));
-    slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), clock: clock.clone() }))
-        .expect("one platform per test thread");
-    let settings = SettingsWindow::new().expect("create settings window");
-    settings.set_version("0.1.0".into());
-    settings.set_data_folder("%APPDATA%/Lilt".into());
-    settings.set_data(SettingsData {
+fn settings_data() -> SettingsData {
+    SettingsData {
         auto_collapse: true,
         auto_collapse_seconds: 8,
         collapse_on_outside_click: true,
@@ -317,32 +326,270 @@ fn settings_sections_render() {
         top_margin: 8,
         shortcut: "Ctrl+Alt+Space".into(),
         ..Default::default()
-    });
-    settings.show().expect("show settings");
+    }
+}
+
+/// Renders one page of the settings window at 760 x 540.
+fn render_settings(window: &MinimalSoftwareWindow, clock: &Cell<Duration>) -> RgbaImage {
     let size = PhysicalSize::new(760, 540);
     window.set_size(size);
-    let mut previous: Option<Vec<PremultipliedRgbaColor>> = None;
+    let mut buffer = vec![PremultipliedRgbaColor::default(); (size.width * size.height) as usize];
+    for _ in 0..2 {
+        clock.set(clock.get() + Duration::from_secs(1));
+        slint::platform::update_timers_and_animations();
+        window.request_redraw();
+        window.draw_if_needed(|renderer| {
+            renderer.render(&mut buffer, size.width as usize);
+        });
+    }
+    RgbaImage::from_fn(size.width, size.height, |x, y| {
+        let p = buffer[(y * size.width + x) as usize];
+        Rgba([p.red, p.green, p.blue, 255])
+    })
+}
+
+#[test]
+fn settings_sections_render() {
+    let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    let clock = Rc::new(Cell::new(Duration::ZERO));
+    slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), clock: clock.clone() }))
+        .expect("one platform per test thread");
+    let settings = SettingsWindow::new().expect("create settings window");
+    settings.set_version("0.1.0".into());
+    settings.set_data_folder("%APPDATA%/Lilt".into());
+    settings.set_data(settings_data());
+    settings.show().expect("show settings");
+    let mut previous: Option<RgbaImage> = None;
     for section in 0..10 {
         settings.set_section(section);
-        let mut buffer = vec![PremultipliedRgbaColor::default(); (size.width * size.height) as usize];
-        for _ in 0..2 {
-            clock.set(clock.get() + Duration::from_secs(1));
-            slint::platform::update_timers_and_animations();
-            window.request_redraw();
-            window.draw_if_needed(|renderer| {
-                renderer.render(&mut buffer, size.width as usize);
-            });
-        }
-        let image = RgbaImage::from_fn(size.width, size.height, |x, y| {
-            let p = buffer[(y * size.width + x) as usize];
-            Rgba([p.red, p.green, p.blue, 255])
-        });
+        let image = render_settings(&window, &clock);
         save(&image, &format!("settings-{section}"));
-        let same = previous.as_ref().is_some_and(|p| {
-            p.iter().zip(&buffer).all(|(a, b)| a.red == b.red && a.green == b.green && a.blue == b.blue)
-        });
-        assert!(!same, "section {section} rendered the same as the previous one");
-        previous = Some(buffer);
+        assert!(previous.as_ref() != Some(&image), "section {section} rendered the same as the previous one");
+        previous = Some(image);
+    }
+}
+
+#[test]
+fn settings_follow_the_appearance() {
+    let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    let clock = Rc::new(Cell::new(Duration::ZERO));
+    slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), clock: clock.clone() }))
+        .expect("one platform per test thread");
+    let settings = SettingsWindow::new().expect("create settings window");
+    settings.set_data(settings_data());
+    settings.show().expect("show settings");
+    settings.set_section(1);
+    let midnight = render_settings(&window, &clock);
+    save(&midnight, "settings-appearance-midnight");
+
+    // Choosing the Liquid Glass card selects it; the window follows once the
+    // application applies the appearance.
+    settings.set_data(SettingsData { appearance: 1, ..settings_data() });
+    settings.set_appearance_note(crate::appearance::Fallback::TransparencyOff.explanation().into());
+    let selected = render_settings(&window, &clock);
+    assert_ne!(midnight, selected, "selecting a card must show");
+    let theme = settings.global::<Theme>();
+    theme.set_appearance(Appearance::LiquidGlass);
+    let glass = render_settings(&window, &clock);
+    save(&glass, "settings-appearance-glass");
+    assert_ne!(selected, glass);
+    for section in [0, 6] {
+        settings.set_section(section);
+        save(&render_settings(&window, &clock), &format!("settings-{section}-glass"));
+    }
+
+    // Back to Midnight restores the original window exactly.
+    theme.set_appearance(Appearance::Midnight);
+    settings.set_section(1);
+    settings.set_appearance_note("".into());
+    settings.set_data(settings_data());
+    assert_eq!(render_settings(&window, &clock), midnight);
+}
+
+/// Expanded player with artwork and its palette applied, as in the showcase.
+fn playing_with_artwork(h: &Harness) {
+    let art = processed_cover();
+    let state = h.state();
+    state.set_media(MediaInfo { session_count: 2, ..playing("Northern Lights") });
+    state.set_artwork(slint::Image::from_rgba8(slint::SharedPixelBuffer::clone_from_slice(
+        &art.pixels,
+        art.width,
+        art.height,
+    )));
+    state.set_has_artwork(true);
+    state.set_progress(0.38);
+    state.set_position_text("1:24".into());
+    state.set_duration_text("3:41".into());
+    let colour = |c: crate::ambient::Rgb| slint::Color::from_rgb_u8(c.r, c.g, c.b);
+    h.theme().set_accent(colour(art.palette.accent));
+    h.theme().set_wash(colour(art.palette.wash));
+    h.theme().set_glow(colour(art.palette.glow));
+    state.set_system(readings());
+}
+
+#[test]
+fn switching_appearance_is_instant_and_reversible() {
+    let h = Harness::new(1.0);
+    playing_with_artwork(&h);
+    let compact = h.render();
+    h.state().set_expanded(true);
+    let expanded = h.render();
+
+    h.theme().set_appearance(Appearance::LiquidGlass);
+    let glass = h.render();
+    assert_ne!(glass, expanded, "the expanded island must change");
+    h.state().set_expanded(false);
+    assert_ne!(h.render(), compact, "the compact island must change");
+
+    h.theme().set_appearance(Appearance::Midnight);
+    assert_eq!(h.render(), compact, "Midnight must be restored exactly");
+    h.state().set_expanded(true);
+    assert_eq!(h.render(), expanded, "Midnight must be restored exactly");
+}
+
+#[test]
+fn liquid_glass_renders_every_state() {
+    let h = Harness::new(1.0);
+    h.theme().set_appearance(Appearance::LiquidGlass);
+    save(&h.render_on(wallpaper), "glass-compact-idle");
+    playing_with_artwork(&h);
+    save(&h.render_on(wallpaper), "glass-compact-media");
+    h.state().set_activity(true);
+    save(&h.render_on(wallpaper), "glass-activity");
+    h.state().set_activity(false);
+    h.state().set_expanded(true);
+
+    // Frosted (no live blur) and over the blur.
+    let frosted = h.render_on(wallpaper);
+    save(&frosted, "glass-expanded-frosted");
+    h.theme().set_live_blur(true);
+    let blurred = h.render_on(wallpaper);
+    save(&blurred, "glass-expanded");
+    assert_ne!(frosted, blurred);
+
+    // The surface is translucent: the wallpaper shows through, more so over the blur.
+    let midnight_surface = {
+        h.theme().set_appearance(Appearance::Midnight);
+        h.render_on(wallpaper).get_pixel(240, 230).0
+    };
+    let (f, b) = (frosted.get_pixel(240, 230).0, blurred.get_pixel(240, 230).0);
+    let brightness = |p: [u8; 4]| p[0] as u32 + p[1] as u32 + p[2] as u32;
+    assert!(
+        brightness(midnight_surface) < brightness(f) && brightness(f) < brightness(b),
+        "{midnight_surface:?} {f:?} {b:?}"
+    );
+
+    // Nothing, not even the reflections, is drawn outside the rounded corners.
+    for (x, y) in [(12, 3), (blurred.width() - 13, 3)] {
+        assert_eq!(
+            blurred.get_pixel(x, y).0,
+            [wallpaper(x, y)[0], wallpaper(x, y)[1], wallpaper(x, y)[2], 255],
+            "corner at {x},{y}"
+        );
+    }
+    // The rim lights the top edge: compared with the row just inside it, the edge is far
+    // brighter than Midnight's plain border.
+    let edge =
+        |image: &RgbaImage| brightness(image.get_pixel(240, 0).0) as i32 - brightness(image.get_pixel(240, 1).0) as i32;
+    h.theme().set_appearance(Appearance::LiquidGlass);
+    let glass_edge = edge(&h.render());
+    h.theme().set_appearance(Appearance::Midnight);
+    let midnight_edge = edge(&h.render());
+    assert!(glass_edge > midnight_edge + 60, "rim {glass_edge} vs border {midnight_edge}");
+
+    for page in [Page::System, Page::Calendar] {
+        h.theme().set_appearance(Appearance::LiquidGlass);
+        h.state().set_page(page);
+        save(&h.render_on(wallpaper), &format!("glass-page-{page:?}").to_lowercase());
+    }
+}
+
+#[test]
+fn ambient_colours_work_in_liquid_glass() {
+    let h = Harness::new(1.0);
+    h.theme().set_appearance(Appearance::LiquidGlass);
+    h.theme().set_live_blur(true);
+    h.state().set_media(playing("Blue Hours"));
+    h.state().set_artwork(solid_artwork([36, 92, 214]));
+    h.state().set_has_artwork(true);
+    h.theme().set_ambient(1.0);
+    h.theme().set_glow(slint::Color::from_rgb_u8(60, 110, 230));
+    h.theme().set_wash(slint::Color::from_rgb_u8(30, 60, 140));
+    h.state().set_expanded(true);
+    let tinted = h.render();
+    save(&tinted, "glass-ambient");
+    let glow = tinted.get_pixel(10 + 14 + 72 + 6, 64);
+    assert!(glow[2] > glow[0] + 12, "glow should be blue: {glow:?}");
+    let wash = tinted.get_pixel(300, 120);
+    assert!(wash[2] > wash[0] + 6, "tint should be blue: {wash:?}");
+}
+
+/// The README image of Liquid Glass: the compact and expanded island over one desktop.
+#[test]
+fn liquid_glass_showcase() {
+    let h = Harness::new(1.0);
+    h.theme().set_appearance(Appearance::LiquidGlass);
+    h.theme().set_live_blur(true);
+    playing_with_artwork(&h);
+    h.state().set_calendar_state(CalendarState::Ready);
+    h.state().set_agenda(slint::ModelRc::new(slint::VecModel::from(vec![
+        entry("Today", "16:30 – 17:00", "Design review", false),
+        entry("Tomorrow", "09:00 – 09:15", "Standup", false),
+    ])));
+    let desktop = |x: u32, y: u32| {
+        let (u, v) = (x as f32 / 1020.0, y as f32 / 290.0);
+        let mix = |a: f32, b: f32, t: f32| (a + (b - a) * t.clamp(0.0, 1.0)) as u8;
+        [mix(38.0, 238.0, u * 0.85 + v * 0.25), mix(64.0, 150.0, v * 0.8 + u * 0.1), mix(196.0, 84.0, u)]
+    };
+    let compact = h.render_on(|x, y| desktop(x + 20, y + 10));
+    h.state().set_expanded(true);
+    let expanded = h.render_on(|x, y| desktop(x + 530, y + 10));
+    let mut sheet = RgbaImage::from_fn(1020, 290, |x, y| {
+        let c = desktop(x, y);
+        Rgba([c[0], c[1], c[2], 255])
+    });
+    image::imageops::overlay(&mut sheet, &compact, 20, 10);
+    image::imageops::overlay(&mut sheet, &expanded, 530, 10);
+    save(&sheet, "glass-overview");
+}
+
+/// WCAG relative luminance of an sRGB colour.
+fn luminance(rgb: [f32; 3]) -> f32 {
+    let channel = |c: f32| {
+        let c = c / 255.0;
+        if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    };
+    0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2])
+}
+
+fn over(top: slint::Color, below: [f32; 3]) -> [f32; 3] {
+    let a = top.alpha() as f32 / 255.0;
+    [
+        top.red() as f32 * a + below[0] * (1.0 - a),
+        top.green() as f32 * a + below[1] * (1.0 - a),
+        top.blue() as f32 * a + below[2] * (1.0 - a),
+    ]
+}
+
+fn contrast(text: slint::Color, background: [f32; 3]) -> f32 {
+    let (a, b) = (luminance(over(text, background)) + 0.05, luminance(background) + 0.05);
+    a.max(b) / a.min(b)
+}
+
+#[test]
+fn liquid_glass_text_stays_legible_on_any_wallpaper() {
+    let h = Harness::new(1.0);
+    let tokens: AppearanceTokens = h.theme().get_liquid_glass();
+    for wallpaper in [[255.0, 255.0, 255.0], [0.0, 0.0, 0.0], [214.0, 120.0, 40.0]] {
+        for surface in [tokens.surface, tokens.blurred_surface] {
+            let base = over(surface, wallpaper);
+            let tile = over(tokens.tile, base);
+            for background in [base, tile] {
+                assert!(contrast(tokens.text, background) >= 7.0, "text on {background:?}");
+                assert!(contrast(tokens.text_secondary, background) >= 4.5, "secondary text on {background:?}");
+                assert!(contrast(tokens.text_tertiary, background) >= 3.0, "tertiary text on {background:?}");
+            }
+        }
     }
 }
 

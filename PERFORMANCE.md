@@ -87,6 +87,30 @@ toolkits and about 90 MB across seven processes for a WebView2 (Tauri) window.
   when shown and released when hidden.
 - **Hidden during full-screen apps.** Games and videos get the whole machine.
 
+## Appearances
+
+The results above were measured with Midnight, before Liquid Glass existed. Midnight
+still renders exactly as it did: its design tokens have their original values, the UI
+tests confirm every Midnight screen is pixel-identical, and it creates no extra windows
+or compositor objects.
+
+Liquid Glass adds no loop or timer of its own. What it costs depends on its material:
+
+| Material | Extra work in Lilt | Extra work elsewhere |
+| --- | --- | --- |
+| Frosted (transparency effects off, battery saver, low-power mode or *Reduce transparency*) | Translucent colours, plus a sheen and rim drawn only when the island redraws | None |
+| Live blur | One hidden window and one composition visual; the clip is updated only while the island's outline changes | DWM blurs the desktop behind the island on the GPU, as it does for the Start menu |
+
+In an isolated prototype on the test machine, creating the compositor, the window and
+the visual added 1.2 MB of private working set and used no CPU while idle. The compositor
+is created only when the live blur is first needed.
+
+A side-by-side benchmark of both appearances has not been recorded yet. Two attempts
+were disturbed because the test PC was in use during the sampling window (input over the
+island), so their numbers are not published here. DWM's GPU cost for the blur could not
+be measured on the test machine either: Windows' transparency effects are off there, so
+DWM draws no blur.
+
 ## Sampling policy
 
 | Data | Compact | Expanded | Low-power mode |
@@ -117,6 +141,8 @@ hidden or behind a full-screen application.
 
 ## Not yet measured
 
+- Midnight and Liquid Glass side by side in every scenario, and DWM's GPU cost for the
+  live blur on a PC with transparency effects on.
 - Windows Performance Recorder traces (wake-up sources, frame timing) and behaviour on
   the reference low-end configurations above.
 - Interaction with an unlocked desktop (pointer hover, real clicks) and alongside a

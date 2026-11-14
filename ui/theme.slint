@@ -1,26 +1,208 @@
-// Design tokens for the Lilt Dark appearance.
+// Design tokens.
 //
-// Every colour, radius, size and duration used by the island comes from here so that
-// future appearances only need to provide a different set of values.
+// Every colour, radius, size and duration used by Lilt comes from here. The values that
+// differ between appearances are grouped in `AppearanceTokens`; each appearance is one
+// value of that struct. Adding an appearance means adding a variant to `Appearance` and
+// one more set of tokens; components only ever read `Theme`.
+
+export enum Appearance {
+    // The original minimal dark appearance.
+    midnight,
+    // Dark smoked translucent glass.
+    liquid-glass,
+}
+
+export struct AppearanceTokens {
+    // Island material. `surface` is used without a live blur; `blurred-surface` while
+    // the system's blurred backdrop is behind the island.
+    surface: color,
+    surface-hover: color,
+    blurred-surface: color,
+    blurred-surface-hover: color,
+    // Secondary surfaces: tiles, buttons.
+    tile: color,
+    tile-hover: color,
+    control-hover: color,
+    control-pressed: color,
+    border: color,
+    track: color,
+    shadow-near: color,
+    shadow-far: color,
+    // Reflections: a lit rim along the upper edge and a soft sheen from above.
+    reflections: bool,
+    rim: color,
+    sheen: color,
+    // Text.
+    text: color,
+    text-secondary: color,
+    text-tertiary: color,
+    // Content on light fills, such as the play button.
+    text-on-light: color,
+    // Geometry.
+    expanded-radius: length,
+    tile-radius: length,
+    control-radius: length,
+    // Motion, before the reduced-motion factor.
+    resize-duration: duration,
+    fade-duration: duration,
+    hover-duration: duration,
+    // Settings window.
+    window-background: color,
+    blurred-window-background: color,
+    sidebar: color,
+    blurred-sidebar: color,
+    nav-selected: color,
+    nav-hover: color,
+    nav-text: color,
+    window-text: color,
+    window-text-secondary: color,
+    // Groups of settings rows.
+    group-background: color,
+    group-border: color,
+    group-padding: length,
+    group-radius: length,
+    // Selectable cards (appearance picker).
+    card: color,
+    card-hover: color,
+    card-border: color,
+}
 
 export global Theme {
+    // The selected appearance, set by the application.
+    in-out property <Appearance> appearance: Appearance.midnight;
+    // True while the system's blurred backdrop is behind this window.
+    in-out property <bool> live-blur: false;
+
+    out property <AppearanceTokens> midnight: {
+        surface: #0a0a0b,
+        surface-hover: #111113,
+        blurred-surface: #0a0a0b,
+        blurred-surface-hover: #111113,
+        tile: #ffffff09,
+        tile-hover: #ffffff10,
+        control-hover: #ffffff14,
+        control-pressed: #ffffff0b,
+        border: #ffffff12,
+        track: #ffffff1c,
+        shadow-near: #0000004d,
+        shadow-far: #00000024,
+        reflections: false,
+        rim: transparent,
+        sheen: transparent,
+        text: #f3f3f5,
+        text-secondary: #a0a0a8,
+        text-tertiary: #6c6c75,
+        text-on-light: #0a0a0b,
+        expanded-radius: 28px,
+        tile-radius: 16px,
+        control-radius: 9px,
+        resize-duration: 420ms,
+        fade-duration: 180ms,
+        hover-duration: 140ms,
+        window-background: #151517,
+        blurred-window-background: #151517,
+        sidebar: #111113,
+        blurred-sidebar: #111113,
+        nav-selected: #ffffff14,
+        nav-hover: #ffffff0a,
+        nav-text: #b4b4bc,
+        window-text: #f3f3f5,
+        window-text-secondary: #9a9aa2,
+        group-background: transparent,
+        group-border: transparent,
+        group-padding: 0px,
+        group-radius: 0px,
+        card: #ffffff07,
+        card-hover: #ffffff0d,
+        card-border: #ffffff14,
+    };
+
+    out property <AppearanceTokens> liquid-glass: {
+        // Dense enough to stay legible over any wallpaper without a blur.
+        surface: #18181eeb,
+        surface-hover: #1e1e25ed,
+        // Over the blur the desktop's colour shows through as smoked glass, while text
+        // keeps at least 4.5:1 contrast even over a white window.
+        blurred-surface: #13131ad6,
+        blurred-surface-hover: #191921da,
+        tile: #ffffff0f,
+        tile-hover: #ffffff18,
+        control-hover: #ffffff1a,
+        control-pressed: #ffffff10,
+        border: #ffffff1f,
+        track: #ffffff26,
+        shadow-near: #00000038,
+        shadow-far: #0000001a,
+        reflections: true,
+        rim: #ffffff42,
+        sheen: #ffffff14,
+        text: #f6f6f8,
+        text-secondary: #b7b7c0,
+        text-tertiary: #9595a0,
+        text-on-light: #0a0a0b,
+        expanded-radius: 30px,
+        tile-radius: 18px,
+        control-radius: 10px,
+        resize-duration: 440ms,
+        fade-duration: 190ms,
+        hover-duration: 160ms,
+        window-background: #17171d,
+        blurred-window-background: #121218a6,
+        sidebar: #121217,
+        blurred-sidebar: #0d0d1270,
+        nav-selected: #ffffff1a,
+        nav-hover: #ffffff0d,
+        nav-text: #c2c2ca,
+        window-text: #f6f6f8,
+        window-text-secondary: #a9a9b3,
+        group-background: #ffffff0a,
+        group-border: #ffffff17,
+        group-padding: 14px,
+        group-radius: 14px,
+        card: #ffffff0a,
+        card-hover: #ffffff12,
+        card-border: #ffffff1a,
+    };
+
+    out property <AppearanceTokens> tokens: appearance == Appearance.liquid-glass ? liquid-glass : midnight;
+
     // Surfaces
-    out property <color> surface: #0a0a0b;
-    out property <color> surface-hover: #111113;
-    out property <color> tile: #ffffff09;
-    out property <color> tile-hover: #ffffff10;
-    out property <color> control-hover: #ffffff14;
-    out property <color> control-pressed: #ffffff0b;
-    out property <color> border: #ffffff12;
-    out property <color> track: #ffffff1c;
-    out property <color> shadow-near: #0000004d;
-    out property <color> shadow-far: #00000024;
+    out property <color> surface: live-blur ? tokens.blurred-surface : tokens.surface;
+    out property <color> surface-hover: live-blur ? tokens.blurred-surface-hover : tokens.surface-hover;
+    out property <color> tile: tokens.tile;
+    out property <color> tile-hover: tokens.tile-hover;
+    out property <color> control-hover: tokens.control-hover;
+    out property <color> control-pressed: tokens.control-pressed;
+    out property <color> border: tokens.border;
+    out property <color> track: tokens.track;
+    out property <color> shadow-near: tokens.shadow-near;
+    out property <color> shadow-far: tokens.shadow-far;
+    out property <bool> reflections: tokens.reflections;
+    out property <color> rim: tokens.rim;
+    out property <color> sheen: tokens.sheen;
 
     // Text
-    out property <color> text: #f3f3f5;
-    out property <color> text-secondary: #a0a0a8;
-    out property <color> text-tertiary: #6c6c75;
+    out property <color> text: tokens.text;
+    out property <color> text-secondary: tokens.text-secondary;
+    out property <color> text-tertiary: tokens.text-tertiary;
+    out property <color> text-on-light: tokens.text-on-light;
     out property <color> live: #6fd39a;
+
+    // Settings window
+    out property <color> window-background: live-blur ? tokens.blurred-window-background : tokens.window-background;
+    out property <color> sidebar: live-blur ? tokens.blurred-sidebar : tokens.sidebar;
+    out property <color> nav-selected: tokens.nav-selected;
+    out property <color> nav-hover: tokens.nav-hover;
+    out property <color> nav-text: tokens.nav-text;
+    out property <color> window-text: tokens.window-text;
+    out property <color> window-text-secondary: tokens.window-text-secondary;
+    out property <color> group-background: tokens.group-background;
+    out property <color> group-border: tokens.group-border;
+    out property <length> group-padding: tokens.group-padding;
+    out property <length> group-radius: tokens.group-radius;
+    out property <color> card: tokens.card;
+    out property <color> card-hover: tokens.card-hover;
+    out property <color> card-border: tokens.card-border;
 
     // Ambient accent, derived from album artwork at runtime.
     in-out property <color> accent: #e8e8ec;
@@ -32,9 +214,9 @@ export global Theme {
     // Geometry
     out property <length> compact-height: 38px;
     out property <length> activity-height: 62px;
-    out property <length> expanded-radius: 28px;
-    out property <length> tile-radius: 16px;
-    out property <length> control-radius: 9px;
+    out property <length> expanded-radius: tokens.expanded-radius;
+    out property <length> tile-radius: tokens.tile-radius;
+    out property <length> control-radius: tokens.control-radius;
     out property <length> padding: 14px;
     out property <length> gap: 8px;
     // Room around the island inside the window for the shadow.
@@ -50,8 +232,8 @@ export global Theme {
 
     // Motion. `motion` is 0 when reduced motion is requested.
     in-out property <float> motion: 1;
-    out property <duration> resize-duration: 420ms * motion;
-    out property <duration> fade-duration: 180ms * motion;
-    out property <duration> hover-duration: 140ms * motion;
+    out property <duration> resize-duration: tokens.resize-duration * motion;
+    out property <duration> fade-duration: tokens.fade-duration * motion;
+    out property <duration> hover-duration: tokens.hover-duration * motion;
     out property <duration> ambient-duration: 700ms * motion;
 }

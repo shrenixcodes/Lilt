@@ -56,14 +56,15 @@ media thread.
 | Path | Responsibility |
 | --- | --- |
 | `src/main.rs` | Logging, single-instance guard, start-up |
-| `src/window/` | The Slint platform: event loop, Win32 windows, input translation, monitor placement |
+| `src/window/` | The Slint platform: event loop, Win32 windows, input translation, monitor placement, the Liquid Glass backdrop |
+| `src/appearance.rs` | Which material the selected appearance uses on this PC |
 | `src/app/` | The controller connecting services, settings and UI (`media`, `system`, `calendar`, `preferences`) |
 | `src/media/` | Media session tracking, session selection policy and transport commands |
 | `src/artwork/` | Artwork decoding, cropping, rounding and caching |
 | `src/ambient/` | Colour science (OKLab/OKLCH, contrast) and palette extraction |
 | `src/system/` | CPU, memory and network readings and the sampling policy |
 | `src/calendar/` | ICS parsing, recurrence expansion, time zones and the agenda |
-| `src/settings/` | Versioned settings document, validation and atomic saving |
+| `src/settings/` | Versioned settings document, validation, migration and atomic saving |
 | `src/clock.rs`, `src/hotkey.rs`, `src/startup.rs`, `src/actions.rs`, `src/dialogs.rs` | Clock text, global shortcut, start-with-Windows, quick actions, file dialog |
 | `src/snapshots.rs` | Headless UI tests |
 | `ui/` | Slint markup: design tokens, island, views, settings window, tray |
@@ -134,18 +135,71 @@ corner radii. Effects are therefore kept inside the rounded shape: the glow fade
 before the panel's edge, the tint is a solid colour of the panel itself, and album
 artwork has its rounded corners applied to the pixels when it is decoded.
 
-## Design tokens
+## Design tokens and appearances
 
 All colours, sizes, radii, type sizes and durations come from the `Theme` global in
-`ui/theme.slint`. Ambient colours and the motion factor are the only tokens changed at
-run time. Additional appearances can be added by providing another set of token values
-without changing the views.
+`ui/theme.slint`. The values that differ between appearances form one struct,
+`AppearanceTokens` (surfaces, secondary surfaces, text, borders, shadows, reflections,
+radii, motion and the settings window's colours). Each appearance is one value of it:
+`Theme.midnight` and `Theme.liquid-glass`. `Theme.appearance` selects one, and every
+other token is derived from the selection, so components never know which appearance
+is active. Adding an appearance means one more enum variant and one more token value.
+
+Switching is a property change: Slint re-renders what changed, the island's surface
+cross-fades over the ambient duration (instant with reduced motion), and no window is
+recreated. Midnight's token values are the original values; the UI tests check that
+switching to Liquid Glass and back restores every pixel.
+
+Liquid Glass chooses one of two materials (`src/appearance.rs`, a pure function of the
+settings and the Windows environment):
+
+- **Live blur** when Windows' *Transparency effects* are on, battery saver and Lilt's
+  low-power mode are off, *Reduce transparency* is off, and Windows is 10 1903 or later.
+  Surfaces are translucent over the blurred desktop.
+- **Frosted** otherwise: denser translucent surfaces that need no blur. Settings shows
+  the reason.
+
+The material is re-evaluated when Windows broadcasts a colour or transparency change
+(`ImmersiveColorSet`) or a power status change.
+
+### The live blur
+
+DWM's materials (acrylic, Mica, the undocumented accent blur) fill a window's whole
+rectangle and ignore window regions, so they cannot follow the island's pill shape;
+this was verified with a prototype before choosing the design. Instead
+`src/window/backdrop.rs` creates a second window directly beneath the island:
+
+- layered and `WS_EX_TRANSPARENT`, so it never receives input and the island's
+  transparent surroundings still let clicks through;
+- `WS_EX_NOREDIRECTIONBITMAP`, hosting one Windows.UI.Composition sprite visual whose
+  brush is the host backdrop (the desktop behind the window, blurred by DWM) and whose
+  clip is a rounded rectangle;
+- moved, shown, hidden and re-stacked with the island on every `WM_WINDOWPOSCHANGED`,
+  and given the island's current outline after every frame Lilt renders, so the clip
+  follows size animations.
+
+The compositor and its dispatcher queue are created on first use and kept for the life
+of the UI thread. Midnight and the frosted material never create them.
+
+On Windows 11 22H2 and later the settings window uses the documented system acrylic
+(`DWMWA_SYSTEMBACKDROP_TYPE`) with its frame extended over the client area; Lilt's
+premultiplied pixels are copied with their alpha, so translucent surfaces composite
+over it.
+
+### Reflections
+
+Slint's software renderer draws gradients as rectangles and draws a clipping
+rectangle's border over its children. Liquid Glass's light is therefore built from
+shapes the renderer draws exactly: the sheen is a radial gradient centred above the
+surface that fades out before it can reach the rounded corners, and the rim is the
+surface's own rounded outline, drawn over it and clipped to the band above the straight
+sides.
 
 ## Persistence and files
 
 | File | Location | Written |
 | --- | --- | --- |
-| Settings | `%APPDATA%\Lilt\settings.json` | Shortly after a change, atomically |
+| Settings | `%APPDATA%\Lilt\settings.json` | Shortly after a change, atomically; never on start-up |
 | Log | `%LOCALAPPDATA%\Lilt\logs\lilt.log` | On notable events; rotated at 512 KB |
 | Start with Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Lilt` | When toggled |
 

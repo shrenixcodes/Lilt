@@ -18,7 +18,7 @@ megabytes of memory and no measurable CPU or GPU time.
 
 ## Features
 
-- **The island.** A near-black capsule at the top centre of the display you choose.
+- **The island.** A capsule at the top centre of the display you choose.
   It stays above other windows without taking focus, lets clicks pass through its
   transparent surroundings, can be dragged along the top edge, follows display and
   scaling changes, and hides while a game, video or presentation is full screen.
@@ -26,6 +26,9 @@ megabytes of memory and no measurable CPU or GPU time.
   as Spotify, web browsers and the Windows Media Player app: title, artist, album artwork,
   play/pause, previous/next, seeking and a source switcher. A short banner announces
   new tracks.
+- **Two appearances.** *Midnight*, the original minimal near-black look, and *Liquid
+  Glass*, dark smoked glass with a lit rim and soft reflections over a live blur of the
+  desktop. Switch between them instantly in Settings.
 - **Ambient colour.** The expanded player picks up a restrained accent from the current
   album artwork: a soft glow behind the cover, a faint tint of the panel and an
   accent-coloured progress bar. Intensity is adjustable and it can be turned off.
@@ -35,8 +38,8 @@ megabytes of memory and no measurable CPU or GPU time.
   you are looking at them.
 - **Quick actions.** One click to sound, display and brightness, Bluetooth and Wi-Fi
   settings, Windows Settings, the Snipping Tool, Task Manager and File Explorer.
-- **Settings.** Widgets, sizes, display and position, ambient colour, motion, a
-  low-power mode, start with Windows and a global shortcut.
+- **Settings.** Appearance, widgets, sizes, display and position, ambient colour,
+  motion, a low-power mode, start with Windows and a global shortcut.
 
 ## Installation
 
@@ -58,7 +61,9 @@ To uninstall, use *Settings → Apps → Installed apps → Lilt*.
   verified yet.
 - No additional runtimes: Lilt does not use .NET, a web view or the Visual C++
   redistributable.
-- Runs on integrated graphics; Lilt draws on the CPU and does not use the GPU.
+- Runs on integrated graphics. Lilt draws on the CPU; in Liquid Glass, Windows' own
+  compositor blurs the desktop behind the island on the GPU, as it does for the Start
+  menu.
 
 ## Using Lilt
 
@@ -69,6 +74,20 @@ To uninstall, use *Settings → Apps → Installed apps → Lilt*.
 | Move the island | Drag the compact island sideways |
 | Open the agenda or system details | Click the calendar or system tile |
 | Show or hide the island, open Settings, quit | Use the Lilt icon in the notification area |
+
+### Appearances
+
+Choose an appearance in *Settings → Appearance*; the island, the music player, the
+dashboard tiles, track banners and the settings window change at once.
+
+- **Midnight** is the original appearance: near-black solid surfaces and quiet borders.
+- **Liquid Glass** is dark smoked glass. Behind the island Windows blurs the desktop,
+  and on Windows 11 22H2 and later the settings window uses the system acrylic. When
+  Windows' *Transparency effects* are off, battery saver or Lilt's low-power mode is
+  on, or you turn on *Reduce transparency*, Liquid Glass keeps its look with frosted
+  surfaces instead of a live blur, and Settings says why.
+
+![Liquid Glass over a colourful desktop](docs/images/liquid-glass.png)
 
 ### Music
 
@@ -87,7 +106,8 @@ fade over 0.7 seconds when the artwork changes and stay still otherwise.
 
 ## Performance
 
-Lilt is a single process with no web view and no GPU rendering. Timers only run while
+Lilt is a single process with no web view, and it draws on the CPU (Liquid Glass's live
+blur is drawn by Windows' compositor). Timers only run while
 their results are on screen, and media updates arrive as Windows events rather than by
 polling. Measured on a release build:
 
@@ -96,6 +116,8 @@ polling. Measured on a release build:
 | Compact, idle | 6.3 MB | 0.000 % |
 | Expanded, readings live | 6.4 MB | 0.001 % |
 | Expanding and collapsing every 2 s | 6.5 MB | 0.021 % |
+
+These were measured with Midnight; Liquid Glass has not been benchmarked side by side yet.
 
 [PERFORMANCE.md](PERFORMANCE.md) has the full results, the test machine and the method.
 

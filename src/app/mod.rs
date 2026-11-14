@@ -19,12 +19,13 @@ use windows::Win32::UI::Shell::{
     QUNS_RUNNING_D3D_FULL_SCREEN, SHAppBarMessage, SHQueryUserNotificationState,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    PBT_APMRESUMEAUTOMATIC, SPI_SETCLIENTAREAANIMATION, SPI_SETWORKAREA, SetForegroundWindow, WM_CLOSE,
-    WM_DISPLAYCHANGE, WM_HOTKEY, WM_POWERBROADCAST, WM_SETTINGCHANGE, WM_TIMECHANGE,
+    PBT_APMPOWERSTATUSCHANGE, PBT_APMRESUMEAUTOMATIC, SPI_SETCLIENTAREAANIMATION, SPI_SETWORKAREA, SetForegroundWindow,
+    WM_CLOSE, WM_DISPLAYCHANGE, WM_HOTKEY, WM_POWERBROADCAST, WM_SETTINGCHANGE, WM_TIMECHANGE,
 };
 use windows::core::w;
 
 use crate::actions::QuickAction;
+use crate::appearance::Fallback;
 use crate::calendar::{CalendarFile, WindowsZones};
 use crate::clock;
 use crate::hotkey;
@@ -69,6 +70,10 @@ pub struct App {
     network_timer: slint::Timer,
     calendar: RefCell<Option<CalendarFile>>,
     zones: WindowsZones,
+    /// Why Liquid Glass is not using the live blur, if it is not.
+    glass_fallback: Cell<Option<Fallback>>,
+    /// Whether the settings window should show the system acrylic.
+    window_blur: Cell<bool>,
 }
 
 thread_local! {
@@ -145,6 +150,8 @@ pub fn run() -> Result<(), slint::PlatformError> {
         network_timer: slint::Timer::default(),
         calendar: RefCell::new(None),
         zones: WindowsZones::default(),
+        glass_fallback: Cell::new(None),
+        window_blur: Cell::new(false),
     });
     CURRENT.with(|c| *c.borrow_mut() = Rc::downgrade(&app));
     App::connect(&app);
@@ -209,6 +216,17 @@ impl App {
         });
 
         if let Some(native) = window::find(app.island.window()) {
+            let island = app.island.as_weak();
+            native.set_shape_source(move || {
+                let island = island.upgrade()?;
+                Some(window::Shape {
+                    x: island.get_body_x(),
+                    y: island.get_body_y(),
+                    width: island.get_body_width(),
+                    height: island.get_body_height(),
+                    radius: island.get_body_radius(),
+                })
+            });
             let weak = weak.clone();
             native.set_notice_handler(move |notice| {
                 let Some(app) = weak.upgrade() else { return };
@@ -241,6 +259,7 @@ impl App {
             WM_SETTINGCHANGE if wparam.0 as u32 == SPI_SETCLIENTAREAANIMATION.0 => {
                 let reduced = preferences::reduced_motion(self.settings.borrow().appearance.motion);
                 self.island.global::<Theme>().set_motion(if reduced { 0.0 } else { 1.0 });
+                self.apply_window_appearance();
             }
             WM_SETTINGCHANGE => match setting_name(lparam).as_deref() {
                 // Regional format changed: the 12/24-hour preference may differ.
@@ -248,12 +267,17 @@ impl App {
                     self.h24.set(clock::uses_24_hour_clock());
                     App::refresh_clock(app);
                 }
-                // The Windows colour mode changed.
-                Some("ImmersiveColorSet") => self.tray.set_light_taskbar(light_taskbar()),
+                // The Windows colour mode or "Transparency effects" changed.
+                Some("ImmersiveColorSet") => {
+                    self.tray.set_light_taskbar(light_taskbar());
+                    App::apply_appearance(app);
+                }
                 _ => {}
             },
             WM_TIMECHANGE => App::refresh_clock(app),
             WM_POWERBROADCAST if wparam.0 as u32 == PBT_APMRESUMEAUTOMATIC => App::refresh_clock(app),
+            // Battery saver may have been switched, which turns the live blur off.
+            WM_POWERBROADCAST if wparam.0 as u32 == PBT_APMPOWERSTATUSCHANGE => App::apply_appearance(app),
             WM_APP_APPBAR if wparam.0 as u32 == ABN_FULLSCREENAPP => {
                 let fullscreen = lparam.0 != 0;
                 tracing::debug!(fullscreen, "full-screen application state changed");

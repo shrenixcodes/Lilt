@@ -32,6 +32,12 @@ island back and exits. Quit from the notification-area icon.
 Logs are written to `%LOCALAPPDATA%\Lilt\logs\lilt.log`. Set `LILT_LOG=debug` (or
 `trace`) before starting for more detail, for example which media session is followed.
 
+Lilt reads its folders from `APPDATA` and `LOCALAPPDATA`, so pointing both at a scratch
+directory runs it with separate settings and logs. Set `LILT_GLASS=frosted` or
+`LILT_GLASS=blur` to force Liquid Glass's material regardless of the Windows settings,
+for example to exercise the live-blur window on a PC with transparency effects off
+(the blur then renders black, which is what Windows draws in that case).
+
 ## Checks
 
 ```powershell

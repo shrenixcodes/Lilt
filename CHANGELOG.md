@@ -6,6 +6,24 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A second appearance, **Liquid Glass**: dark smoked glass with a lit rim and a soft
+  reflection, over a live blur of the desktop drawn by Windows' compositor. It applies to
+  the island, the music player, dashboard tiles, track banners and the settings window,
+  and falls back to frosted surfaces when Windows' transparency effects, battery saver
+  or low-power mode rule out the blur, or when *Reduce transparency* is on.
+- *Settings → Appearance* shows both appearances as cards with previews drawn from their
+  own design tokens. Switching is immediate and needs no restart.
+
+### Changed
+
+- The original appearance is now called **Midnight**. It is unchanged and remains the
+  default.
+- The settings file is now version 2. Version 1 files are read as before and keep their
+  appearance and every other setting; an unknown appearance name falls back to
+  Midnight.
+
 ## [0.1.0]
 
 First release.

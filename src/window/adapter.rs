@@ -7,9 +7,15 @@ use slint::platform::software_renderer::{RepaintBufferType, SoftwareRenderer};
 use slint::platform::{PointerEventButton, Renderer, WindowAdapter, WindowEvent, WindowProperties};
 use slint::{LogicalPosition, PhysicalPosition, PhysicalSize, WindowPosition, WindowSize};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
-use windows::Win32::Graphics::Gdi::{BeginPaint, EndPaint, GetDC, PAINTSTRUCT, ReleaseDC, ScreenToClient};
+use windows::Win32::Graphics::Dwm::{
+    DWM_SYSTEMBACKDROP_TYPE, DWMSBT_AUTO, DWMSBT_TRANSIENTWINDOW, DWMWA_SYSTEMBACKDROP_TYPE,
+    DWMWA_USE_IMMERSIVE_DARK_MODE, DwmExtendFrameIntoClientArea, DwmSetWindowAttribute,
+};
+use windows::Win32::Graphics::Gdi::{
+    BeginPaint, EndPaint, GetDC, InvalidateRect, PAINTSTRUCT, ReleaseDC, ScreenToClient,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VIRTUAL_KEY, VK_CONTROL, VK_MENU,
@@ -17,6 +23,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{HSTRING, w};
 
+use super::backdrop::{Backdrop, Shape};
 use super::input;
 use super::surface::Surface;
 
@@ -44,6 +51,7 @@ pub enum Notice {
 }
 
 type NoticeHandler = Rc<dyn Fn(Notice)>;
+type ShapeSource = Box<dyn Fn() -> Option<Shape>>;
 
 pub struct Win32Window {
     window: slint::Window,
@@ -60,6 +68,12 @@ pub struct Win32Window {
     last_pointer: Cell<LogicalPosition>,
     drag_top: Cell<Option<i32>>,
     notice: RefCell<Option<NoticeHandler>>,
+    /// The live blur beneath the island (Liquid Glass).
+    backdrop: RefCell<Option<Backdrop>>,
+    /// The island's outline in logical pixels, read after each frame for the backdrop.
+    shape_source: RefCell<Option<ShapeSource>>,
+    /// Whether an ordinary window shows the system acrylic behind its content.
+    system_backdrop: Cell<bool>,
 }
 
 thread_local! {
@@ -104,6 +118,9 @@ impl Win32Window {
             last_pointer: Cell::new(LogicalPosition::default()),
             drag_top: Cell::new(None),
             notice: RefCell::new(None),
+            backdrop: RefCell::new(None),
+            shape_source: RefCell::new(None),
+            system_backdrop: Cell::new(false),
         });
         WINDOWS.with(|w| w.borrow_mut().push(Rc::downgrade(&window)));
         window
@@ -111,6 +128,63 @@ impl Win32Window {
 
     pub fn set_notice_handler(&self, handler: impl Fn(Notice) + 'static) {
         *self.notice.borrow_mut() = Some(Rc::new(handler));
+    }
+
+    /// Supplies the island's current outline, in logical pixels relative to the window.
+    pub fn set_shape_source(&self, source: impl Fn() -> Option<Shape> + 'static) {
+        *self.shape_source.borrow_mut() = Some(Box::new(source));
+    }
+
+    fn physical_shape(&self) -> Option<Shape> {
+        let source = self.shape_source.borrow();
+        let shape = (source.as_ref()?)()?;
+        let k = self.scale.get();
+        Some(Shape {
+            x: shape.x * k,
+            y: shape.y * k,
+            width: shape.width * k,
+            height: shape.height * k,
+            radius: shape.radius * k,
+        })
+    }
+
+    /// Turns the live blur behind the island on or off. Returns whether it is on.
+    pub fn set_live_backdrop(&self, enabled: bool) -> bool {
+        if self.kind != WindowKind::Island || !enabled {
+            self.backdrop.replace(None);
+            return false;
+        }
+        if self.backdrop.borrow().is_some() {
+            return true;
+        }
+        let Some(hwnd) = self.ensure_hwnd() else { return false };
+        match Backdrop::new() {
+            Ok(backdrop) => {
+                if let Some(shape) = self.physical_shape() {
+                    backdrop.set_shape(shape);
+                }
+                backdrop.follow(hwnd);
+                self.backdrop.replace(Some(backdrop));
+                true
+            }
+            Err(err) => {
+                tracing::warn!(%err, "live blur unavailable");
+                false
+            }
+        }
+    }
+
+    /// Shows the system acrylic behind an ordinary window. Returns whether it is shown.
+    pub fn set_system_backdrop(&self, enabled: bool) -> bool {
+        if self.kind != WindowKind::Standard {
+            return false;
+        }
+        self.system_backdrop.set(enabled);
+        self.needs_redraw.set(true);
+        match self.hwnd.get() {
+            Some(hwnd) => apply_system_backdrop(hwnd, enabled),
+            None => enabled,
+        }
     }
 
     fn notify(&self, notice: Notice) {
@@ -164,6 +238,9 @@ impl Win32Window {
             let dark: i32 = 1;
             unsafe {
                 let _ = DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark as *const i32 as *const _, 4);
+            }
+            if self.system_backdrop.get() {
+                apply_system_backdrop(hwnd, true);
             }
         }
 
@@ -282,6 +359,13 @@ impl Win32Window {
                 surface.blit(dc, dirty);
                 ReleaseDC(Some(hwnd), dc);
             },
+        }
+        drop(slot);
+        // The island's outline may be animating; keep the blur beneath it in step.
+        if let Some(backdrop) = self.backdrop.borrow().as_ref()
+            && let Some(shape) = self.physical_shape()
+        {
+            backdrop.set_shape(shape);
         }
         true
     }
@@ -517,6 +601,13 @@ impl Win32Window {
                 }
                 None
             }
+            WM_WINDOWPOSCHANGED if self.kind == WindowKind::Island => {
+                // Moved, shown, hidden or re-stacked: the backdrop follows.
+                if let Some(backdrop) = self.backdrop.borrow().as_ref() {
+                    backdrop.follow(hwnd);
+                }
+                None
+            }
             WM_EXITSIZEMOVE if self.kind == WindowKind::Island => {
                 self.notify(Notice::MoveFinished);
                 Some(LRESULT(0))
@@ -614,11 +705,32 @@ impl WindowAdapter for Win32Window {
 
 impl Drop for Win32Window {
     fn drop(&mut self) {
+        self.backdrop.take();
         if let Some(hwnd) = self.hwnd.take() {
             unsafe {
                 let _ = DestroyWindow(hwnd);
             }
         }
+    }
+}
+
+/// Extends the frame over the client area and asks DWM for its acrylic material (Windows
+/// 11 22H2 and later), or restores an ordinary opaque window.
+fn apply_system_backdrop(hwnd: HWND, enabled: bool) -> bool {
+    let extent = if enabled { -1 } else { 0 };
+    let margins = MARGINS { cxLeftWidth: extent, cxRightWidth: extent, cyTopHeight: extent, cyBottomHeight: extent };
+    let kind: DWM_SYSTEMBACKDROP_TYPE = if enabled { DWMSBT_TRANSIENTWINDOW } else { DWMSBT_AUTO };
+    unsafe {
+        let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+        let applied = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_SYSTEMBACKDROP_TYPE,
+            &kind as *const DWM_SYSTEMBACKDROP_TYPE as *const _,
+            std::mem::size_of::<DWM_SYSTEMBACKDROP_TYPE>() as u32,
+        )
+        .is_ok();
+        let _ = InvalidateRect(Some(hwnd), None, false);
+        enabled && applied
     }
 }
 

@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::paths;
 
 /// Current schema version. Bump together with a step in [`migrate`].
-pub const CURRENT_VERSION: u32 = 1;
+pub const CURRENT_VERSION: u32 = 2;
 
 /// Settings files larger than this are rejected as corrupt.
 const MAX_FILE_BYTES: u64 = 256 * 1024;
@@ -51,10 +51,49 @@ pub enum MotionPreference {
     Full,
 }
 
+/// The overall look of Lilt. Stored by name; a name this version does not know falls
+/// back to Midnight without affecting any other setting.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "String", into = "String")]
+pub enum AppearanceMode {
+    /// The original minimal dark appearance.
+    #[default]
+    Midnight,
+    /// Dark smoked translucent glass.
+    LiquidGlass,
+}
+
+impl AppearanceMode {
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Midnight => "midnight",
+            Self::LiquidGlass => "liquid-glass",
+        }
+    }
+}
+
+impl From<String> for AppearanceMode {
+    fn from(id: String) -> Self {
+        match id.as_str() {
+            "liquid-glass" => Self::LiquidGlass,
+            // Includes "lilt-dark", Midnight's name in version 1.
+            _ => Self::Midnight,
+        }
+    }
+}
+
+impl From<AppearanceMode> for String {
+    fn from(mode: AppearanceMode) -> Self {
+        mode.id().into()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Appearance {
-    pub theme: String,
+    pub theme: AppearanceMode,
+    /// Use frosted surfaces instead of a live blur in Liquid Glass.
+    pub reduce_transparency: bool,
     /// Compact island width in logical pixels.
     pub compact_width: u32,
     /// Expanded island width in logical pixels.
@@ -146,7 +185,13 @@ impl Default for General {
 
 impl Default for Appearance {
     fn default() -> Self {
-        Self { theme: "lilt-dark".into(), compact_width: 196, expanded_width: 460, motion: MotionPreference::System }
+        Self {
+            theme: AppearanceMode::Midnight,
+            reduce_transparency: false,
+            compact_width: 196,
+            expanded_width: 460,
+            motion: MotionPreference::System,
+        }
     }
 }
 
@@ -201,9 +246,6 @@ impl Settings {
     pub fn sanitize(mut self) -> Self {
         use limits::*;
         self.version = CURRENT_VERSION;
-        if self.appearance.theme != "lilt-dark" {
-            self.appearance.theme = "lilt-dark".into();
-        }
         self.appearance.compact_width = self.appearance.compact_width.clamp(COMPACT_WIDTH.0, COMPACT_WIDTH.1);
         self.appearance.expanded_width = self.appearance.expanded_width.clamp(EXPANDED_WIDTH.0, EXPANDED_WIDTH.1);
         self.position.top_margin = self.position.top_margin.clamp(TOP_MARGIN.0, TOP_MARGIN.1);
@@ -227,6 +269,15 @@ fn migrate(mut value: serde_json::Value, from: u32) -> serde_json::Value {
         // Documents without a version predate the first release; their layout is the
         // version 1 layout, so only the marker is added.
         value["version"] = 1.into();
+    }
+    if from < 2 {
+        // Version 2 added appearances; the single version 1 theme is now called Midnight.
+        if let Some(theme) = value.pointer_mut("/appearance/theme")
+            && theme == "lilt-dark"
+        {
+            *theme = AppearanceMode::Midnight.id().into();
+        }
+        value["version"] = 2.into();
     }
     value
 }
@@ -328,7 +379,7 @@ mod tests {
         let (s, status) = load_from(&path);
         assert_eq!(status, LoadStatus::Loaded);
         assert_eq!(s.appearance.compact_width, limits::COMPACT_WIDTH.1);
-        assert_eq!(s.appearance.theme, "lilt-dark");
+        assert_eq!(s.appearance.theme, AppearanceMode::Midnight);
         assert_eq!(s.ambient.intensity, 100);
         assert_eq!(s.calendar.ics_path, None);
         // Unspecified sections keep their defaults.
@@ -372,6 +423,55 @@ mod tests {
         assert_eq!(status, LoadStatus::Newer(7));
         assert!(!s.widgets.system);
         assert!(dir.join("settings.v7.bak").exists());
+    }
+
+    #[test]
+    fn new_installations_use_midnight() {
+        assert_eq!(Settings::default().appearance.theme, AppearanceMode::Midnight);
+        assert!(!Settings::default().appearance.reduce_transparency);
+    }
+
+    #[test]
+    fn version_1_documents_keep_their_appearance_and_settings() {
+        let dir = temp_dir("v1");
+        let path = dir.join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"version":1,"appearance":{"theme":"lilt-dark","compact_width":220,"expanded_width":500,"motion":"reduced"},"ambient":{"intensity":35}}"#,
+        )
+        .unwrap();
+        let (s, status) = load_from(&path);
+        assert_eq!(status, LoadStatus::Loaded);
+        assert_eq!(s.version, CURRENT_VERSION);
+        assert_eq!(s.appearance.theme, AppearanceMode::Midnight);
+        assert_eq!((s.appearance.compact_width, s.appearance.expanded_width), (220, 500));
+        assert_eq!(s.appearance.motion, MotionPreference::Reduced);
+        assert_eq!(s.ambient.intensity, 35);
+        // Loading never writes: the file is upgraded on the next real change.
+        assert!(std::fs::read_to_string(&path).unwrap().contains("lilt-dark"));
+    }
+
+    #[test]
+    fn appearance_is_saved_by_name() {
+        let dir = temp_dir("appearance");
+        let path = dir.join("settings.json");
+        let mut s = Settings::default();
+        s.appearance.theme = AppearanceMode::LiquidGlass;
+        s.appearance.reduce_transparency = true;
+        save_to(&path, &s).unwrap();
+        assert!(std::fs::read_to_string(&path).unwrap().contains(r#""theme": "liquid-glass""#));
+        assert_eq!(load_from(&path), (s, LoadStatus::Loaded));
+    }
+
+    #[test]
+    fn unknown_appearance_falls_back_to_midnight_only() {
+        let dir = temp_dir("unknown-appearance");
+        let path = dir.join("settings.json");
+        std::fs::write(&path, r#"{"version":2,"appearance":{"theme":"aurora"},"widgets":{"system":false}}"#).unwrap();
+        let (s, status) = load_from(&path);
+        assert_eq!(status, LoadStatus::Loaded);
+        assert_eq!(s.appearance.theme, AppearanceMode::Midnight);
+        assert!(!s.widgets.system);
     }
 
     #[test]

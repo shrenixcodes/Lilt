@@ -5,6 +5,7 @@
 mod actions;
 mod ambient;
 mod app;
+mod appearance;
 mod artwork;
 mod calendar;
 mod clock;
