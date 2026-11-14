@@ -21,6 +21,10 @@
 
 .EXAMPLE
     .\benchmarks\measure.ps1 -Exe .\target\release\lilt.exe -Label idle -SampleSeconds 120
+
+.EXAMPLE
+    # Run an action once before sampling and another every 2 seconds while sampling.
+    .\benchmarks\measure.ps1 -Exe app.exe -Prepare { Open-Panel } -Repeat { Toggle-Panel } -RepeatSeconds 2
 #>
 [CmdletBinding()]
 param(
@@ -31,7 +35,12 @@ param(
     [int] $SettleSeconds = 10,
     [int] $SampleSeconds = 60,
     [int] $IntervalSeconds = 2,
-    [string] $OutFile
+    [string] $OutFile,
+    # Run once after the settle period, before sampling starts.
+    [scriptblock] $Prepare,
+    # Run repeatedly during sampling, every RepeatSeconds.
+    [scriptblock] $Repeat,
+    [double] $RepeatSeconds = 2
 )
 
 $ErrorActionPreference = 'Stop'
@@ -169,6 +178,7 @@ while ($watch.Elapsed.TotalSeconds -lt 20) {
 }
 
 Start-Sleep -Seconds $SettleSeconds
+if ($Prepare) { & $Prepare | Out-Null; Start-Sleep -Seconds 2 }
 
 $tree = @(Get-ProcessTree $root.Id)
 $ids = @($tree | ForEach-Object { [int]$_.ProcessId })
@@ -183,9 +193,11 @@ $cpuPeak = 0.0
 $endpoints = @{}
 $prevCpu = ($cpuStart.Values | Measure-Object -Sum).Sum
 $prevTime = 0.0
+$nextRepeat = 0.0
 
 while ($sampleWatch.Elapsed.TotalSeconds -lt $SampleSeconds) {
     $tick = $sampleWatch.Elapsed.TotalSeconds
+    if ($Repeat -and $tick -ge $nextRepeat) { & $Repeat | Out-Null; $nextRepeat = $tick + $RepeatSeconds }
     $tree = @(Get-ProcessTree $root.Id)
     $ids = @($tree | ForEach-Object { [int]$_.ProcessId })
     $memSamples += Get-Memory $ids
@@ -202,7 +214,8 @@ while ($sampleWatch.Elapsed.TotalSeconds -lt $SampleSeconds) {
     $prevCpu = $cpuNow
     $prevTime = $now
 
-    $remaining = $IntervalSeconds - ($sampleWatch.Elapsed.TotalSeconds - $tick)
+    $interval = if ($Repeat) { [math]::Min($IntervalSeconds, $RepeatSeconds) } else { $IntervalSeconds }
+    $remaining = $interval - ($sampleWatch.Elapsed.TotalSeconds - $tick)
     if ($remaining -gt 0) { Start-Sleep -Milliseconds ([int]($remaining * 1000)) }
 }
 
