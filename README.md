@@ -77,7 +77,7 @@ To uninstall, use *Settings → Apps → Installed apps → Lilt*.
 
 ### Appearances
 
-Choose an appearance in *Settings → Appearance*; the island, the music player, the
+Choose an appearance in *Settings → Appearance & position*; the island, the music player, the
 dashboard tiles, track banners and the settings window change at once.
 
 - **Midnight** is the original appearance: near-black solid surfaces and quiet borders.

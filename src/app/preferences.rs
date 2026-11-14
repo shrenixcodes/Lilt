@@ -217,6 +217,17 @@ impl App {
             app.save_now();
             app.refresh_settings_window();
         }));
+        window.on_reset_appearance(super::with(&weak, |app| {
+            {
+                let mut settings = app.settings.borrow_mut();
+                settings.appearance = Default::default();
+                settings.position = Default::default();
+            }
+            App::apply_settings(app);
+            app.place();
+            App::schedule_save(app);
+            app.refresh_settings_window();
+        }));
         window.on_reset_position(super::with(&weak, |app| {
             app.settings.borrow_mut().position.offset_x = 0;
             app.place();

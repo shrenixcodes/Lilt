@@ -360,13 +360,45 @@ fn settings_sections_render() {
     settings.set_data(settings_data());
     settings.show().expect("show settings");
     let mut previous: Option<RgbaImage> = None;
-    for section in 0..10 {
+    for section in 0..9 {
         settings.set_section(section);
         let image = render_settings(&window, &clock);
         save(&image, &format!("settings-{section}"));
         assert!(previous.as_ref() != Some(&image), "section {section} rendered the same as the previous one");
         previous = Some(image);
     }
+}
+
+#[test]
+fn appearance_and_position_share_a_page() {
+    let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    let clock = Rc::new(Cell::new(Duration::ZERO));
+    slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), clock: clock.clone() }))
+        .expect("one platform per test thread");
+    let settings = SettingsWindow::new().expect("create settings window");
+    settings.set_data(settings_data());
+    let reset = Rc::new(Cell::new(false));
+    let seen = reset.clone();
+    settings.on_reset_appearance(move || seen.set(true));
+    settings.show().expect("show settings");
+    settings.set_section(1);
+    // A tall window shows both groups and the reset button.
+    let size = PhysicalSize::new(760, 1000);
+    window.set_size(size);
+    let mut buffer = vec![PremultipliedRgbaColor::default(); (size.width * size.height) as usize];
+    for _ in 0..2 {
+        clock.set(clock.get() + Duration::from_secs(1));
+        slint::platform::update_timers_and_animations();
+        window.request_redraw();
+        window.draw_if_needed(|renderer| {
+            renderer.render(&mut buffer, size.width as usize);
+        });
+    }
+    let image = RgbaImage::from_fn(size.width, size.height, |x, y| {
+        let p = buffer[(y * size.width + x) as usize];
+        Rgba([p.red, p.green, p.blue, 255])
+    });
+    save(&image, "settings-appearance-position");
 }
 
 #[test]
@@ -393,7 +425,7 @@ fn settings_follow_the_appearance() {
     let glass = render_settings(&window, &clock);
     save(&glass, "settings-appearance-glass");
     assert_ne!(selected, glass);
-    for section in [0, 6] {
+    for section in [0, 5] {
         settings.set_section(section);
         save(&render_settings(&window, &clock), &format!("settings-{section}-glass"));
     }

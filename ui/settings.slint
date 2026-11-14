@@ -445,8 +445,10 @@ export component SettingsWindow inherits Window {
     callback shortcut-key(string, bool, bool, bool, bool);
     callback open-data-folder();
     callback reset-position();
+    // Restores the defaults of the Appearance & position page only.
+    callback reset-appearance();
 
-    property <[string]> sections: ["General", "Appearance", "Position", "Widgets", "Music", "Ambient visuals", "Performance", "Startup", "Keyboard shortcuts", "About"];
+    property <[string]> sections: ["General", "Appearance & position", "Widgets", "Music", "Ambient visuals", "Performance", "Startup", "Keyboard shortcuts", "About"];
 
     HorizontalLayout {
         Rectangle {
@@ -592,7 +594,7 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 2 : Section {
+                if root.section == 1 : Section {
                     title: "Position";
                     Row {
                         label: "Display";
@@ -627,9 +629,17 @@ export component SettingsWindow inherits Window {
                             clicked => { root.reset-position(); }
                         }
                     }
+                    Row {
+                        label: "Reset appearance and position";
+                        description: "Midnight, the original sizes and motion setting, the primary display and a centred island.";
+                        Button {
+                            text: "Reset";
+                            clicked => { root.reset-appearance(); }
+                        }
+                    }
                 }
 
-                if root.section == 3 : Section {
+                if root.section == 2 : Section {
                     title: "Widgets";
                     Row {
                         label: "Music player";
@@ -674,7 +684,7 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 4 : Section {
+                if root.section == 3 : Section {
                     title: "Music";
                     Row {
                         label: "Show album artwork";
@@ -693,7 +703,7 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 5 : Section {
+                if root.section == 4 : Section {
                     title: "Ambient visuals";
                     Row {
                         label: "Colours from album artwork";
@@ -713,7 +723,7 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 6 : Section {
+                if root.section == 5 : Section {
                     title: "Performance";
                     Row {
                         label: "Low-power mode";
@@ -733,7 +743,7 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 7 : Section {
+                if root.section == 6 : Section {
                     title: "Startup";
                     Row {
                         label: "Start Lilt when you sign in";
@@ -744,7 +754,7 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 8 : Section {
+                if root.section == 7 : Section {
                     title: "Keyboard shortcuts";
                     Row {
                         label: "Expand or collapse the island";
@@ -776,7 +786,7 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 9 : Section {
+                if root.section == 8 : Section {
                     title: "About";
                     Text {
                         text: "Lilt " + root.version;

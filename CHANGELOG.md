@@ -24,6 +24,8 @@ All notable changes to Lilt are documented here. The format follows
 
 - The original appearance is now called **Midnight**. It is unchanged and remains the
   default.
+- Appearance and Position are one settings page, *Appearance & position*, with a button
+  that resets only those settings.
 - The settings file is now version 2. Version 1 files are read as before and keep their
   appearance and every other setting; an unknown appearance name falls back to
   Midnight.
