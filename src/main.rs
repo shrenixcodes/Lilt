@@ -9,6 +9,8 @@ mod instance;
 mod logging;
 mod media;
 mod paths;
+#[cfg(test)]
+mod snapshots;
 mod window;
 
 mod ui {
