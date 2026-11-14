@@ -10,7 +10,10 @@ use std::time::Duration;
 use slint::ComponentHandle;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
-use windows::Win32::UI::Shell::{ABM_NEW, ABM_REMOVE, ABN_FULLSCREENAPP, APPBARDATA, SHAppBarMessage};
+use windows::Win32::UI::Shell::{
+    ABM_NEW, ABM_REMOVE, ABN_FULLSCREENAPP, APPBARDATA, QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
+    SHAppBarMessage, SHQueryUserNotificationState,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     PBT_APMRESUMEAUTOMATIC, SPI_SETWORKAREA, SetForegroundWindow, WM_DISPLAYCHANGE, WM_POWERBROADCAST,
     WM_SETTINGCHANGE, WM_TIMECHANGE,
@@ -134,8 +137,13 @@ pub fn run() -> Result<(), slint::PlatformError> {
     App::refresh_clock(&app);
     app.tray.set_light_taskbar(light_taskbar());
 
-    app.island.show()?;
-    app.place();
+    // The shell reports full-screen changes only as they happen, so ask once whether one
+    // is already in progress before showing the island.
+    app.hidden_for_fullscreen.set(full_screen_app_active());
+    if app.island_visible() {
+        app.island.show()?;
+        app.place();
+    }
     app.tray.show()?;
     let _app_bar = AppBar::register();
     app.media.replace(Some(MediaService::start(|update| post(move |app| App::media_update(app, update)))));
@@ -346,6 +354,14 @@ impl App {
         }
         self.place();
     }
+}
+
+/// Whether a full-screen application, game or presentation currently owns the display.
+fn full_screen_app_active() -> bool {
+    matches!(
+        unsafe { SHQueryUserNotificationState() },
+        Ok(QUNS_BUSY | QUNS_RUNNING_D3D_FULL_SCREEN | QUNS_PRESENTATION_MODE)
+    )
 }
 
 /// The setting name broadcast with `WM_SETTINGCHANGE`, if any.
