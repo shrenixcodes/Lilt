@@ -6,50 +6,46 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-15
+
+The first build published on GitHub. It includes everything listed under 0.1.0 below,
+plus the following.
+
 ### Added
 
-- A second appearance, **Smoked Glass** (first released as Liquid Glass): dark smoked glass with a lit rim and a soft
-  reflection, over a live blur of the desktop drawn by Windows' compositor. It applies to
-  the island, the music player, dashboard tiles, track banners and the settings window,
-  and falls back to frosted surfaces when Windows' transparency effects, battery saver
-  or low-power mode rule out the blur, or when *Reduce transparency* is on.
-- *Settings → Appearance* shows the appearances as cards with previews drawn from their
-  own design tokens. Switching is immediate and needs no restart.
-- A third appearance, **Liquid Glass**: clear glass lit along its upper and lower edges.
-  Its tint follows the brightness of the screen behind the island, light over dark
-  content and only as dense as WCAG AA text contrast requires over bright windows.
-- The "now playing" bars in the compact island move like an equalizer while music
-  plays. They step about 14 times a second on a timer, only while the compact island is
-  on screen, settle into the flat idle bars when playback pauses, and stay still with
-  reduced motion.
+- **Three appearances**, chosen in *Settings → Appearance & position* and applied at once:
+  - **Midnight**, the original minimal near-black look (the default).
+  - **Smoked Glass**: dark smoked glass with a lit rim over a live blur of the desktop.
+  - **Liquid Glass**: clear glass lit along its upper and lower edges. Its tint follows
+    the brightness of the screen behind the island: light over dark content, and only
+    as dense as readable text (WCAG AA contrast) requires over bright windows.
 
+  The glass appearances fall back to frosted surfaces when Windows' transparency
+  effects, battery saver or low-power mode rule out the blur, or when *Reduce
+  transparency* is on, and Settings says why.
 - **Tasks**: a prioritised task list in its own box beside or below the expanded island,
   with quick entry (N), priorities, due dates and times, labels, a "Focus now" task,
   completion with undo, postponing, your own order within a priority, and a searchable
   archive with restore and permanent deletion. Tasks are stored in SQLite on this PC.
+- The "now playing" bars in the compact island move like an equalizer while music
+  plays, about 14 steps a second, only while the compact island is on screen. They
+  settle when playback pauses and stay still with reduced motion.
 - Copy, cut and paste in Lilt's text fields.
 
 ### Changed
 
-- The original appearance is now called **Midnight**. It is unchanged and remains the
-  default.
 - Appearance and Position are one settings page, *Appearance & position*, with a button
   that resets only those settings.
-- The settings file is now version 3. Older files are read as before and keep their
-  appearance and every other setting: a version 2 file that chose Liquid Glass, which
-  was the smoked look, now opens in Smoked Glass. An unknown appearance name falls back
-  to Midnight.
+- The settings file is now version 3. Older files are read as before and keep every
+  setting; an unknown appearance name falls back to Midnight.
+- Lower memory use: about 3.0–3.6 MB in Task Manager. CPU, memory and network readings
+  come straight from Windows instead of a library whose CPU reading cost about 4 MB.
 
 ### Fixed
 
 - When a browser plays in one tab while another is paused, or replaces its media
-  session (as Edge does when another tab starts playing), Lilt now follows the session
-  that is playing instead of keeping the paused or stale one, so the title is current and
-  the playing bars move.
-- Lilt's memory use is down from about 7.6–8.3 MB to 3.0–3.6 MB (Task Manager's
-  "Memory"). CPU, memory and network readings now come straight from Windows instead of
-  the `sysinfo` crate, whose CPU reading loaded the Performance Data Helper's counter
-  tables (about 4 MB).
+  session as tabs start and stop, Lilt follows the session that is playing, so the
+  title stays current and the playing bars move.
 
 ## [0.1.0]
 
