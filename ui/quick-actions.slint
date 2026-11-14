@@ -1,0 +1,55 @@
+import { Theme } from "theme.slint";
+import { Icons } from "components/icon.slint";
+import { Tile, IconButton } from "components/controls.slint";
+
+struct Action {
+    icon: string,
+    tooltip: string,
+}
+
+// Order must match `QuickAction::ALL` in src/actions.rs.
+export component QuickActions inherits Tile {
+    callback activate(int);
+    label: "Quick actions";
+
+    property <[Action]> first-row: [
+        { icon: Icons.volume, tooltip: "Sound settings" },
+        { icon: Icons.display, tooltip: "Display and brightness" },
+        { icon: Icons.bluetooth, tooltip: "Bluetooth settings" },
+        { icon: Icons.wifi, tooltip: "Wi-Fi settings" },
+    ];
+    property <[Action]> second-row: [
+        { icon: Icons.scissors, tooltip: "Snipping Tool" },
+        { icon: Icons.activity, tooltip: "Task Manager" },
+        { icon: Icons.folder, tooltip: "File Explorer" },
+        { icon: Icons.settings, tooltip: "Windows Settings" },
+    ];
+
+    VerticalLayout {
+        padding: 9px;
+        spacing: 2px;
+        alignment: center;
+
+        HorizontalLayout {
+            spacing: 2px;
+            alignment: center;
+            for action[i] in root.first-row : IconButton {
+                icon: action.icon;
+                tooltip: action.tooltip;
+                tint: Theme.text-secondary;
+                clicked => { root.activate(i); }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 2px;
+            alignment: center;
+            for action[i] in root.second-row : IconButton {
+                icon: action.icon;
+                tooltip: action.tooltip;
+                tint: Theme.text-secondary;
+                clicked => { root.activate(i + 4); }
+            }
+        }
+    }
+}

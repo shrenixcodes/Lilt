@@ -4,7 +4,7 @@ import { AgendaEntry, CalendarState, MediaInfo, Page, SystemInfo } from "types.s
 // value through a chain of component properties.
 export global AppState {
     in property <length> compact-width: 196px;
-    in property <length> expanded-width: 440px;
+    in property <length> expanded-width: 460px;
     in property <bool> allow-drag: true;
 
     // Clock
@@ -48,4 +48,6 @@ export global AppActions {
     callback seek(float);
     callback cycle-source();
     callback choose-calendar();
+    // Index into the actions listed in ui/quick-actions.slint.
+    callback quick-action(int);
 }

@@ -141,12 +141,12 @@ pub fn parse(text: &str) -> Result<Vec<Event>, IcsError> {
             }
             ("BEGIN", _) if current.is_some() => depth += 1,
             ("END", "VEVENT") if depth == 0 => {
-                if let Some(props) = current.take() {
-                    if let Some(event) = build_event(&props) {
-                        events.push(event);
-                        if events.len() >= MAX_EVENTS {
-                            break;
-                        }
+                if let Some(props) = current.take()
+                    && let Some(event) = build_event(&props)
+                {
+                    events.push(event);
+                    if events.len() >= MAX_EVENTS {
+                        break;
                     }
                 }
             }
@@ -166,11 +166,11 @@ fn unfold(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for raw in text.split('\n') {
         let line = raw.strip_suffix('\r').unwrap_or(raw);
-        if let Some(rest) = line.strip_prefix([' ', '\t']) {
-            if let Some(last) = out.last_mut() {
-                last.push_str(rest);
-                continue;
-            }
+        if let Some(rest) = line.strip_prefix([' ', '\t'])
+            && let Some(last) = out.last_mut()
+        {
+            last.push_str(rest);
+            continue;
         }
         if !line.is_empty() {
             out.push(line.to_owned());

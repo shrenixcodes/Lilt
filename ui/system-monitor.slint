@@ -66,7 +66,7 @@ export component SystemTile inherits Tile {
 
     VerticalLayout {
         padding: 12px;
-        spacing: 7px;
+        spacing: 4px;
         alignment: center;
 
         MeterRow {
@@ -81,11 +81,16 @@ export component SystemTile inherits Tile {
             value-text: root.info.ready ? root.info.memory-text : "–";
         }
 
-        HorizontalLayout {
-            spacing: 8px;
+        Rate {
             height: 16px;
-            Rate { icon: Icons.down; text: root.info.ready ? root.info.down-text : "–"; }
-            Rate { icon: Icons.up; text: root.info.ready ? root.info.up-text : "–"; }
+            icon: Icons.down;
+            text: root.info.ready ? root.info.down-text : "–";
+        }
+
+        Rate {
+            height: 16px;
+            icon: Icons.up;
+            text: root.info.ready ? root.info.up-text : "–";
         }
     }
 }

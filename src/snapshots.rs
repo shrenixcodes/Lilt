@@ -73,8 +73,10 @@ impl Harness {
 
     /// Renders the window composited over a light backdrop.
     pub fn render(&self) -> RgbaImage {
-        // The island window is 460 x 270 logical pixels (see ui/island.slint).
-        let size = PhysicalSize::new((460.0 * self.scale).round() as u32, (270.0 * self.scale).round() as u32);
+        // The window is the expanded width plus a 10 px margin on each side, by 270 logical
+        // pixels (see ui/island.slint).
+        let width = self.state().get_expanded_width().max(340.0) + 20.0;
+        let size = PhysicalSize::new((width * self.scale).round() as u32, (270.0 * self.scale).round() as u32);
         self.window.set_size(size);
         let mut buffer = vec![PremultipliedRgbaColor::default(); (size.width * size.height) as usize];
         // Conditional elements are created during the first render and start their fade-in
@@ -158,7 +160,7 @@ fn compact_media_widens_and_expanded_grows() {
     h.state().set_expanded(true);
     let expanded = h.render();
     save(&expanded, "expanded-media");
-    assert!((430..=445).contains(&island_width(&expanded, 120)));
+    assert!((450..=465).contains(&island_width(&expanded, 120)));
     assert!(island_height(&expanded, expanded.width() / 2) > 200);
 }
 
@@ -238,9 +240,9 @@ fn system_tile_and_page_render_readings() {
     h.state().set_expanded(true);
     let dashboard = h.render();
     save(&dashboard, "expanded-system-tile");
-    // The CPU and RAM meter fills (accent) inside the system tile, on the right half.
-    let lit = (140..190)
-        .flat_map(|y| (240..440).map(move |x| (x, y)))
+    // The CPU and RAM meter fills (accent) inside the system tile, the middle tile.
+    let lit = (130..200)
+        .flat_map(|y| (170..300).map(move |x| (x, y)))
         .filter(|&(x, y)| dashboard.get_pixel(x, y)[0] > 200)
         .count();
     assert!(lit > 10, "meter fill expected, found {lit} lit pixels");

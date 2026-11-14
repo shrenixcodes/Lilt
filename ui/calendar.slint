@@ -33,7 +33,7 @@ export component CalendarTile inherits Tile {
         }
 
         Text {
-            text: AppState.calendar-state == CalendarState.not-configured ? "No calendar connected"
+            text: AppState.calendar-state == CalendarState.not-configured ? "No calendar"
                 : AppState.calendar-state == CalendarState.unavailable ? "Calendar unavailable"
                 : !root.has-events ? "Nothing this week"
                 : AppState.agenda[0].day == "Today" ? AppState.agenda[0].time

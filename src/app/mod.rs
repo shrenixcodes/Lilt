@@ -23,6 +23,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
+use crate::actions::QuickAction;
 use crate::calendar::{CalendarFile, WindowsZones};
 use crate::clock;
 use crate::media::{MediaService, MediaState};
@@ -192,6 +193,17 @@ impl App {
         });
 
         let actions = app.island.global::<AppActions>();
+        let weak_action = weak.clone();
+        actions.on_quick_action(move |index| {
+            let Some(action) = QuickAction::from_index(index) else { return };
+            if let Some(app) = weak_action.upgrade() {
+                // Collapse first so the opened window is not covered and gets the focus.
+                App::set_expanded(&app, false);
+            }
+            if let Err(err) = action.launch() {
+                tracing::warn!(%err, ?action, "quick action failed");
+            }
+        });
         actions.on_toggle_expanded(with(&weak, |app| App::set_expanded(app, !app.expanded())));
         actions.on_collapse(with(&weak, |app| App::set_expanded(app, false)));
 
