@@ -36,7 +36,26 @@ export struct SystemInfo {
     up-text: string,
 }
 
+export enum CalendarState {
+    // No calendar file has been chosen.
+    not-configured,
+    // The chosen file could not be read; see the message.
+    unavailable,
+    ready,
+}
+
+export struct AgendaEntry {
+    title: string,
+    location: string,
+    // "Today", "Tomorrow" or e.g. "Mon 17".
+    day: string,
+    time: string,
+    // The event is in progress.
+    now: bool,
+}
+
 export enum Page {
     dashboard,
+    calendar,
     system,
 }

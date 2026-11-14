@@ -1,32 +1,9 @@
 import { Theme } from "theme.slint";
 import { Page } from "types.slint";
 import { AppState } from "state.slint";
-import { Tile } from "components/controls.slint";
 import { MediaPlayer } from "media-player.slint";
 import { SystemTile, SystemPage } from "system-monitor.slint";
-
-component ClockTile inherits Tile {
-    label: "Date and time";
-
-    VerticalLayout {
-        padding: 12px;
-        spacing: 1px;
-
-        Text {
-            text: AppState.weekday + " " + AppState.date;
-            color: Theme.text-secondary;
-            font-size: Theme.font-xs;
-            font-weight: 600;
-        }
-
-        Text {
-            text: AppState.time;
-            color: Theme.text;
-            font-size: Theme.font-xl;
-            font-weight: 600;
-        }
-    }
-}
+import { CalendarTile, CalendarPage } from "calendar.slint";
 
 // Content of the expanded island.
 export component ExpandedView inherits Rectangle {
@@ -42,8 +19,11 @@ export component ExpandedView inherits Rectangle {
             height: 108px;
             spacing: Theme.gap;
 
-            ClockTile {
+            CalendarTile {
                 horizontal-stretch: 1;
+                clicked => {
+                    AppState.page = Page.calendar;
+                }
             }
 
             SystemTile {
@@ -54,6 +34,10 @@ export component ExpandedView inherits Rectangle {
                 }
             }
         }
+    }
+
+    if AppState.page == Page.calendar: CalendarPage {
+        padding: Theme.padding;
     }
 
     if AppState.page == Page.system: SystemPage {

@@ -5,7 +5,9 @@
 mod ambient;
 mod app;
 mod artwork;
+mod calendar;
 mod clock;
+mod dialogs;
 mod instance;
 mod logging;
 mod media;

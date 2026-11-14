@@ -1,0 +1,137 @@
+import { Theme } from "theme.slint";
+import { AgendaEntry, CalendarState, Page } from "types.slint";
+import { AppState, AppActions } from "state.slint";
+import { Tile, TextButton } from "components/controls.slint";
+import { PageHeader } from "components/page.slint";
+
+// Date, time and the next event. Opens the agenda.
+export component CalendarTile inherits Tile {
+    interactive: true;
+    label: "Calendar";
+    property <bool> has-events: AppState.calendar-state == CalendarState.ready && AppState.agenda.length > 0;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 1px;
+
+        Text {
+            text: AppState.weekday + " " + AppState.date;
+            color: Theme.text-secondary;
+            font-size: Theme.font-xs;
+            font-weight: 600;
+        }
+
+        Text {
+            text: AppState.time;
+            color: Theme.text;
+            font-size: Theme.font-xl;
+            font-weight: 600;
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
+        Text {
+            text: AppState.calendar-state == CalendarState.not-configured ? "No calendar connected"
+                : AppState.calendar-state == CalendarState.unavailable ? "Calendar unavailable"
+                : !root.has-events ? "Nothing this week"
+                : AppState.agenda[0].day == "Today" ? AppState.agenda[0].time
+                : AppState.agenda[0].day;
+            color: root.has-events && AppState.agenda[0].now ? Theme.accent : Theme.text-tertiary;
+            font-size: Theme.font-xs;
+            overflow: elide;
+        }
+
+        if root.has-events: Text {
+            text: AppState.agenda[0].title;
+            color: Theme.text-secondary;
+            font-size: Theme.font-sm;
+            overflow: elide;
+        }
+    }
+}
+
+// The week ahead, or why there is nothing to show.
+export component CalendarPage inherits VerticalLayout {
+    spacing: 8px;
+    property <bool> has-events: AppState.calendar-state == CalendarState.ready && AppState.agenda.length > 0;
+
+    PageHeader {
+        title: "Agenda";
+        back => {
+            AppState.page = Page.dashboard;
+        }
+
+        TextButton {
+            text: AppState.calendar-state == CalendarState.not-configured ? "Import .ics" : "Change file";
+            clicked => {
+                AppActions.choose-calendar();
+            }
+        }
+    }
+
+    if !root.has-events: VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+        vertical-stretch: 1;
+
+        Text {
+            horizontal-alignment: center;
+            text: AppState.calendar-state == CalendarState.not-configured ? "No calendar connected"
+                : AppState.calendar-state == CalendarState.unavailable ? "Calendar unavailable"
+                : "Nothing scheduled this week";
+            color: Theme.text;
+            font-size: Theme.font-md;
+            font-weight: 600;
+        }
+
+        Text {
+            horizontal-alignment: center;
+            wrap: word-wrap;
+            text: AppState.calendar-state == CalendarState.not-configured
+                ? "Import an .ics file exported from Outlook, Google Calendar or Apple Calendar."
+                : AppState.calendar-state == CalendarState.unavailable ? AppState.calendar-message
+                : "No events in " + AppState.calendar-source + " for the next seven days.";
+            color: Theme.text-secondary;
+            font-size: Theme.font-sm;
+        }
+    }
+
+    if root.has-events: VerticalLayout {
+        spacing: 2px;
+        vertical-stretch: 1;
+        alignment: start;
+
+        for entry in AppState.agenda: HorizontalLayout {
+            spacing: 10px;
+            height: 24px;
+
+            Text {
+                width: 62px;
+                vertical-alignment: center;
+                text: entry.day;
+                color: entry.now ? Theme.accent : Theme.text-secondary;
+                font-size: Theme.font-sm;
+                font-weight: 600;
+            }
+
+            Text {
+                width: 104px;
+                vertical-alignment: center;
+                text: entry.time;
+                color: Theme.text-tertiary;
+                font-size: Theme.font-sm;
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                text: entry.location == "" ? entry.title : entry.title + "  ·  " + entry.location;
+                color: Theme.text;
+                font-size: Theme.font-sm;
+                overflow: elide;
+            }
+        }
+    }
+}

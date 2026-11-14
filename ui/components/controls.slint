@@ -33,6 +33,31 @@ export component IconButton inherits Rectangle {
     }
 }
 
+// Compact text button for page headers.
+export component TextButton inherits Rectangle {
+    in property <string> text;
+    callback clicked();
+    height: 28px;
+    width: label.preferred-width + 22px;
+    border-radius: Theme.control-radius;
+    background: touch.pressed ? Theme.control-pressed : touch.has-hover ? Theme.control-hover : Theme.tile;
+    animate background { duration: Theme.hover-duration; }
+    accessible-role: button;
+    accessible-label: root.text;
+
+    label := Text {
+        text: root.text;
+        color: Theme.text;
+        font-size: Theme.font-sm;
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
 // Thin progress track with an accent fill. Optionally seekable.
 export component ProgressBar inherits Rectangle {
     in property <float> value;

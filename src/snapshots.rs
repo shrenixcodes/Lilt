@@ -15,7 +15,7 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, PremultipliedRgb
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, PhysicalSize, PlatformError};
 
-use crate::ui::{AppState, Island, MediaAvailability, MediaInfo, Page, SystemInfo, Theme};
+use crate::ui::{AgendaEntry, AppState, CalendarState, Island, MediaAvailability, MediaInfo, Page, SystemInfo, Theme};
 
 /// Desktop-like backdrop the transparent island is composited onto.
 const BACKDROP: [u8; 3] = [214, 219, 228];
@@ -249,4 +249,36 @@ fn system_tile_and_page_render_readings() {
     let page = h.render();
     save(&page, "expanded-system-page");
     assert_ne!(dashboard.as_raw(), page.as_raw());
+}
+
+fn entry(day: &str, time: &str, title: &str, now: bool) -> AgendaEntry {
+    AgendaEntry { title: title.into(), location: "".into(), day: day.into(), time: time.into(), now }
+}
+
+#[test]
+fn calendar_tile_and_agenda_render_events() {
+    let h = Harness::new(1.0);
+    h.state().set_calendar_state(CalendarState::Ready);
+    h.state().set_calendar_source("work.ics".into());
+    h.state().set_agenda(slint::ModelRc::new(slint::VecModel::from(vec![
+        entry("Today", "14:00 – 14:30", "Design review", true),
+        entry("Tomorrow", "09:00 – 09:15", "Standup", false),
+        entry("Mon 16", "All day", "Release day", false),
+    ])));
+    h.state().set_expanded(true);
+    let dashboard = h.render();
+    save(&dashboard, "expanded-calendar-tile");
+    h.state().set_page(Page::Calendar);
+    let agenda = h.render();
+    save(&agenda, "expanded-agenda");
+    assert_ne!(dashboard.as_raw(), agenda.as_raw());
+}
+
+#[test]
+fn agenda_without_calendar_explains_itself() {
+    let h = Harness::new(1.0);
+    h.state().set_expanded(true);
+    h.state().set_page(Page::Calendar);
+    let image = h.render();
+    save(&image, "expanded-agenda-empty");
 }

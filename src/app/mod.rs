@@ -1,6 +1,7 @@
 //! Application controller: owns the island and tray, and keeps the island placed and
 //! visible according to the displays and the foreground application.
 
+mod calendar;
 mod media;
 mod system;
 
@@ -10,6 +11,7 @@ use std::time::Duration;
 
 use slint::ComponentHandle;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows::Win32::UI::Shell::{
     ABM_NEW, ABM_REMOVE, ABN_FULLSCREENAPP, APPBARDATA, QUNS_BUSY, QUNS_PRESENTATION_MODE,
@@ -21,6 +23,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
+use crate::calendar::{CalendarFile, WindowsZones};
 use crate::clock;
 use crate::media::{MediaService, MediaState};
 use crate::system::{SamplingPolicy, SystemMonitor};
@@ -77,6 +80,8 @@ pub struct App {
     network_timer: slint::Timer,
     /// Lengthens sampling intervals and disables non-essential effects.
     low_power: Cell<bool>,
+    calendar: RefCell<Option<CalendarFile>>,
+    zones: WindowsZones,
 }
 
 thread_local! {
@@ -117,6 +122,8 @@ impl Drop for AppBar {
 }
 
 pub fn run() -> Result<(), slint::PlatformError> {
+    // Shell dialogs (the calendar file picker) require a single-threaded apartment.
+    let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
     window::install()?;
     window::create_next_as(WindowKind::Island);
     let island = Island::new()?;
@@ -147,10 +154,13 @@ pub fn run() -> Result<(), slint::PlatformError> {
         memory_timer: slint::Timer::default(),
         network_timer: slint::Timer::default(),
         low_power: Cell::new(false),
+        calendar: RefCell::new(None),
+        zones: WindowsZones::default(),
     });
     CURRENT.with(|c| *c.borrow_mut() = Rc::downgrade(&app));
     App::connect(&app);
     App::connect_media(&app);
+    App::connect_calendar(&app);
     App::refresh_clock(&app);
     app.tray.set_light_taskbar(light_taskbar());
 
@@ -263,6 +273,7 @@ impl App {
         app.collapse_timer.stop();
         App::update_progress_timer(app);
         App::update_sampling(app);
+        app.refresh_agenda();
         let native = window::find(app.island.window());
         if expanded {
             // Taking the focus lets Escape close the island and a click elsewhere
@@ -328,6 +339,7 @@ impl App {
         state.set_time(text.time.into());
         state.set_weekday(text.weekday.into());
         state.set_date(text.date.into());
+        app.refresh_agenda();
 
         let weak = Rc::downgrade(app);
         let wait = Duration::from_millis(clock::millis_to_next_minute() + 20);
