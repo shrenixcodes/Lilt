@@ -1,7 +1,9 @@
 import { Theme } from "theme.slint";
+import { Page } from "types.slint";
 import { AppState } from "state.slint";
 import { Tile } from "components/controls.slint";
 import { MediaPlayer } from "media-player.slint";
+import { SystemTile, SystemPage } from "system-monitor.slint";
 
 component ClockTile inherits Tile {
     label: "Date and time";
@@ -28,7 +30,7 @@ component ClockTile inherits Tile {
 
 // Content of the expanded island.
 export component ExpandedView inherits Rectangle {
-    VerticalLayout {
+    if AppState.page == Page.dashboard: VerticalLayout {
         padding: Theme.padding;
         spacing: 10px;
 
@@ -43,6 +45,22 @@ export component ExpandedView inherits Rectangle {
             ClockTile {
                 horizontal-stretch: 1;
             }
+
+            SystemTile {
+                horizontal-stretch: 1;
+                info: AppState.system;
+                clicked => {
+                    AppState.page = Page.system;
+                }
+            }
+        }
+    }
+
+    if AppState.page == Page.system: SystemPage {
+        padding: Theme.padding;
+        info: AppState.system;
+        back => {
+            AppState.page = Page.dashboard;
         }
     }
 }

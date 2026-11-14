@@ -1,10 +1,11 @@
 // Data types shared between Rust and the UI.
 
 export enum MediaAvailability {
+    // No application currently exposes a media session. Also the state before the
+    // first update arrives.
+    idle,
     // The Windows media session API could not be used.
     unavailable,
-    // No application currently exposes a media session.
-    idle,
     active,
 }
 
@@ -22,6 +23,20 @@ export struct MediaInfo {
     session-count: int,
 }
 
+export struct SystemInfo {
+    ready: bool,
+    // 0..1
+    cpu: float,
+    cpu-text: string,
+    // 0..1
+    memory: float,
+    memory-text: string,
+    memory-detail: string,
+    down-text: string,
+    up-text: string,
+}
+
 export enum Page {
     dashboard,
+    system,
 }

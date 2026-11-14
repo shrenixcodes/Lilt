@@ -1,4 +1,4 @@
-import { MediaInfo, Page } from "types.slint";
+import { MediaInfo, Page, SystemInfo } from "types.slint";
 
 // Data published by the Rust side. Views read from here instead of receiving every
 // value through a chain of component properties.
@@ -21,6 +21,9 @@ export global AppState {
     in property <string> duration-text;
     // A short-lived banner after the track changes.
     in property <bool> activity;
+
+    // System readings, sampled only while the expanded island is visible.
+    in property <SystemInfo> system;
 
     // Set by Rust; the island only requests changes through AppActions.
     in property <bool> expanded;

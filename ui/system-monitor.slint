@@ -1,0 +1,183 @@
+import { Theme } from "theme.slint";
+import { SystemInfo } from "types.slint";
+import { Icon, Icons } from "components/icon.slint";
+import { Tile, Meter } from "components/controls.slint";
+import { PageHeader } from "components/page.slint";
+
+component MeterRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <float> value;
+    in property <string> value-text;
+    spacing: 8px;
+    height: 16px;
+
+    Text {
+        width: 26px;
+        vertical-alignment: center;
+        text: root.label;
+        color: Theme.text-tertiary;
+        font-size: Theme.font-xs;
+        font-weight: 600;
+    }
+
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 1;
+        Meter { value: root.value; }
+    }
+
+    Text {
+        width: 30px;
+        vertical-alignment: center;
+        horizontal-alignment: right;
+        text: root.value-text;
+        color: Theme.text-secondary;
+        font-size: Theme.font-xs;
+    }
+}
+
+component Rate inherits HorizontalLayout {
+    in property <string> icon;
+    in property <string> text;
+    spacing: 3px;
+
+    VerticalLayout {
+        alignment: center;
+        Icon {
+            data: root.icon;
+            size: 11px;
+            color: Theme.text-tertiary;
+        }
+    }
+
+    Text {
+        vertical-alignment: center;
+        text: root.text;
+        color: Theme.text-secondary;
+        font-size: Theme.font-xs;
+        overflow: elide;
+    }
+}
+
+export component SystemTile inherits Tile {
+    in property <SystemInfo> info;
+    interactive: true;
+    label: "System monitor";
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 7px;
+        alignment: center;
+
+        MeterRow {
+            label: "CPU";
+            value: root.info.cpu;
+            value-text: root.info.ready ? root.info.cpu-text : "–";
+        }
+
+        MeterRow {
+            label: "RAM";
+            value: root.info.memory;
+            value-text: root.info.ready ? root.info.memory-text : "–";
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            height: 16px;
+            Rate { icon: Icons.down; text: root.info.ready ? root.info.down-text : "–"; }
+            Rate { icon: Icons.up; text: root.info.ready ? root.info.up-text : "–"; }
+        }
+    }
+}
+
+component Stat inherits VerticalLayout {
+    in property <string> icon;
+    in property <string> label;
+    in property <string> value;
+    in property <string> detail;
+    in property <float> meter: -1;
+    spacing: 4px;
+    alignment: start;
+
+    HorizontalLayout {
+        spacing: 6px;
+        VerticalLayout {
+            alignment: center;
+            Icon { data: root.icon; size: 13px; color: Theme.text-tertiary; }
+        }
+        Text {
+            vertical-alignment: center;
+            text: root.label;
+            color: Theme.text-tertiary;
+            font-size: Theme.font-xs;
+            font-weight: 600;
+        }
+    }
+
+    Text {
+        text: root.value;
+        color: Theme.text;
+        font-size: Theme.font-xl;
+        font-weight: 600;
+    }
+
+    if root.meter >= 0 : Meter { value: root.meter; }
+    // Keeps rows aligned with the stats that have a meter.
+    if root.meter < 0 : Rectangle { height: 4px; }
+
+    Text {
+        text: root.detail;
+        color: Theme.text-secondary;
+        font-size: Theme.font-xs;
+        overflow: elide;
+    }
+}
+
+export component SystemPage inherits VerticalLayout {
+    in property <SystemInfo> info;
+    callback back();
+    spacing: 10px;
+
+    PageHeader {
+        title: "System";
+        back => { root.back(); }
+    }
+
+    VerticalLayout {
+        vertical-stretch: 1;
+        alignment: center;
+
+        HorizontalLayout {
+        spacing: 18px;
+
+        Stat {
+            icon: Icons.cpu;
+            label: "PROCESSOR";
+            value: root.info.ready ? root.info.cpu-text : "–";
+            meter: root.info.cpu;
+            detail: "Total CPU load";
+        }
+
+        Stat {
+            icon: Icons.memory;
+            label: "MEMORY";
+            value: root.info.ready ? root.info.memory-text : "–";
+            meter: root.info.memory;
+            detail: root.info.memory-detail;
+        }
+
+        Stat {
+            icon: Icons.wifi;
+            label: "NETWORK";
+            value: root.info.ready ? root.info.down-text : "–";
+            detail: root.info.ready ? "Up " + root.info.up-text : "";
+        }
+    }
+    }
+
+    Text {
+        text: "Readings are only collected while the island is expanded.";
+        color: Theme.text-tertiary;
+        font-size: Theme.font-xs;
+    }
+}

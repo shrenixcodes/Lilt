@@ -1,0 +1,30 @@
+import { Theme } from "../theme.slint";
+import { Icons } from "icon.slint";
+import { IconButton } from "controls.slint";
+
+// Title row of a detail page, with a back button. Extra controls go on the right.
+export component PageHeader inherits HorizontalLayout {
+    in property <string> title;
+    callback back();
+    spacing: 6px;
+    height: 30px;
+
+    IconButton {
+        icon: Icons.back;
+        tooltip: "Back";
+        clicked => {
+            root.back();
+        }
+    }
+
+    Text {
+        horizontal-stretch: 1;
+        vertical-alignment: center;
+        text: root.title;
+        color: Theme.text;
+        font-size: Theme.font-lg;
+        font-weight: 600;
+    }
+
+    @children
+}

@@ -12,6 +12,7 @@ mod media;
 mod paths;
 #[cfg(test)]
 mod snapshots;
+mod system;
 mod window;
 
 mod ui {

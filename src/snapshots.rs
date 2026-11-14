@@ -15,7 +15,7 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, PremultipliedRgb
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, PhysicalSize, PlatformError};
 
-use crate::ui::{AppState, Island, MediaAvailability, MediaInfo, Theme};
+use crate::ui::{AppState, Island, MediaAvailability, MediaInfo, Page, SystemInfo, Theme};
 
 /// Desktop-like backdrop the transparent island is composited onto.
 const BACKDROP: [u8; 3] = [214, 219, 228];
@@ -216,4 +216,37 @@ fn ambient_effects_can_be_disabled() {
     let plain = ambient_scene(0.0);
     let glow = plain.get_pixel(10 + 14 + 72 + 6, 64);
     assert!(glow[2].abs_diff(glow[0]) <= 3, "no tint expected: {glow:?}");
+}
+
+fn readings() -> SystemInfo {
+    SystemInfo {
+        ready: true,
+        cpu: 0.23,
+        cpu_text: "23%".into(),
+        memory: 0.61,
+        memory_text: "61%".into(),
+        memory_detail: "4.7 GB of 7.7 GB in use".into(),
+        down_text: "1.4 MB/s".into(),
+        up_text: "86 KB/s".into(),
+    }
+}
+
+#[test]
+fn system_tile_and_page_render_readings() {
+    let h = Harness::new(1.0);
+    h.state().set_system(readings());
+    h.state().set_expanded(true);
+    let dashboard = h.render();
+    save(&dashboard, "expanded-system-tile");
+    // The CPU and RAM meter fills (accent) inside the system tile, on the right half.
+    let lit = (140..190)
+        .flat_map(|y| (240..440).map(move |x| (x, y)))
+        .filter(|&(x, y)| dashboard.get_pixel(x, y)[0] > 200)
+        .count();
+    assert!(lit > 10, "meter fill expected, found {lit} lit pixels");
+
+    h.state().set_page(Page::System);
+    let page = h.render();
+    save(&page, "expanded-system-page");
+    assert_ne!(dashboard.as_raw(), page.as_raw());
 }

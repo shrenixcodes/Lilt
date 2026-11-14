@@ -2,6 +2,7 @@
 //! visible according to the displays and the foreground application.
 
 mod media;
+mod system;
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -22,6 +23,7 @@ use windows::core::w;
 
 use crate::clock;
 use crate::media::{MediaService, MediaState};
+use crate::system::{SamplingPolicy, SystemMonitor};
 use crate::ui::{AppActions, AppState, Island, Tray};
 use crate::window::{self, Notice, WindowKind, placement};
 
@@ -68,6 +70,13 @@ pub struct App {
     media_ready: Cell<bool>,
     activity_timer: slint::Timer,
     progress_timer: slint::Timer,
+    system_monitor: RefCell<Option<SystemMonitor>>,
+    sampling: Cell<SamplingPolicy>,
+    cpu_timer: slint::Timer,
+    memory_timer: slint::Timer,
+    network_timer: slint::Timer,
+    /// Lengthens sampling intervals and disables non-essential effects.
+    low_power: Cell<bool>,
 }
 
 thread_local! {
@@ -130,6 +139,14 @@ pub fn run() -> Result<(), slint::PlatformError> {
         media_ready: Cell::new(false),
         activity_timer: slint::Timer::default(),
         progress_timer: slint::Timer::default(),
+        system_monitor: RefCell::new(
+            SystemMonitor::new().map_err(|err| tracing::warn!(%err, "system readings unavailable")).ok(),
+        ),
+        sampling: Cell::new(SamplingPolicy::OFF),
+        cpu_timer: slint::Timer::default(),
+        memory_timer: slint::Timer::default(),
+        network_timer: slint::Timer::default(),
+        low_power: Cell::new(false),
     });
     CURRENT.with(|c| *c.borrow_mut() = Rc::downgrade(&app));
     App::connect(&app);
@@ -245,6 +262,7 @@ impl App {
         state.set_activity(false);
         app.collapse_timer.stop();
         App::update_progress_timer(app);
+        App::update_sampling(app);
         let native = window::find(app.island.window());
         if expanded {
             // Taking the focus lets Escape close the island and a click elsewhere
@@ -299,6 +317,7 @@ impl App {
             app.place();
         }
         App::update_progress_timer(app);
+        App::update_sampling(app);
     }
 
     /// Updates the clock text and schedules the next update for the start of the next
