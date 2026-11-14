@@ -51,6 +51,21 @@ impl App {
                 app.activity_timer.stop();
                 state.set_activity(false);
                 state.set_media(MediaInfo { availability, ..Default::default() });
+                state.set_has_artwork(false);
+                state.set_artwork(slint::Image::default());
+            }
+            MediaUpdate::Artwork(Some(artwork)) => {
+                let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                    &artwork.pixels,
+                    artwork.width,
+                    artwork.height,
+                );
+                state.set_artwork(slint::Image::from_rgba8(buffer));
+                state.set_has_artwork(true);
+            }
+            MediaUpdate::Artwork(None) => {
+                state.set_has_artwork(false);
+                state.set_artwork(slint::Image::default());
             }
             MediaUpdate::State(media) => {
                 let track = (media.source_id.clone(), media.title.clone(), media.artist.clone());

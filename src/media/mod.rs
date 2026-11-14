@@ -14,6 +14,8 @@ use std::time::Duration;
 
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize};
 
+use crate::artwork::{Artwork, ArtworkCache};
+
 pub use session::{MediaState, PlaybackStatus};
 
 /// Media applications often raise several change events for a single track change
@@ -40,6 +42,8 @@ pub enum MediaUpdate {
     /// No media session exists.
     Idle,
     State(MediaState),
+    /// Artwork for the current track; `None` when the source provides none.
+    Artwork(Option<Artwork>),
 }
 
 pub(crate) enum Message {
@@ -127,7 +131,10 @@ fn work(receiver: &Receiver<Message>, events: Sender<Message>, publish: &impl Fn
             return;
         }
     };
+    let mut artwork = ArtworkCache::default();
     let mut last_state: Option<MediaState> = None;
+    // Track whose artwork was last published, and whether it had any.
+    let mut last_artwork: Option<(session::ArtworkKey, bool)> = None;
     let mut idle_published = false;
 
     let mut pending = Pending { sessions: true, ..Pending::default() };
@@ -152,12 +159,26 @@ fn work(receiver: &Receiver<Message>, events: Sender<Message>, publish: &impl Fn
             None => {
                 if !idle_published {
                     last_state = None;
+                    last_artwork = None;
                     idle_published = true;
                     publish(MediaUpdate::Idle);
                 }
             }
             Some(state) => {
                 idle_published = false;
+                let key = session::ArtworkKey::of(&state);
+                let new_track = last_artwork.as_ref().is_none_or(|(k, _)| *k != key);
+                // Some players attach artwork a moment after the title, so a track without
+                // artwork is retried when its properties change again.
+                let retry = !new_track && pending.properties && last_artwork.as_ref().is_some_and(|(_, found)| !found);
+                if new_track || retry {
+                    let image = tracker.read_thumbnail().and_then(|bytes| artwork.process(&bytes));
+                    let found = image.is_some();
+                    if new_track || found {
+                        publish(MediaUpdate::Artwork(image));
+                    }
+                    last_artwork = Some((key, found));
+                }
                 if last_state.as_ref() != Some(&state) {
                     last_state = Some(state.clone());
                     publish(MediaUpdate::State(state));

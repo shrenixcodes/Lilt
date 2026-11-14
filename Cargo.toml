@@ -9,6 +9,7 @@ repository = "https://github.com/shrenixcodes/Lilt"
 publish = false
 
 [dependencies]
+image = { version = "0.25", default-features = false, features = ["bmp", "jpeg", "png"] }
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-software", "software-renderer-systemfonts", "system-tray"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
@@ -19,6 +20,7 @@ features = [
     "Foundation",
     "Foundation_Collections",
     "Media_Control",
+    "Storage_Streams",
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_Globalization",

@@ -8,10 +8,14 @@ use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSession as Session, GlobalSystemMediaTransportControlsSessionManager as Manager,
     GlobalSystemMediaTransportControlsSessionPlaybackStatus as Status,
 };
+use windows::Storage::Streams::{DataReader, IRandomAccessStreamReference};
 use windows::Win32::System::SystemInformation::GetSystemTimePreciseAsFileTime;
 use windows::core::{HSTRING, Result};
 
 use super::{Command, Message};
+
+/// Thumbnails larger than this are ignored; real album art is far smaller.
+const MAX_THUMBNAIL_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlaybackStatus {
@@ -63,10 +67,31 @@ pub struct MediaState {
     pub session_count: usize,
 }
 
+/// Identifies the artwork of a track without reading the thumbnail stream.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArtworkKey {
+    source: String,
+    title: String,
+    artist: String,
+    album: String,
+}
+
+impl ArtworkKey {
+    pub fn of(state: &MediaState) -> Self {
+        Self {
+            source: state.source_id.clone(),
+            title: state.title.clone(),
+            artist: state.artist.clone(),
+            album: state.album.clone(),
+        }
+    }
+}
+
 struct Properties {
     title: String,
     artist: String,
     album: String,
+    thumbnail: Option<IRandomAccessStreamReference>,
 }
 
 struct Subscription {
@@ -285,6 +310,18 @@ impl Tracker {
         })
     }
 
+    /// Encoded thumbnail bytes of the current track, if the source provides one.
+    pub fn read_thumbnail(&self) -> Option<Vec<u8>> {
+        let reference = self.properties.as_ref()?.thumbnail.as_ref()?;
+        match read_stream(reference) {
+            Ok(bytes) => Some(bytes),
+            Err(err) => {
+                tracing::debug!(%err, "thumbnail unavailable");
+                None
+            }
+        }
+    }
+
     pub fn execute(&mut self, command: Command) -> Result<()> {
         if let Command::CycleSession = command {
             let sessions = self.sessions();
@@ -373,6 +410,7 @@ fn read_properties(session: &Session) -> Result<Properties> {
         title: text(p.Title()),
         artist: if artist.is_empty() { text(p.AlbumArtist()) } else { artist },
         album: text(p.AlbumTitle()),
+        thumbnail: p.Thumbnail().ok(),
     })
 }
 
@@ -400,6 +438,19 @@ fn read_timeline(session: &Session, rate: f64) -> Option<Timeline> {
         }
     }
     Some(Timeline { position: position.min(duration), duration, sampled_at: Instant::now(), rate })
+}
+
+fn read_stream(reference: &IRandomAccessStreamReference) -> Result<Vec<u8>> {
+    let stream = reference.OpenReadAsync()?.join()?;
+    let size = stream.Size()?;
+    if size == 0 || size > MAX_THUMBNAIL_BYTES {
+        return Err(windows::core::Error::from(windows::Win32::Foundation::E_UNEXPECTED));
+    }
+    let reader = DataReader::CreateDataReader(&stream)?;
+    let loaded = reader.LoadAsync(size as u32)?.join()?;
+    let mut bytes = vec![0u8; loaded as usize];
+    reader.ReadBytes(&mut bytes)?;
+    Ok(bytes)
 }
 
 /// Derives a readable application name from an application user model ID.

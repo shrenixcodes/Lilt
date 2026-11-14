@@ -1,15 +1,26 @@
 import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
 import { Icon, Icons } from "components/icon.slint";
 
-// Square tile that holds album artwork.
+// Square tile with the current album artwork, or a neutral placeholder. The artwork
+// arrives with rounded corners already applied, because the software renderer clips
+// children to rectangles only.
 export component ArtworkTile inherits Rectangle {
     in property <length> size: 24px;
     width: size;
     height: size;
     border-radius: size * 0.19;
-    background: Theme.tile-hover;
+    background: AppState.has-artwork ? transparent : Theme.tile-hover;
 
-    Icon {
+    if AppState.has-artwork: Image {
+        width: root.size;
+        height: root.size;
+        source: AppState.artwork;
+        image-fit: cover;
+        image-rendering: smooth;
+    }
+
+    if !AppState.has-artwork: Icon {
         data: Icons.disc;
         size: root.size * 0.42;
         color: Theme.text-tertiary;
