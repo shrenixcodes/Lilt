@@ -1,10 +1,15 @@
-//! Liquid Glass's tint follows what is behind the island: clear over dark content and
-//! only as dense as legible text requires over bright content.
+//! The glass appearances' blur, and Liquid Glass's tint, follow what is behind the island.
 //!
-//! The backdrop is sampled when it may have changed: when the island appears, opens,
-//! closes or moves, shortly after another window comes to the front, finishes moving,
-//! scrolling or being restored, and every few seconds while the island is open. Nothing
-//! is sampled for Midnight, Smoked Glass or frosted glass.
+//! The desktop behind the island window is read, blurred as much as the transparency
+//! setting asks (none for clear glass; see [`crate::window::sample`]) and drawn beneath
+//! the glass surfaces by the window itself; Liquid Glass also bends it along its edges.
+//! The tint is set from it too: as clear as chosen over dark content and only as dense as
+//! legible text requires over bright content.
+//!
+//! The backdrop is read when it may have changed: when the island appears, opens, closes
+//! or moves, shortly after another window comes to the front, finishes moving, scrolling
+//! or being restored, and every few seconds while the island is open. Nothing is read for
+//! Midnight or for frosted glass.
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -20,7 +25,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use super::{App, CURRENT};
 use crate::ambient::Rgb;
-use crate::appearance::{GlassText, Layer, legible_alpha};
+use crate::appearance::{
+    GlassText, LIQUID_REFRACTION, Layer, blur_radius, contrast_targets, legible_alpha, preferred_alpha,
+};
+use crate::settings::AppearanceMode;
 use crate::ui::{Appearance, Theme};
 use crate::window;
 
@@ -34,6 +42,8 @@ const STEP: f32 = 0.02;
 #[derive(Default)]
 pub(super) struct GlassSampler {
     hook: Cell<Option<HWINEVENTHOOK>>,
+    /// The brightest colour behind the island at the last reading.
+    backdrop: Cell<Option<Rgb>>,
     soon: slint::Timer,
     repeat: slint::Timer,
 }
@@ -62,10 +72,10 @@ unsafe extern "system" fn window_changed(
 }
 
 impl App {
-    /// Whether the island's tint follows the backdrop now.
+    /// Whether the glass shows the blurred backdrop now.
     fn glass_follows_backdrop(&self) -> bool {
         let theme = self.island.global::<Theme>();
-        theme.get_appearance() == Appearance::LiquidGlass && theme.get_live_blur() && self.island_visible()
+        theme.get_appearance() != Appearance::Midnight && theme.get_live_blur() && self.island_visible()
     }
 
     /// Starts or stops sampling for the current appearance, visibility and state. Called
@@ -94,9 +104,9 @@ impl App {
             };
             sampler.hook.set((!hook.is_invalid()).then_some(hook));
         }
-        // Once the island has finished changing shape.
-        let duration = app.island.global::<Theme>().get_resize_duration();
-        App::sample_glass_soon(app, Duration::from_millis(duration.max(0) as u64) + Duration::from_millis(40));
+        // The whole window is read, so its shape does not matter; what lies behind may
+        // just have been uncovered, though.
+        App::sample_glass_soon(app, Duration::from_millis(40));
         if app.expanded() {
             let weak = Rc::downgrade(app);
             sampler.repeat.start(slint::TimerMode::Repeated, OPEN_INTERVAL, move || {
@@ -122,15 +132,38 @@ impl App {
         });
     }
 
-    /// Sets the tint for the brightest colour behind the island.
+    /// Reads the desktop behind the island, as blurred as the transparency setting asks,
+    /// and sets the tint for its brightest text-sized area.
     fn sample_glass(&self) {
         if !self.glass_follows_backdrop() {
             return;
         }
-        let Some(area) = window::find(self.island.window()).and_then(|native| native.glass_area()) else { return };
-        let Some(backdrop) = window::sample::brightest_behind(area) else { return };
+        let Some(native) = window::find(self.island.window()) else { return };
+        let scale = self.island.window().scale_factor();
+        let transparency = self.settings.borrow().appearance.glass_transparency;
+        let blur = blur_radius(transparency) * scale;
+        let (Some(area), Some(own)) = (native.screen_rect(), native.hwnd()) else { return };
+        let Some(backdrop) = window::sample::backdrop_behind(area, blur, own) else { return };
+        let brightest = backdrop.brightest_area((16.0 * scale).round() as usize);
+        self.glass.backdrop.set(brightest.map(|[r, g, b]| Rgb::new(r, g, b)));
+        let liquid = self.island.global::<Theme>().get_appearance() == Appearance::LiquidGlass;
+        native.set_backdrop(backdrop, if liquid { LIQUID_REFRACTION } else { 0.0 });
+        self.apply_glass_tint();
+    }
+
+    /// Sets the active glass appearance's tint from the transparency setting, darkened as
+    /// far as the last backdrop requires for legible text.
+    pub(super) fn apply_glass_tint(&self) {
         let theme = self.island.global::<Theme>();
-        let tokens = theme.get_liquid_glass();
+        let mode = match theme.get_appearance() {
+            Appearance::SmokedGlass => AppearanceMode::SmokedGlass,
+            Appearance::LiquidGlass => AppearanceMode::LiquidGlass,
+            _ => return,
+        };
+        let transparency = self.settings.borrow().appearance.glass_transparency;
+        let floor = preferred_alpha(mode, transparency);
+        let tokens =
+            if mode == AppearanceMode::SmokedGlass { theme.get_smoked_glass() } else { theme.get_liquid_glass() };
         let tile = tokens.tile;
         let glass = GlassText {
             tint: colour(tokens.blurred_surface),
@@ -139,10 +172,21 @@ impl App {
             secondary: colour(tokens.text_secondary),
             tertiary: colour(tokens.text_tertiary),
         };
-        let alpha = legible_alpha(&glass, backdrop);
-        if (alpha - theme.get_glass_alpha()).abs() >= STEP {
-            tracing::debug!(?backdrop, alpha, "glass tint follows the backdrop");
-            theme.set_glass_alpha(alpha);
+        let alpha = match self.glass.backdrop.get() {
+            Some(backdrop) if theme.get_live_blur() => {
+                legible_alpha(&glass, backdrop, floor, contrast_targets(transparency))
+            }
+            _ => floor,
+        };
+        let current =
+            if mode == AppearanceMode::SmokedGlass { theme.get_smoked_alpha() } else { theme.get_glass_alpha() };
+        if (alpha - current).abs() >= STEP || alpha == floor {
+            tracing::debug!(?mode, alpha, "glass tint");
+            if mode == AppearanceMode::SmokedGlass {
+                theme.set_smoked_alpha(alpha);
+            } else {
+                theme.set_glass_alpha(alpha);
+            }
         }
     }
 }

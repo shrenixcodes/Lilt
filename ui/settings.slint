@@ -9,6 +9,8 @@ export struct SettingsData {
     // 0 = Midnight, 1 = Smoked Glass, 2 = Liquid Glass
     appearance: int,
     reduce-transparency: bool,
+    // 0..100; 50 is each glass appearance as designed.
+    glass-transparency: int,
     auto-collapse: bool,
     auto-collapse-seconds: int,
     collapse-on-outside-click: bool,
@@ -579,6 +581,15 @@ export component SettingsWindow inherits Window {
                             checked: root.data.reduce-transparency;
                             toggled => { root.data.reduce-transparency = self.checked; root.edited(); }
                         }
+                    }
+                    if root.data.appearance >= 1 && !root.data.reduce-transparency : SliderRow {
+                        label: "Glass transparency";
+                        description: "From a heavy blur at 0 % to clear glass at 100 %.";
+                        value: root.data.glass-transparency;
+                        minimum: 0;
+                        maximum: 100;
+                        unit: "%";
+                        edited(v) => { root.data.glass-transparency = v; root.edited(); }
                     }
                     SliderRow {
                         label: "Compact width";

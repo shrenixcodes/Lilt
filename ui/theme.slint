@@ -126,10 +126,10 @@ export global Theme {
         // Dense enough to stay legible over any wallpaper without a blur.
         surface: #18181eeb,
         surface-hover: #1e1e25ed,
-        // Over the blur the desktop's colour shows through as smoked glass, while text
-        // keeps at least 4.5:1 contrast even over a white window.
-        blurred-surface: #13131ad6,
-        blurred-surface-hover: #191921da,
+        // Over the blur the desktop's colour shows through as smoked glass. At the default
+        // opacity text keeps at least 4.5:1 contrast even over a white window.
+        blurred-surface: #13131a.with-alpha(smoked-alpha),
+        blurred-surface-hover: #191921.with-alpha(min(1, smoked-alpha + 0.016)),
         tile: #ffffff0f,
         tile-hover: #ffffff18,
         control-hover: #ffffff1a,
@@ -170,11 +170,12 @@ export global Theme {
         card-border: #ffffff1a,
     };
 
-    // How opaque Liquid Glass's tint is over the live blur, 0..1. The application sets it
-    // from the brightness of the desktop behind the island: low over dark content, so the
-    // desktop's colour shows through, and only as high as text legibility requires over
-    // bright content.
+    // How opaque the glass tints are over the live blur, 0..1. The application sets them
+    // from the transparency setting and the brightness of the desktop behind the island:
+    // as clear as chosen over dark content, and only as dense as text legibility requires
+    // over bright content.
     in-out property <float> glass-alpha: 0.5;
+    in-out property <float> smoked-alpha: 0.84;
 
     out property <AppearanceTokens> liquid-glass: {
         // Without a blur, sharp content would show through, so the frosted surface stays

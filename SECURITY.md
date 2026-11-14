@@ -22,10 +22,10 @@ Lilt works entirely on your PC.
   island is visible and are not recorded.
 - **Calendar files** you import are read from the location you chose; Lilt stores only
   the path. Events are not copied elsewhere.
-- **Liquid Glass** reads the screen behind the island to choose how dark its tint must
-  be. The area is reduced at once to 64 average colours, of which only the brightest is
-  used to compute an opacity; no image is kept, written or sent. Other appearances never
-  read the screen.
+- **The glass appearances** read the screen behind the island to draw their backdrop
+  and choose how dark their tint must be: reduced and blurred for blurred glass, at
+  full resolution for clear glass. The image is kept in memory only to draw the glass
+  and is never written or sent. Midnight and frosted glass never read the screen.
 
 ## Files and registry entries
 

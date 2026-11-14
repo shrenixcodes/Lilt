@@ -23,7 +23,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{HSTRING, w};
 
-use super::backdrop::{Backdrop, Shape};
+use super::glass::{Backdrop, Shape};
 use super::input;
 use super::surface::Surface;
 
@@ -69,7 +69,11 @@ pub struct Win32Window {
     drag_top: Cell<Option<i32>>,
     notice: RefCell<Option<NoticeHandler>>,
     /// The live blur beneath the island (Liquid Glass).
+    /// The glass backdrop: whether it is on, the desktop behind the window and how much
+    /// it bends along the glass's edges.
+    glass: Cell<bool>,
     backdrop: RefCell<Option<Backdrop>>,
+    refraction: Cell<f32>,
     /// The outlines of the island's surfaces in logical pixels, read after each frame for
     /// the backdrop.
     shape_source: RefCell<Option<ShapeSource>>,
@@ -101,9 +105,25 @@ pub fn find(window: &slint::Window) -> Option<Rc<Win32Window>> {
     all().into_iter().find(|w| std::ptr::eq(&w.window, window))
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Stands in for the system DPI scale in tests, to exercise other display scalings.
+    pub(crate) static TEST_SCALE: Cell<Option<f32>> = const { Cell::new(None) };
+}
+
+/// The scale of the system's DPI: what a new window starts with until it knows its
+/// monitor.
+fn system_scale() -> f32 {
+    #[cfg(test)]
+    if let Some(scale) = TEST_SCALE.with(Cell::get) {
+        return scale;
+    }
+    unsafe { GetDpiForSystem() as f32 / 96.0 }
+}
+
 impl Win32Window {
     pub fn new(kind: WindowKind) -> Rc<Self> {
-        let scale = unsafe { GetDpiForSystem() } as f32 / 96.0;
+        let scale = system_scale();
         let window = Rc::new_cyclic(|weak: &Weak<Self>| Self {
             window: slint::Window::new(weak.clone() as Weak<dyn WindowAdapter>),
             renderer: SoftwareRenderer::new_with_repaint_buffer_type(RepaintBufferType::ReusedBuffer),
@@ -119,11 +139,18 @@ impl Win32Window {
             last_pointer: Cell::new(LogicalPosition::default()),
             drag_top: Cell::new(None),
             notice: RefCell::new(None),
+            glass: Cell::new(false),
             backdrop: RefCell::new(None),
+            refraction: Cell::new(0.0),
             shape_source: RefCell::new(None),
             system_backdrop: Cell::new(false),
         });
         WINDOWS.with(|w| w.borrow_mut().push(Rc::downgrade(&window)));
+        // Slint draws at a scale of 1 until told otherwise. Without this, at any display
+        // scaling other than 100 % Slint would draw at 100 % while sizes, positions and
+        // pointer coordinates here are converted at the real scale, so clicks would land
+        // on the wrong controls.
+        window.window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: scale });
         window
     }
 
@@ -147,47 +174,48 @@ impl Win32Window {
             .collect()
     }
 
-    /// The screen rectangle covered by the window's glass shapes (the island and the
-    /// tasks box), in physical pixels.
-    pub fn glass_area(&self) -> Option<RECT> {
-        let hwnd = self.hwnd.get()?;
-        let mut window = RECT::default();
-        unsafe { GetWindowRect(hwnd, &mut window) }.ok()?;
-        let shapes = self.physical_shapes();
-        let left = shapes.iter().map(|s| s.x).reduce(f32::min)?;
-        let top = shapes.iter().map(|s| s.y).reduce(f32::min)?;
-        let right = shapes.iter().map(|s| s.x + s.width).reduce(f32::max)?;
-        let bottom = shapes.iter().map(|s| s.y + s.height).reduce(f32::max)?;
-        Some(RECT {
-            left: window.left + left.floor() as i32,
-            top: window.top + top.floor() as i32,
-            right: window.left + right.ceil() as i32,
-            bottom: window.top + bottom.ceil() as i32,
-        })
+    /// Turns the glass blur behind the island's surfaces on or off. Returns whether it is
+    /// on. The desktop itself arrives with [`Self::set_backdrop`].
+    pub fn set_glass(&self, enabled: bool) -> bool {
+        let enabled = enabled && self.kind == WindowKind::Island;
+        if self.glass.replace(enabled) != enabled {
+            self.backdrop.replace(None);
+            self.repaint_all();
+        }
+        enabled
     }
 
-    /// Turns the live blur behind the island on or off. Returns whether it is on.
-    pub fn set_live_backdrop(&self, enabled: bool) -> bool {
-        if self.kind != WindowKind::Island || !enabled {
-            self.backdrop.replace(None);
-            return false;
+    /// The native window, once created.
+    pub fn hwnd(&self) -> Option<HWND> {
+        self.hwnd.get()
+    }
+
+    /// The screen rectangle of the window, in physical pixels: what the blur must show.
+    pub fn screen_rect(&self) -> Option<RECT> {
+        let hwnd = self.hwnd.get()?;
+        let mut rect = RECT::default();
+        unsafe { GetWindowRect(hwnd, &mut rect) }.ok()?;
+        Some(rect)
+    }
+
+    /// Shows a newly read desktop behind the glass surfaces, bent along their edges by
+    /// `refraction` (0 for none).
+    pub fn set_backdrop(&self, backdrop: Backdrop, refraction: f32) {
+        let same = self.backdrop.borrow().as_ref() == Some(&backdrop) && self.refraction.get() == refraction;
+        if !self.glass.get() || same {
+            return;
         }
-        if self.backdrop.borrow().is_some() {
-            return true;
-        }
-        let Some(hwnd) = self.ensure_hwnd() else { return false };
-        match Backdrop::new() {
-            Ok(backdrop) => {
-                backdrop.set_shapes(&self.physical_shapes());
-                backdrop.follow(hwnd);
-                self.backdrop.replace(Some(backdrop));
-                true
-            }
-            Err(err) => {
-                tracing::warn!(%err, "live blur unavailable");
-                false
-            }
-        }
+        self.backdrop.replace(Some(backdrop));
+        self.refraction.set(refraction);
+        self.repaint_all();
+    }
+
+    /// Redraws the whole window on the next frame.
+    fn repaint_all(&self) {
+        self.renderer.set_repaint_buffer_type(RepaintBufferType::NewBuffer);
+        self.renderer.set_repaint_buffer_type(RepaintBufferType::ReusedBuffer);
+        self.window.request_redraw();
+        self.needs_redraw.set(true);
     }
 
     /// Shows the system acrylic behind an ordinary window. Returns whether it is shown.
@@ -368,6 +396,24 @@ impl Win32Window {
             right: origin.x + extent.width as i32,
             bottom: origin.y + extent.height as i32,
         };
+        // The glass blur, beneath what was just drawn.
+        if let Some(backdrop) = self.backdrop.borrow().as_ref() {
+            let area = (
+                dirty.left.max(0) as usize,
+                dirty.top.max(0) as usize,
+                dirty.right.max(0) as usize,
+                dirty.bottom.max(0) as usize,
+            );
+            let shapes = self.physical_shapes();
+            super::glass::compose(
+                surface.pixels(),
+                size.width as usize,
+                area,
+                &shapes,
+                backdrop,
+                self.refraction.get(),
+            );
+        }
         match self.kind {
             WindowKind::Island => surface.present_layered(hwnd, Some(dirty)),
             WindowKind::Standard => unsafe {
@@ -377,10 +423,6 @@ impl Win32Window {
             },
         }
         drop(slot);
-        // The island's outline may be animating; keep the blur beneath it in step.
-        if let Some(backdrop) = self.backdrop.borrow().as_ref() {
-            backdrop.set_shapes(&self.physical_shapes());
-        }
         true
     }
 
@@ -615,13 +657,6 @@ impl Win32Window {
                 }
                 None
             }
-            WM_WINDOWPOSCHANGED if self.kind == WindowKind::Island => {
-                // Moved, shown, hidden or re-stacked: the backdrop follows.
-                if let Some(backdrop) = self.backdrop.borrow().as_ref() {
-                    backdrop.follow(hwnd);
-                }
-                None
-            }
             WM_EXITSIZEMOVE if self.kind == WindowKind::Island => {
                 self.notify(Notice::MoveFinished);
                 Some(LRESULT(0))
@@ -719,7 +754,6 @@ impl WindowAdapter for Win32Window {
 
 impl Drop for Win32Window {
     fn drop(&mut self) {
-        self.backdrop.take();
         if let Some(hwnd) = self.hwnd.take() {
             unsafe {
                 let _ = DestroyWindow(hwnd);
@@ -756,4 +790,28 @@ pub(super) unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: W
         return result;
     }
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slint_draws_at_the_display_scale_from_the_start() {
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            TEST_SCALE.with(|s| s.set(Some(scale)));
+            for kind in [WindowKind::Island, WindowKind::Standard] {
+                let w = Win32Window::new(kind);
+                // Slint draws at the scale the pointer coordinates are converted with.
+                assert_eq!(w.window.scale_factor(), scale, "{kind:?} at {scale}");
+                assert_eq!(w.scale.get(), scale);
+                // A click on what Slint drew at logical (120, 40) arrives in physical
+                // pixels and must map back to the same logical point.
+                let (x, y) = ((120.0 * scale) as isize, (40.0 * scale) as isize);
+                let point = w.logical_point(LPARAM((y << 16) | x));
+                assert!((point.x - 120.0).abs() < 0.01 && (point.y - 40.0).abs() < 0.01, "{point:?} at {scale}");
+            }
+        }
+        TEST_SCALE.with(|s| s.set(None));
+    }
 }

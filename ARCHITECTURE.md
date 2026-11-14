@@ -56,7 +56,7 @@ media thread.
 | Path | Responsibility |
 | --- | --- |
 | `src/main.rs` | Logging, single-instance guard, start-up |
-| `src/window/` | The Slint platform: event loop, Win32 windows, input translation, monitor placement, the Liquid Glass backdrop |
+| `src/window/` | The Slint platform: event loop, Win32 windows, input translation, monitor placement, the glass blur |
 | `src/appearance.rs` | Which material the selected appearance uses on this PC |
 | `src/app/` | The controller connecting services, settings and UI (`media`, `system`, `calendar`, `preferences`) |
 | `src/media/` | Media session tracking, session selection policy and transport commands |
@@ -92,7 +92,10 @@ Slint normally renders through a windowing backend. Lilt instead implements Slin
   the global hot key, the shell's full-screen notifications, display and setting
   changes, and the "show yourself" message from a second instance.
 - **DPI.** The process is per-monitor DPI aware (manifest, with a runtime fallback).
-  `WM_DPICHANGED` updates Slint's scale factor and the window size.
+  Each window tells Slint its scale factor as soon as it is created (Slint otherwise
+  assumes 1), and again from the window's own DPI once it exists; `WM_DPICHANGED`
+  updates the scale factor and the window size. Pointer positions are converted with the
+  same scale, so what is drawn and what is hit agree at every display scaling.
 
 ## Placement
 
@@ -167,41 +170,44 @@ of the settings and the Windows environment):
 The material is re-evaluated when Windows broadcasts a colour or transparency change
 (`ImmersiveColorSet`) or a power status change.
 
-### Liquid Glass's adaptive tint
-
-Liquid Glass's tint over the live blur is `Theme.glass-alpha`, set by
-`src/app/glass.rs`. `src/window/sample.rs` reads the screen area behind the island and
-tasks box with `StretchBlt` into a 16 × 4 bitmap (halftone, so each cell is an average)
-without `CAPTUREBLT`, so layered windows, the island and its blur included, are left
-out. `appearance::legible_alpha` then picks the lightest tint, between 36 % and 86 %,
-at which primary and secondary text reach 4.5:1 and tertiary text 3:1 over the
-brightest cell, on the glass and on its tiles. The island's background animation
-cross-fades the change.
-
-Sampling happens only while Liquid Glass uses the live blur and the island is visible:
-after the island appears, opens, closes or is moved; 300 ms after another window comes
-to the front, finishes moving or scrolling, or is restored (an out-of-context
-`SetWinEventHook`, removed when not needed); after a wallpaper change; and every 3 s
-while the island is open. Nothing is kept but the resulting opacity.
-
-### The live blur
+### The glass blur
 
 DWM's materials (acrylic, Mica, the undocumented accent blur) fill a window's whole
-rectangle and ignore window regions, so they cannot follow the island's pill shape;
-this was verified with a prototype before choosing the design. Instead
-`src/window/backdrop.rs` creates a second window directly beneath the island:
+rectangle and ignore window regions, so they cannot follow the island's pill shape, and
+the host backdrop brush of Windows.UI.Composition is not drawn behind windows that never
+take the focus (an earlier version used one in a second window under the island; on
+real desktops it showed black). Lilt therefore draws the blur itself, inside the
+island's own layered window:
 
-- layered and `WS_EX_TRANSPARENT`, so it never receives input and the island's
-  transparent surroundings still let clicks through;
-- `WS_EX_NOREDIRECTIONBITMAP`, hosting one Windows.UI.Composition sprite visual whose
-  brush is the host backdrop (the desktop behind the window, blurred by DWM) and whose
-  clip is a rounded rectangle;
-- moved, shown, hidden and re-stacked with the island on every `WM_WINDOWPOSCHANGED`,
-  and given the island's current outline after every frame Lilt renders, so the clip
-  follows size animations.
+- `src/window/sample.rs` reads the screen under the island window with `StretchBlt`
+  (halftone) at a resolution that suits the blur `appearance::blur_radius` asks for
+  (40 px at 0 % transparency, 20 px at 50 %, none at 100 %): reduced up to eight times
+  in each direction for heavy blurs, full resolution for clear glass. Windows includes
+  layered windows in screen reads, so the island is excluded from capture
+  (`WDA_EXCLUDEFROMCAPTURE`) for the one compositor frame of the read (`DwmFlush`).
+  Three passes of a running-sum box blur over the image approximate a Gaussian.
+- `src/window/glass.rs` blends it, stretched bilinearly over the window, beneath the
+  translucent pixels of the island's surfaces after Slint renders each frame, only
+  inside their rounded outlines and with antialiased edges. Liquid Glass bends it within
+  a band about as wide as the corner radius: each pixel there samples further out along
+  the outline's normal, most at the edge, so the desktop is drawn in towards the edge as
+  through a thick lens. Shadows and the transparent surroundings are left alone.
+- `src/app/glass.rs` decides when to read the screen: after the island appears, opens,
+  closes or is moved; 300 ms after another window comes to the front, finishes moving or
+  scrolling, or is restored (an out-of-context `SetWinEventHook`, removed when not
+  needed); after a wallpaper change; and every 3 s while the island is open. Only that
+  image is kept, in memory.
 
-The compositor and its dispatcher queue are created on first use and kept for the life
-of the UI thread. Midnight and the frosted material never create them.
+### Tint and transparency
+
+The glass tints over the blur are `Theme.smoked-alpha` and `Theme.glass-alpha`.
+`appearance::preferred_alpha` turns the *Glass transparency* setting into an opacity
+(50 % is each appearance as designed: 84 % for Smoked Glass, 36 % for Liquid Glass), and
+`appearance::legible_alpha` raises it, up to 86 %, until the text reaches
+`appearance::contrast_targets` over the brightest 16-pixel area of the backdrop, on the
+glass and on its tiles: WCAG AA (4.5:1 for primary and secondary text, 3:1 for tertiary)
+up to 50 % transparency, easing to 2:1, 1.6:1 and 1.3:1 at 100 % so that clear glass
+stays clear. The island's background animation cross-fades the change.
 
 On Windows 11 22H2 and later the settings window uses the documented system acrylic
 (`DWMWA_SYSTEMBACKDROP_TYPE`) with its frame extended over the client area; Lilt's

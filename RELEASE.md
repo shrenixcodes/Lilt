@@ -34,8 +34,10 @@ entry.
    ```
 
 5. The **Release** workflow checks that the tag matches `Cargo.toml`, runs lints and
-   tests, builds the installer, writes its SHA-256 checksum and creates a **draft**
-   release with the changelog section as notes.
+   tests, builds the installer and creates a **draft** release. The installer is its only
+   file; the notes are install instructions with the installer's SHA-256 checksum,
+   followed by the changelog section. (GitHub adds source-code archives to every release
+   by itself; they cannot be removed.)
 6. Review the draft, download the installer from it, and publish it.
 
 If the workflow fails after the tag is pushed (for example on the changelog section),

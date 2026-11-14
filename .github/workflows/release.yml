@@ -80,7 +80,22 @@ jobs:
             if ($_ -match '^## \[') { $done = $true }
             if (-not $done) { $_ }
           }
-          ($notes -join "`n").Trim() | Out-File -FilePath release-notes.md -Encoding utf8
+          # The installer is the only download; its checksum goes in the notes.
+          $installer = Get-Item target/installer/*.exe
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $install = @(
+            '### Install',
+            '',
+            "Download **$($installer.Name)** below and run it. It installs for your Windows account",
+            'only and needs no administrator rights; Lilt starts afterwards and adds an icon to the',
+            'notification area. Requires 64-bit Windows 10 or 11.',
+            '',
+            'The installer is not code signed yet, so Windows SmartScreen may ask you to confirm the',
+            'first time ("More info", then "Run anyway").',
+            '',
+            "SHA-256: ``$hash``"
+          )
+          (($install + '' + $notes) -join "`n").Trim() | Out-File -FilePath release-notes.md -Encoding utf8
 
       - name: Draft GitHub release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
@@ -89,7 +104,5 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: Lilt ${{ env.TAG }}
           body_path: release-notes.md
-          files: |
-            target/installer/*.exe
-            target/installer/*.sha256
+          files: target/installer/*.exe
           fail_on_unmatched_files: true

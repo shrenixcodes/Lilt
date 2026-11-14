@@ -6,6 +6,30 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Glass transparency** in *Settings → Appearance & position*, for Smoked Glass and
+  Liquid Glass: from a heavy blur at 0 %, through the designed frosted look at 50 %, to
+  clear glass at 100 %, where the desktop shows through sharply. Up to 50 % text keeps
+  WCAG AA contrast; above that the glass dims less and less over bright windows.
+- Liquid Glass bends the desktop along its edges like a thick lens.
+
+### Fixed
+
+- With Windows display scaling other than 100 % (for example 125 %), clicks on the
+  island and in Settings landed on the wrong controls, and the glass's blurred shapes
+  were drawn larger than the island. Lilt drew everything at 100 % while converting
+  pointer positions at the real scale; it now draws at the display's scale from the
+  start.
+- The glass appearances showed black, oversized shapes around the island instead of a
+  blur. Lilt now draws the backdrop itself inside the island's window, from a copy of
+  the screen behind it, so it follows the island's outline exactly. The island leaves
+  itself out of that copy.
+
+### Changed
+
+- Releases contain only the installer; its checksum is in the release notes.
+
 ## [0.2.0] - 2026-11-15
 
 The first build published on GitHub. It includes everything listed under 0.1.0 in the

@@ -27,10 +27,10 @@ megabytes of memory and no measurable CPU or GPU time.
   play/pause, previous/next, seeking and a source switcher. A short banner announces
   new tracks.
 - **Three appearances.** *Midnight*, the original minimal near-black look; *Smoked
-  Glass*, dark smoked glass with a lit rim over a live blur of the desktop; and *Liquid
+  Glass*, dark smoked glass with a lit rim over a blur of the desktop; and *Liquid
   Glass*, clear glass lit along both edges that lets the desktop's colour through and
-  darkens only as much as a bright window behind it requires. Switch instantly in
-  Settings.
+  darkens only as much as a bright window behind it requires. A slider sets how
+  transparent the glass is. Switch instantly in Settings.
 - **Ambient colour.** The expanded player picks up a restrained accent from the current
   album artwork: a soft glow behind the cover, a faint tint of the panel and an
   accent-coloured progress bar. Intensity is adjustable and it can be turned off.
@@ -67,9 +67,8 @@ To uninstall, use *Settings → Apps → Installed apps → Lilt*.
   verified yet.
 - No additional runtimes: Lilt does not use .NET, a web view or the Visual C++
   redistributable.
-- Runs on integrated graphics. Lilt draws on the CPU; in the glass appearances, Windows' own
-  compositor blurs the desktop behind the island on the GPU, as it does for the Start
-  menu.
+- Runs on integrated graphics. Lilt draws on the CPU, including the glass appearances'
+  backdrop, which it computes from a copy of the screen behind the island.
 
 ## Using Lilt
 
@@ -90,20 +89,25 @@ Choose an appearance in *Settings → Appearance & position*; the island, the mu
 dashboard tiles, track banners and the settings window change at once.
 
 - **Midnight** is the original appearance: near-black solid surfaces and quiet borders.
-- **Smoked Glass** is dark smoked glass with a lit upper rim. Its tint is dense enough
-  that text keeps at least 7:1 contrast over any desktop.
+- **Smoked Glass** is dark smoked glass with a lit upper rim.
 - **Liquid Glass** is clear glass with light along its upper and lower edges. Over dark
-  content the tint is light and the desktop's colours show through; when a bright window
-  is behind the island, the tint deepens just enough to keep text at WCAG AA contrast
-  (4.5:1). Lilt decides this from the average brightness of the screen behind the island,
-  read as a 16 × 4 grid when the island opens or moves, when another window comes to the
-  front, moves or scrolls, and every 3 seconds while the island is open.
+  content the tint is light and the desktop's colours show through.
 
-Behind both glass appearances Windows blurs the desktop, and on Windows 11 22H2 and
-later the settings window uses the system acrylic. When Windows' *Transparency effects*
-are off, battery saver or Lilt's low-power mode is on, or you turn on *Reduce
-transparency*, the glass keeps its look with frosted surfaces instead of a live blur,
-and Settings says why.
+Behind both glass appearances Lilt shows the desktop. **Glass transparency** (0–100 %,
+default 50 %) sets how: a heavy blur at 0 %, a frosted blur at 50 % and clear glass at
+100 %, where the desktop shows through sharply and Liquid Glass bends it along its edges
+like a thick lens. Lilt reads the screen behind the island, at a resolution that suits
+the blur, when the island opens, closes or moves, when another window comes to the
+front, moves or scrolls, and every 3 seconds while the island is open.
+
+Up to 50 % the tint deepens over bright windows just enough to keep text at WCAG AA
+contrast (4.5:1). Above that, clarity wins progressively: at 100 % the glass dims only
+lightly, keeping at least 2:1, so text can be harder to read over very bright windows.
+
+On Windows 11 22H2 and later the settings window uses the system acrylic. When Windows'
+*Transparency effects* are off, battery saver or Lilt's low-power mode is on, or you turn
+on *Reduce transparency*, the glass keeps its look with frosted surfaces instead of the
+blur, and Settings says why.
 
 ![Liquid Glass over a colourful desktop](docs/images/liquid-glass.png)
 
@@ -126,8 +130,8 @@ fade over 0.7 seconds when the artwork changes and stay still otherwise.
 
 ## Performance
 
-Lilt is a single process with no web view, and it draws on the CPU (the glass
-appearances' live blur is drawn by Windows' compositor). Timers only run while
+Lilt is a single process with no web view, and it draws on the CPU, the glass blur
+included. Timers only run while
 their results are on screen, and media updates arrive as Windows events rather than by
 polling. Measured on a release build:
 

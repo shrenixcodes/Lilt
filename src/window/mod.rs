@@ -7,8 +7,8 @@
 //! another thread posts work, or an animation needs its next frame.
 
 mod adapter;
-mod backdrop;
 mod clipboard;
+pub mod glass;
 mod input;
 pub mod placement;
 pub mod sample;
@@ -32,11 +32,10 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
 pub use adapter::{Notice, Win32Window, WindowKind, find};
-pub use backdrop::Shape;
+pub use glass::Shape;
 
 pub(crate) const ISLAND_CLASS: PCWSTR = w!("Lilt.Island");
 pub(crate) const WINDOW_CLASS: PCWSTR = w!("Lilt.Window");
-pub(crate) const BACKDROP_CLASS: PCWSTR = w!("Lilt.Backdrop");
 const CONTROL_CLASS: PCWSTR = w!("Lilt.Control");
 
 /// Posted to the control window to run work queued from other threads.
@@ -170,10 +169,9 @@ pub fn install() -> Result<(), PlatformError> {
         let instance = GetModuleHandleW(None).map_err(|e| PlatformError::Other(e.to_string()))?;
         let icon = LoadIconW(Some(instance.into()), PCWSTR(1 as _)).ok();
         let cursor = LoadCursorW(None, IDC_ARROW).ok();
-        let classes: [(PCWSTR, WNDPROC); 4] = [
+        let classes: [(PCWSTR, WNDPROC); 3] = [
             (ISLAND_CLASS, Some(adapter::window_proc as _)),
             (WINDOW_CLASS, Some(adapter::window_proc as _)),
-            (BACKDROP_CLASS, Some(backdrop::backdrop_proc as _)),
             (CONTROL_CLASS, Some(control_proc as _)),
         ];
         for (class, procedure) in classes {

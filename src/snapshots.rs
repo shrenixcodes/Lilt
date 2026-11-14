@@ -311,6 +311,7 @@ fn settings_data() -> SettingsData {
         auto_collapse_seconds: 8,
         collapse_on_outside_click: true,
         activity_banners: true,
+        glass_transparency: 50,
         compact_width: 196,
         expanded_width: 460,
         allow_drag: true,
@@ -664,7 +665,9 @@ fn set_glass_alpha_for(h: &Harness, backdrop: [u8; 3]) {
         secondary: rgb(tokens.text_secondary),
         tertiary: rgb(tokens.text_tertiary),
     };
-    h.theme().set_glass_alpha(legible_alpha(&glass, Rgb::new(backdrop[0], backdrop[1], backdrop[2])));
+    let backdrop = Rgb::new(backdrop[0], backdrop[1], backdrop[2]);
+    let aa = crate::appearance::contrast_targets(50);
+    h.theme().set_glass_alpha(legible_alpha(&glass, backdrop, crate::appearance::CLEAR_ALPHA, aa));
 }
 
 /// Renders the compact island twice, letting `ms` of time pass in between.

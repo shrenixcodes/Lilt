@@ -8,7 +8,7 @@
 mod color;
 
 use color::{Oklch, from_oklch, hue_distance, to_oklch};
-pub use color::{Rgb, contrast_ratio, relative_luminance};
+pub use color::{Rgb, contrast_ratio};
 
 /// Island surface colour that accents must remain legible against.
 pub const SURFACE: Rgb = Rgb::new(11, 11, 12);

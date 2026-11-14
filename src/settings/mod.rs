@@ -104,6 +104,10 @@ pub struct Appearance {
     pub theme: AppearanceMode,
     /// Use frosted surfaces instead of a live blur in the glass appearances.
     pub reduce_transparency: bool,
+    /// How clear the glass appearances are over the live blur, 0..=100 percent. 50 is
+    /// each appearance's own design; Lilt still darkens the glass over bright windows so
+    /// text stays legible.
+    pub glass_transparency: u32,
     /// Compact island width in logical pixels.
     pub compact_width: u32,
     /// Expanded island width in logical pixels.
@@ -228,6 +232,7 @@ impl Default for Appearance {
         Self {
             theme: AppearanceMode::Midnight,
             reduce_transparency: false,
+            glass_transparency: 50,
             compact_width: 196,
             expanded_width: 460,
             motion: MotionPreference::System,
@@ -279,6 +284,7 @@ pub mod limits {
     pub const OFFSET_X: (i32, i32) = (-1600, 1600);
     pub const AUTO_COLLAPSE_SECONDS: (u32, u32) = (3, 60);
     pub const AMBIENT_INTENSITY: (u32, u32) = (0, 100);
+    pub const GLASS_TRANSPARENCY: (u32, u32) = (0, 100);
 }
 
 impl Settings {
@@ -294,6 +300,8 @@ impl Settings {
         self.general.auto_collapse_seconds =
             self.general.auto_collapse_seconds.clamp(AUTO_COLLAPSE_SECONDS.0, AUTO_COLLAPSE_SECONDS.1);
         self.ambient.intensity = self.ambient.intensity.clamp(AMBIENT_INTENSITY.0, AMBIENT_INTENSITY.1);
+        self.appearance.glass_transparency =
+            self.appearance.glass_transparency.clamp(GLASS_TRANSPARENCY.0, GLASS_TRANSPARENCY.1);
         self.shortcuts.toggle = self.shortcuts.toggle.filter(|s| s.len() <= 48);
         self.calendar.ics_path = self
             .calendar
@@ -479,6 +487,7 @@ mod tests {
     fn new_installations_use_midnight() {
         assert_eq!(Settings::default().appearance.theme, AppearanceMode::Midnight);
         assert!(!Settings::default().appearance.reduce_transparency);
+        assert_eq!(Settings::default().appearance.glass_transparency, 50);
     }
 
     #[test]

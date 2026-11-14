@@ -67,6 +67,14 @@ with separate settings and data, the tasks box enabled and nothing else playing 
 
 GPU utilisation and network connections were zero in every row.
 
+These rows used the earlier composition blur for Liquid Glass. With the backdrop drawn
+by Lilt (see [Appearances](#appearances)), Liquid Glass measured 3.1 MB compact and idle
+and 3.6–3.8 MB expanded with the tasks box at the default 50 % transparency (0.08–0.2 %
+CPU while its readings are live). At 100 % (clear glass, a full-resolution copy of the
+screen behind the window) it measured 3.9 MB compact and 4.5 MB expanded.
+Those runs were taken while the PC was in use; runs in which the pointer crossed the
+island (visible as hundreds of wake-ups per second from hover redraws) are not reported.
+
 ### Memory
 
 Task Manager's "Memory" column is the private working set. Measuring it after each
@@ -128,23 +136,15 @@ Midnight still renders exactly as it did: its design tokens have their original 
 the UI tests confirm every Midnight screen is pixel-identical, and it creates no extra
 windows or compositor objects.
 
-Smoked Glass adds no loop or timer of its own. Liquid Glass reads the brightness behind
-the island (a 16 × 4 grid) when it opens, closes or moves, when another window comes to
-the front, moves or scrolls, and every 3 s while the island is open; nothing while it
-sits compact with no window activity. In the current results it costs 0.2 MB and no
-measurable idle CPU over Midnight. What the glass costs depends on its material:
+The glass appearances read the screen behind the island (at one eighth of its
+resolution) when it opens, closes or moves, when another window comes to the front,
+moves or scrolls, and every 3 s while the island is open; nothing while it sits compact
+with no window activity. What the glass costs depends on its material:
 
 | Material | Extra work in Lilt | Extra work elsewhere |
 | --- | --- | --- |
 | Frosted (transparency effects off, battery saver, low-power mode or *Reduce transparency*) | Translucent colours, plus a sheen and rim drawn only when the island redraws | None |
-| Live blur | One hidden window and one composition visual; the clip is updated only while the island's outline changes | DWM blurs the desktop behind the island on the GPU, as it does for the Start menu |
-
-In an isolated prototype on the test machine, creating the compositor, the window and
-the visual added 1.2 MB of private working set and used no CPU while idle. The compositor
-is created only when the live blur is first needed.
-
-DWM's GPU cost for the blur has not been measured: the GPU counters attribute the blur
-to DWM, not to Lilt, and the runs above were taken with the session locked.
+| Blur | A screen read and a blur of a small image on the events above; blending it beneath the glass surfaces in the pixels of each redrawn region | None |
 
 ## Sampling policy
 
@@ -156,7 +156,7 @@ to DWM, not to Lilt, and the runs above were taken with the session locked.
 | Network | not sampled | every 1 s | every 5 s |
 | Playback position | not updated | every 1 s while playing | every 1 s while playing |
 | Playing bars | about 14 steps/s while playing and on screen | not drawn | about 14 steps/s while playing |
-| Liquid Glass backdrop | on window changes | on window changes and every 3 s | not sampled (frosted) |
+| Glass backdrop | on window changes | on window changes and every 3 s | not read (frosted) |
 | Media metadata | Windows events | Windows events | Windows events |
 | Calendar | not refreshed | on expand and every minute (file re-read only if changed) | same |
 
@@ -180,8 +180,8 @@ hidden or behind a full-screen application.
 
 - The tasks box: memory with a large list and archive. The database is opened only when
   the box is first shown, so people who do not use Tasks pay nothing for it.
-- DWM's GPU cost for the live blur, and Smoked Glass in every scenario (it differs from
-  Liquid Glass only in colours and the backdrop sampling).
+- The glass appearances with music playing and while toggling, measured on an idle PC,
+  the cost of each screen read, and Smoked Glass in every scenario.
 - The settings window: it is created only while open and released when closed.
 - Windows Performance Recorder traces (wake-up sources, frame timing) and behaviour on
   the reference low-end configurations above.

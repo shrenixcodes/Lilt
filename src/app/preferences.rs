@@ -90,7 +90,7 @@ impl App {
         let env = appearance::Environment::current();
         let (material, mut fallback) = appearance::material(&settings, &env);
         let wanted = material == Material::LiveBlur;
-        let live = window::find(app.island.window()).is_some_and(|native| native.set_live_backdrop(wanted));
+        let live = window::find(app.island.window()).is_some_and(|native| native.set_glass(wanted));
         if wanted && !live {
             fallback = Some(Fallback::Failed);
         }
@@ -103,6 +103,7 @@ impl App {
             tracing::debug!(?material, live, ?fallback, "appearance applied");
         }
         app.apply_window_appearance();
+        app.apply_glass_tint();
         App::update_glass_sampling(app);
     }
 
@@ -115,6 +116,10 @@ impl App {
         let theme = window.global::<Theme>();
         theme.set_appearance(island.get_appearance());
         theme.set_motion(island.get_motion());
+        // The appearance cards preview the chosen transparency.
+        let transparency = self.settings.borrow().appearance.glass_transparency;
+        theme.set_smoked_alpha(appearance::preferred_alpha(AppearanceMode::SmokedGlass, transparency));
+        theme.set_glass_alpha(appearance::preferred_alpha(AppearanceMode::LiquidGlass, transparency));
         let blur =
             window::find(window.window()).is_some_and(|native| native.set_system_backdrop(self.window_blur.get()));
         theme.set_live_blur(blur);
@@ -398,6 +403,7 @@ fn to_data(s: &Settings, monitors: &[placement::Monitor]) -> SettingsData {
     SettingsData {
         appearance: appearance_index(s.appearance.theme),
         reduce_transparency: s.appearance.reduce_transparency,
+        glass_transparency: s.appearance.glass_transparency as i32,
         auto_collapse: s.general.auto_collapse,
         auto_collapse_seconds: s.general.auto_collapse_seconds as i32,
         collapse_on_outside_click: s.general.collapse_on_outside_click,
@@ -437,6 +443,7 @@ fn from_data(d: &SettingsData, monitors: &[placement::Monitor], previous: &Setti
         _ => AppearanceMode::Midnight,
     };
     s.appearance.reduce_transparency = d.reduce_transparency;
+    s.appearance.glass_transparency = d.glass_transparency.clamp(0, 100) as u32;
     s.general.auto_collapse = d.auto_collapse;
     s.general.auto_collapse_seconds = d.auto_collapse_seconds.max(0) as u32;
     s.general.collapse_on_outside_click = d.collapse_on_outside_click;
@@ -485,6 +492,7 @@ mod tests {
         s.appearance.motion = MotionPreference::Reduced;
         s.appearance.theme = AppearanceMode::LiquidGlass;
         s.appearance.reduce_transparency = true;
+        s.appearance.glass_transparency = 80;
         s.widgets.system = false;
         s.shortcuts.toggle = Some("Ctrl+Alt+K".into());
         let data = to_data(&s, &monitors);
