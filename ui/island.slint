@@ -1,9 +1,34 @@
 import { Theme } from "theme.slint";
-import { MediaAvailability, Page } from "types.slint";
-import { AppState, AppActions } from "state.slint";
+import { MediaAvailability, Page, TasksLayout } from "types.slint";
+import { AppState, AppActions, TasksState } from "state.slint";
 import { CompactView, ActivityView } from "compact.slint";
 import { ExpandedView } from "expanded.slint";
+import { TasksView } from "tasks.slint";
 import { GlassSheen, GlassRim } from "components/glass.slint";
+
+// Two translucent layers that approximate a soft drop shadow, which the software
+// renderer does not draw. Place it before the surface it belongs to.
+component Shadow inherits Rectangle {
+    in property <length> radius;
+
+    Rectangle {
+        x: -3px;
+        y: 1px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: root.radius + 3px;
+        background: Theme.shadow-far;
+    }
+
+    Rectangle {
+        x: -1px;
+        y: 1px;
+        width: parent.width + 2px;
+        height: parent.height + 2px;
+        border-radius: root.radius + 1px;
+        background: Theme.shadow-near;
+    }
+}
 
 export component Island inherits Window {
     title: "Lilt";
@@ -12,10 +37,23 @@ export component Island inherits Window {
     background: transparent;
     default-font-family: Theme.font;
 
+    // With Tasks enabled, the expanded island is two boxes: the dashboard and the tasks,
+    // side by side or one below the other.
+    property <bool> tasks-box: AppState.show-tasks;
+    property <bool> beside: AppState.tasks-layout == TasksLayout.beside;
+    property <length> gap: 10px;
+    property <length> tasks-width: root.beside ? 400px : AppState.expanded-width;
+    property <length> tasks-height: 320px;
+    property <length> pair-width: AppState.expanded-width + (root.tasks-box && root.beside ? root.gap + root.tasks-width : 0px);
+
     // The window covers the largest state plus room for the shadow. Transparent pixels
     // are click-through, so the unused area never blocks other windows.
-    width: max(AppState.expanded-width, 340px) + 2 * Theme.margin;
-    height: 250px + 2 * Theme.margin;
+    width: max(root.pair-width, 340px) + 2 * Theme.margin;
+    height: (!root.tasks-box ? 250px : root.beside ? max(250px, root.tasks-height) : 250px + root.gap + root.tasks-height)
+        + 2 * Theme.margin;
+    // The window's size, for the UI tests.
+    out property <length> window-width: root.width;
+    out property <length> window-height: root.height;
 
     property <bool> tiles: AppState.show-calendar || AppState.show-system || AppState.show-actions;
     // Height of the dashboard for the enabled widgets; detail pages need at least 214 px.
@@ -37,16 +75,26 @@ export component Island inherits Window {
     property <length> target-height: AppState.expanded ? root.expanded-height
         : root.showing-activity ? Theme.activity-height
         : Theme.compact-height;
+    // Where the island settles: centred, or, beside the tasks, at the left of the pair.
+    property <length> target-x: AppState.expanded && root.tasks-box && root.beside ? (root.width - root.pair-width) / 2
+        : (root.width - root.target-width - (root.hovering ? 8px : 0)) / 2;
     // Set while the pointer drags the island so that the release is not a click.
     property <bool> dragging: false;
 
-    // The island's current (animated) outline, read by the application after each frame
-    // to shape the live blur beneath it.
+    // The outlines of the island and the tasks box, read by the application after each
+    // frame to shape the live blur beneath them.
     out property <length> body-x: island.x;
     out property <length> body-y: island.y;
     out property <length> body-width: island.width;
     out property <length> body-height: island.height;
     out property <length> body-radius: island.border-radius;
+    out property <bool> tasks-shown: AppState.expanded && root.tasks-box;
+    out property <length> tasks-x: root.beside ? (root.width - root.pair-width) / 2 + AppState.expanded-width + root.gap
+        : (root.width - root.tasks-width) / 2;
+    out property <length> tasks-y: root.beside ? 0px : island.height + root.gap;
+    out property <length> tasks-box-width: root.tasks-width;
+    out property <length> tasks-box-height: root.tasks-height;
+    out property <length> tasks-radius: Theme.expanded-radius;
 
     property <bool> expanded: AppState.expanded;
     changed expanded => {
@@ -57,132 +105,181 @@ export component Island inherits Window {
         }
     }
 
-    // Soft depth. The software renderer does not draw drop shadows, so two translucent
-    // layers approximate one.
-    Rectangle {
-        x: island.x - 3px;
-        y: island.y + 1px;
-        width: island.width + 6px;
-        height: island.height + 6px;
-        border-radius: island.border-radius + 3px;
-        background: Theme.shadow-far;
-    }
-
-    Rectangle {
-        x: island.x - 1px;
-        y: island.y + 1px;
-        width: island.width + 2px;
-        height: island.height + 2px;
-        border-radius: island.border-radius + 1px;
-        background: Theme.shadow-near;
-    }
-
-    island := Rectangle {
-        x: (root.width - self.width) / 2;
-        y: 0;
-        width: root.target-width + (root.hovering ? 8px : 0);
-        height: root.target-height + (root.hovering ? 2px : 0);
-        // Bound to the target height rather than the animated height, so the corners
-        // animate smoothly between the pill and the panel shape.
-        border-radius: AppState.expanded ? Theme.expanded-radius
-            : root.showing-activity ? 26px
-            : (Theme.compact-height + (root.hovering ? 2px : 0)) / 2;
-        property <color> wash: Theme.wash;
-        animate wash { duration: Theme.ambient-duration; easing: ease-in-out; }
-        property <bool> washed: AppState.expanded && root.media-mode && AppState.has-artwork && Theme.ambient > 0;
-        property <color> base: root.hovering ? Theme.surface-hover : Theme.surface;
-        animate base { duration: Theme.hover-duration; }
-        // The artwork colour tints the expanded surface itself. The software renderer
-        // draws gradients and clipped children as rectangles, so a gradient overlay would
-        // show outside the rounded corners; a solid tint keeps the shape exact.
-        background: self.washed ? self.base.mix(self.wash, 1 - 0.16 * Theme.ambient) : self.base;
-        animate background { duration: Theme.ambient-duration; easing: ease-in-out; }
-        border-width: 1px;
-        border-color: Theme.border;
-        clip: true;
-        animate width, height, border-radius { duration: Theme.resize-duration; easing: cubic-bezier(0.32, 0.72, 0, 1); }
-
-        if Theme.reflections : GlassSheen {
-            width: parent.width;
-            height: parent.height;
-            radius: island.border-radius;
-        }
-
-        touch := TouchArea {
-            pointer-event(event) => {
-                if event.kind == PointerEventKind.down {
-                    root.dragging = false;
-                }
-            }
-            moved => {
-                if self.pressed && !root.dragging && AppState.allow-drag && !AppState.expanded
-                    && (abs(self.mouse-x - self.pressed-x) > 4px || abs(self.mouse-y - self.pressed-y) > 4px) {
-                    root.dragging = true;
-                    AppActions.start-drag();
-                }
-            }
-            clicked => {
-                if root.dragging {
-                    root.dragging = false;
-                } else {
-                    AppActions.toggle-expanded();
-                }
-            }
-        }
-
-        CompactView {
-            x: 0;
-            y: 0;
-            width: parent.width;
-            height: AppState.expanded ? Theme.compact-height : parent.height;
-            media-mode: root.media-mode;
-            opacity: AppState.expanded || root.showing-activity ? 0 : 1;
-            animate opacity { duration: Theme.fade-duration; }
-        }
-
-        if root.showing-activity: ActivityView {
-            x: 0;
-            y: 0;
-            width: root.activity-width;
-            height: Theme.activity-height;
-            opacity: 0;
-            animate opacity { duration: Theme.fade-duration; delay: Theme.fade-duration / 2; }
-            init => {
-                self.opacity = 1;
-            }
-        }
-
-        // Created only while expanded, so the collapsed island keeps no hidden content.
-        if AppState.expanded : ExpandedView {
-            x: 0;
-            y: 0;
-            width: AppState.expanded-width;
-            height: root.expanded-height;
-            opacity: 0;
-            animate opacity { duration: Theme.fade-duration; delay: Theme.fade-duration / 2; }
-            init => {
-                self.opacity = 1;
-            }
-        }
-    }
-
-    if Theme.reflections : GlassRim {
-        x: island.x;
-        y: island.y;
-        width: island.width;
-        full-height: island.height;
-        radius: island.border-radius;
-    }
-
+    // Keyboard handling for the whole island. Keys that a field or row inside does not
+    // use arrive here.
     keys := FocusScope {
-        width: 0;
-        height: 0;
         key-pressed(event) => {
-            if event.text == Key.Escape && AppState.expanded {
-                AppActions.collapse();
+            if !AppState.expanded {
+                return reject;
+            }
+            if event.text == Key.Escape {
+                if TasksState.editing {
+                    TasksState.editing = false;
+                } else if TasksState.adding {
+                    TasksState.adding = false;
+                } else {
+                    AppActions.collapse();
+                }
+                return accept;
+            }
+            if root.tasks-box && !TasksState.editing && !TasksState.adding
+                && (event.text == "n" || event.text == "N") && !event.modifiers.control && !event.modifiers.alt {
+                TasksState.adding = true;
                 return accept;
             }
             reject
+        }
+
+        Shadow {
+            x: island.x;
+            y: island.y;
+            width: island.width;
+            height: island.height;
+            radius: island.border-radius;
+        }
+
+        island := Rectangle {
+            x: root.target-x;
+            y: 0;
+            width: root.target-width + (root.hovering ? 8px : 0);
+            height: root.target-height + (root.hovering ? 2px : 0);
+            // Bound to the target height rather than the animated height, so the corners
+            // animate smoothly between the pill and the panel shape.
+            border-radius: AppState.expanded ? Theme.expanded-radius
+                : root.showing-activity ? 26px
+                : (Theme.compact-height + (root.hovering ? 2px : 0)) / 2;
+            property <color> wash: Theme.wash;
+            animate wash { duration: Theme.ambient-duration; easing: ease-in-out; }
+            property <bool> washed: AppState.expanded && root.media-mode && AppState.has-artwork && Theme.ambient > 0;
+            property <color> base: root.hovering ? Theme.surface-hover : Theme.surface;
+            animate base { duration: Theme.hover-duration; }
+            // The artwork colour tints the expanded surface itself. The software renderer
+            // draws gradients and clipped children as rectangles, so a gradient overlay would
+            // show outside the rounded corners; a solid tint keeps the shape exact.
+            background: self.washed ? self.base.mix(self.wash, 1 - 0.16 * Theme.ambient) : self.base;
+            animate background { duration: Theme.ambient-duration; easing: ease-in-out; }
+            border-width: 1px;
+            border-color: Theme.border;
+            clip: true;
+            animate x, width, height, border-radius { duration: Theme.resize-duration; easing: cubic-bezier(0.32, 0.72, 0, 1); }
+
+            if Theme.reflections : GlassSheen {
+                width: parent.width;
+                height: parent.height;
+                radius: island.border-radius;
+            }
+
+            touch := TouchArea {
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.down {
+                        root.dragging = false;
+                    }
+                }
+                moved => {
+                    if self.pressed && !root.dragging && AppState.allow-drag && !AppState.expanded
+                        && (abs(self.mouse-x - self.pressed-x) > 4px || abs(self.mouse-y - self.pressed-y) > 4px) {
+                        root.dragging = true;
+                        AppActions.start-drag();
+                    }
+                }
+                clicked => {
+                    if root.dragging {
+                        root.dragging = false;
+                    } else {
+                        AppActions.toggle-expanded();
+                    }
+                }
+            }
+
+            CompactView {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: AppState.expanded ? Theme.compact-height : parent.height;
+                media-mode: root.media-mode;
+                opacity: AppState.expanded || root.showing-activity ? 0 : 1;
+                animate opacity { duration: Theme.fade-duration; }
+            }
+
+            if root.showing-activity: ActivityView {
+                x: 0;
+                y: 0;
+                width: root.activity-width;
+                height: Theme.activity-height;
+                opacity: 0;
+                animate opacity { duration: Theme.fade-duration; delay: Theme.fade-duration / 2; }
+                init => {
+                    self.opacity = 1;
+                }
+            }
+
+            // Created only while expanded, so the collapsed island keeps no hidden content.
+            if AppState.expanded : ExpandedView {
+                x: 0;
+                y: 0;
+                width: AppState.expanded-width;
+                height: root.expanded-height;
+                opacity: 0;
+                animate opacity { duration: Theme.fade-duration; delay: Theme.fade-duration / 2; }
+                init => {
+                    self.opacity = 1;
+                }
+            }
+        }
+
+        if Theme.reflections : GlassRim {
+            x: island.x;
+            y: island.y;
+            width: island.width;
+            full-height: island.height;
+            radius: island.border-radius;
+        }
+
+        // The tasks box, created only while expanded. It fades in beside or below the
+        // island as the island opens.
+        if root.tasks-shown : Rectangle {
+            x: root.tasks-x;
+            y: root.tasks-y;
+            width: root.tasks-width;
+            height: root.tasks-height;
+            opacity: 0;
+            animate opacity { duration: Theme.fade-duration; delay: Theme.fade-duration; }
+            init => {
+                self.opacity = 1;
+            }
+
+            Shadow {
+                width: parent.width;
+                height: parent.height;
+                radius: Theme.expanded-radius;
+            }
+
+            Rectangle {
+                border-radius: Theme.expanded-radius;
+                background: Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+                clip: true;
+
+                if Theme.reflections : GlassSheen {
+                    width: parent.width;
+                    height: parent.height;
+                    radius: Theme.expanded-radius;
+                }
+
+                TasksView {
+                    width: parent.width;
+                    height: parent.height;
+                }
+            }
+
+            if Theme.reflections : GlassRim {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                full-height: parent.height;
+                radius: Theme.expanded-radius;
+            }
         }
     }
 }

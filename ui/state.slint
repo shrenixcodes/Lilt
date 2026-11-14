@@ -1,4 +1,6 @@
-import { AgendaEntry, CalendarState, MediaInfo, Page, SystemInfo } from "types.slint";
+import {
+    AgendaEntry, ArchiveRow, CalendarState, MediaInfo, Page, SyncStatus, SystemInfo, TaskForm, TaskRow, TaskView, TasksLayout,
+} from "types.slint";
 
 // Data published by the Rust side. Views read from here instead of receiving every
 // value through a chain of component properties.
@@ -45,6 +47,89 @@ export global AppState {
     // The island is shown (not hidden by the user or for a full-screen application).
     in property <bool> on-screen: true;
     in-out property <Page> page: Page.dashboard;
+
+    // The tasks box is enabled in Settings, and where it sits.
+    in property <bool> show-tasks: false;
+    in property <TasksLayout> tasks-layout: TasksLayout.beside;
+}
+
+// Tasks, published by the Rust side. Kept in a global so the box's state survives
+// collapsing the island.
+export global TasksState {
+    in property <bool> ready;
+    // Why tasks are unavailable (for example the database could not be opened).
+    in property <string> error;
+    in property <[TaskRow]> rows;
+    in property <[ArchiveRow]> archive;
+    in property <string> date-label;
+    in property <int> open-count;
+    in property <int> due-today-count;
+    in property <int> upcoming-count;
+    in property <int> done-today;
+    in property <int> left-today;
+    // No open tasks at all; `first-use` when no task was ever created.
+    in property <bool> nothing-open;
+    in property <bool> first-use;
+    in property <string> empty-title;
+    in property <string> empty-detail;
+    in property <bool> custom-order;
+    in property <[string]> categories;
+
+    in-out property <TaskView> view: TaskView.all;
+    // -1 for every priority.
+    in-out property <int> priority-filter: -1;
+    in-out property <string> search;
+
+    // Quick add, kept here so a half-typed task survives collapsing the island.
+    in-out property <bool> adding;
+    in-out property <string> draft;
+    in-out property <int> draft-priority: 0;
+    in-out property <int> draft-due: -10000;
+    in-out property <string> draft-time;
+    in-out property <string> draft-category;
+    in property <string> draft-error;
+
+    in-out property <bool> editing;
+    in-out property <TaskForm> form;
+
+    in property <string> undo-text;
+    in property <bool> undo-visible;
+
+    // Google
+    in property <SyncStatus> sync-status: SyncStatus.none;
+    in property <string> sync-text;
+    in property <bool> google-available;
+}
+
+export global TasksActions {
+    // Title, priority (0..4), due offset in days (-10000 for none), time, category.
+    callback quick-add(string, int, int, string, string);
+    callback complete(int);
+    callback undo();
+    callback edit(int);
+    callback save(TaskForm);
+    callback delete(int);
+    callback defer(int);
+    // -1 up, 1 down, within the task's priority in the custom order.
+    callback move(int, int);
+    callback toggle-order();
+    callback view-changed();
+    callback search-changed(string);
+    callback restore(int);
+    callback delete-completed(int);
+    callback clear-completed();
+    callback refresh();
+    callback connect-google();
+    // The box needs its data, for example when it is shown.
+    callback opened();
+    // Moves the tasks box beside or below the island.
+    callback toggle-layout();
+    // A text field is being edited: the island must not collapse by itself.
+    callback busy(bool);
+    // "Today", "Tomorrow", "Mon 17", … for a day offset.
+    pure callback day-label(int) -> string;
+    // Whether text is a valid time of day such as 17:30 or 5:30 pm.
+    pure callback time-valid(string) -> bool;
 }
 
 // User intents handled on the Rust side.

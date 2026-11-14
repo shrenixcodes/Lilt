@@ -142,6 +142,8 @@ hidden or behind a full-screen application.
 
 ## Not yet measured
 
+- The tasks box: memory with a large list and archive. The database is opened only when
+  the box is first shown, so people who do not use Tasks pay nothing for it.
 - Midnight and Liquid Glass side by side in every scenario, and DWM's GPU cost for the
   live blur on a PC with transparency effects on.
 - Windows Performance Recorder traces (wake-up sources, frame timing) and behaviour on

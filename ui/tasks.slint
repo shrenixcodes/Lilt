@@ -1,0 +1,1212 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState, TasksState, TasksActions } from "state.slint";
+import { ArchiveRow, ArchiveRowKind, SyncStatus, TaskForm, TaskRow, TaskRowKind, TaskView, TasksLayout } from "types.slint";
+import { Icon, Icons } from "components/icon.slint";
+import { IconButton, TextButton } from "components/controls.slint";
+
+// The tasks box: a prioritised list, quick entry, an editor and the archive. All data
+// and every change go through TasksState and TasksActions; nothing here is stored.
+
+export global Priorities {
+    public pure function colour(p: int) -> color {
+        return p == 4 ? Theme.priority-critical : p == 3 ? Theme.priority-high : p == 2 ? Theme.priority-medium
+            : p == 1 ? Theme.priority-low : Theme.text-tertiary;
+    }
+
+    public pure function name(p: int) -> string {
+        return p == 4 ? "Critical" : p == 3 ? "High" : p == 2 ? "Medium" : p == 1 ? "Low" : "No priority";
+    }
+}
+
+// A small rounded choice, used for views and filters.
+component Chip inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    in property <bool> has-mark;
+    in property <color> mark;
+    callback clicked();
+
+    height: 24px;
+    width: label.preferred-width + (root.has-mark ? 30px : 20px);
+    border-radius: 12px;
+    background: root.selected ? Theme.control-hover : touch.has-hover ? Theme.tile : transparent;
+    border-width: 1px;
+    border-color: root.selected ? Theme.text.with-alpha(0.28) : Theme.border;
+    animate background, border-color { duration: Theme.hover-duration; }
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-action-default => { root.clicked(); }
+
+    if root.has-mark : Rectangle {
+        x: 10px;
+        y: (parent.height - self.height) / 2;
+        width: 7px;
+        height: 7px;
+        border-radius: 3.5px;
+        background: root.mark;
+    }
+
+    label := Text {
+        x: root.has-mark ? 21px : 10px;
+        text: root.text;
+        font-size: 11px;
+        color: root.selected ? Theme.text : Theme.text-secondary;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A value changed with arrows or the Left and Right keys, e.g. a priority or a date.
+component Stepper inherits Rectangle {
+    in property <string> text;
+    in property <string> name;
+    in property <bool> has-mark;
+    in property <color> mark;
+    callback step(int);
+
+    height: 24px;
+    width: content.preferred-width;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: scope.has-focus ? Theme.text-secondary : Theme.border;
+    accessible-role: spinbox;
+    accessible-label: root.name;
+    accessible-value: root.text;
+    accessible-action-increment => { root.step(1); }
+    accessible-action-decrement => { root.step(-1); }
+
+    scope := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.LeftArrow || event.text == Key.DownArrow {
+                root.step(-1);
+                return accept;
+            }
+            if event.text == Key.RightArrow || event.text == Key.UpArrow {
+                root.step(1);
+                return accept;
+            }
+            reject
+        }
+
+        content := HorizontalLayout {
+            padding-left: 1px;
+            padding-right: 1px;
+            spacing: 2px;
+
+            IconButton {
+                width: 22px;
+                height: 22px;
+                icon: Icons.chevron-left;
+                icon-size: 12px;
+                tint: Theme.text-tertiary;
+                tooltip: "Previous " + root.name;
+                clicked => {
+                    scope.focus();
+                    root.step(-1);
+                }
+            }
+
+            if root.has-mark : Rectangle {
+                width: 7px;
+                Rectangle {
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 3.5px;
+                    background: root.mark;
+                }
+            }
+
+            Text {
+                text: root.text;
+                font-size: 11px;
+                color: Theme.text;
+                vertical-alignment: center;
+            }
+
+            IconButton {
+                width: 22px;
+                height: 22px;
+                icon: Icons.chevron-right;
+                icon-size: 12px;
+                tint: Theme.text-tertiary;
+                tooltip: "Next " + root.name;
+                clicked => {
+                    scope.focus();
+                    root.step(1);
+                }
+            }
+        }
+    }
+}
+
+// A single-line text field with a placeholder.
+component Field inherits Rectangle {
+    in property <string> placeholder;
+    in property <length> font-size: 11px;
+    in property <bool> invalid;
+    in-out property <string> text <=> input.text;
+    callback accepted();
+    callback edited(string);
+
+    height: 24px;
+    border-radius: 7px;
+    background: Theme.tile;
+    border-width: 1px;
+    border-color: root.invalid ? Theme.danger : input.has-focus ? Theme.text-secondary : Theme.border;
+
+    public function focus-input() {
+        input.focus();
+    }
+
+    if input.text == "" : Text {
+        x: 8px;
+        text: root.placeholder;
+        font-size: root.font-size;
+        color: Theme.text-tertiary;
+        vertical-alignment: center;
+    }
+
+    input := TextInput {
+        x: 8px;
+        width: parent.width - 16px;
+        font-size: root.font-size;
+        color: Theme.text;
+        selection-background-color: Theme.text.with-alpha(0.25);
+        selection-foreground-color: Theme.text;
+        vertical-alignment: center;
+        single-line: true;
+        accessible-label: root.placeholder;
+        accepted => { root.accepted(); }
+        edited => { root.edited(self.text); }
+    }
+}
+
+// The round completion control. It shows the tick immediately; the task is completed
+// at the same moment, and leaves the list once the tick has played.
+component CheckCircle inherits Rectangle {
+    in property <color> ring: Theme.text-tertiary;
+    in property <bool> checked;
+    in property <length> diameter: 18px;
+    callback toggled();
+
+    width: root.diameter;
+    height: root.diameter;
+    border-radius: root.diameter / 2;
+    border-width: 1.5px;
+    border-color: root.checked ? Theme.accent : touch.has-hover ? Theme.text-secondary : root.ring;
+    background: root.checked ? Theme.accent : touch.has-hover ? Theme.control-hover : transparent;
+    animate background, border-color { duration: Theme.fade-duration; easing: ease-out; }
+    accessible-role: checkbox;
+    accessible-label: "Complete";
+    accessible-checked: root.checked;
+    accessible-action-default => { root.toggled(); }
+
+    Icon {
+        data: Icons.check;
+        size: root.checked ? root.diameter * 0.66 : touch.has-hover ? root.diameter * 0.5 : 0px;
+        color: root.checked ? Theme.text-on-light : Theme.text-tertiary;
+        animate size { duration: Theme.fade-duration * 1.4; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
+}
+
+// A priority group's header, e.g. "Critical 2".
+component TaskHeader inherits HorizontalLayout {
+    in property <TaskRow> entry;
+    padding-left: 6px;
+    padding-top: 8px;
+    spacing: 6px;
+    alignment: start;
+
+    Rectangle {
+        width: 7px;
+        Rectangle {
+            width: 7px;
+            height: 7px;
+            border-radius: 3.5px;
+            background: Priorities.colour(root.entry.priority);
+        }
+    }
+
+    Text {
+        text: root.entry.priority-label;
+        font-size: 11px;
+        font-weight: 600;
+        color: Theme.text-secondary;
+        vertical-alignment: center;
+    }
+
+    Text {
+        text: root.entry.count;
+        font-size: 11px;
+        color: Theme.text-tertiary;
+        vertical-alignment: center;
+    }
+}
+
+// A task, or the larger focus card for the task to work on next.
+component TaskItem inherits Rectangle {
+    in property <TaskRow> entry;
+    in property <bool> custom-order;
+    property <bool> ticked;
+    property <bool> focus-card: root.entry.kind == TaskRowKind.focus;
+    property <bool> active: touch.has-hover || keys.has-focus;
+
+    border-radius: Theme.control-radius + 2px;
+    background: root.focus-card ? (root.active ? Theme.tile-hover : Theme.tile) : root.active ? Theme.tile : transparent;
+    border-width: keys.has-focus ? 1px : 0px;
+    border-color: Theme.text.with-alpha(0.3);
+    opacity: root.ticked ? 0.4 : 1;
+    animate opacity { duration: Theme.fade-duration * 2; }
+    animate background { duration: Theme.hover-duration; }
+    accessible-role: list-item;
+    accessible-label: root.entry.title;
+    accessible-description: root.entry.priority-label + (root.entry.due != "" ? ", due " + root.entry.due : "")
+        + (root.entry.overdue ? ", overdue" : "") + (root.entry.meta != "" ? ", " + root.entry.meta : "");
+
+    function complete() {
+        if !root.ticked {
+            root.ticked = true;
+            TasksActions.complete(root.entry.id);
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            keys.focus();
+            TasksActions.edit(root.entry.id);
+        }
+
+        if root.focus-card : Text {
+            x: 40px;
+            y: 9px;
+            text: "Focus now";
+            font-size: 10px;
+            font-weight: 600;
+            color: Theme.accent;
+        }
+
+        CheckCircle {
+            x: 12px;
+            y: (parent.height - self.height) / 2 + (root.focus-card ? 6px : 0px);
+            ring: Priorities.colour(root.entry.priority);
+            checked: root.ticked;
+            toggled => { root.complete(); }
+        }
+
+        VerticalLayout {
+            x: 40px;
+            y: root.focus-card ? 22px : 0px;
+            width: parent.width - 40px - actions.preferred-width - 10px;
+            height: parent.height - (root.focus-card ? 26px : 0px);
+            alignment: center;
+            spacing: 1px;
+
+            Text {
+                text: root.entry.title;
+                font-size: root.focus-card ? Theme.font-lg : Theme.font-md;
+                font-weight: root.focus-card ? 600 : 400;
+                color: Theme.text;
+                overflow: elide;
+            }
+
+            if root.entry.due != "" || root.entry.meta != "" : HorizontalLayout {
+                spacing: 6px;
+
+                if root.entry.due != "" : Text {
+                    text: (root.entry.overdue ? "Overdue · " : "") + root.entry.due;
+                    font-size: 10.5px;
+                    color: root.entry.overdue ? Theme.danger : Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+
+                if root.entry.meta != "" : Text {
+                    horizontal-stretch: 1;
+                    text: root.entry.meta;
+                    font-size: 10.5px;
+                    color: Theme.text-tertiary;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        actions := HorizontalLayout {
+            x: parent.width - self.preferred-width - 6px;
+            height: parent.height;
+            alignment: center;
+            spacing: 0px;
+
+            if root.active && root.custom-order : IconButton {
+                width: 26px;
+                height: 26px;
+                icon: Icons.chevron-up;
+                icon-size: 13px;
+                tint: Theme.text-secondary;
+                enabled: root.entry.can-move-up;
+                tooltip: "Move up";
+                clicked => { TasksActions.move(root.entry.id, -1); }
+            }
+
+            if root.active && root.custom-order : IconButton {
+                width: 26px;
+                height: 26px;
+                icon: Icons.chevron-down;
+                icon-size: 13px;
+                tint: Theme.text-secondary;
+                enabled: root.entry.can-move-down;
+                tooltip: "Move down";
+                clicked => { TasksActions.move(root.entry.id, 1); }
+            }
+
+            if root.active : IconButton {
+                width: 26px;
+                height: 26px;
+                icon: Icons.snooze;
+                icon-size: 13px;
+                tint: Theme.text-secondary;
+                tooltip: "Move to tomorrow";
+                clicked => { TasksActions.defer(root.entry.id); }
+            }
+
+            if root.entry.imported : Rectangle {
+                width: 22px;
+                Icon {
+                    data: Icons.cloud;
+                    size: 12px;
+                    color: Theme.text-tertiary;
+                }
+            }
+        }
+    }
+
+    keys := FocusScope {
+        width: 0;
+        height: 0;
+        key-pressed(event) => {
+            if event.text == " " {
+                root.complete();
+                return accept;
+            }
+            if event.text == Key.Return {
+                TasksActions.edit(root.entry.id);
+                return accept;
+            }
+            if event.modifiers.alt && event.text == Key.UpArrow && root.custom-order && root.entry.can-move-up {
+                TasksActions.move(root.entry.id, -1);
+                return accept;
+            }
+            if event.modifiers.alt && event.text == Key.DownArrow && root.custom-order && root.entry.can-move-down {
+                TasksActions.move(root.entry.id, 1);
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// One row of the task list.
+component TaskRowView inherits Rectangle {
+    in property <TaskRow> entry;
+    in property <bool> custom-order;
+    height: root.entry.kind == TaskRowKind.header ? 26px : root.entry.kind == TaskRowKind.focus ? 68px : 44px;
+
+    if root.entry.kind == TaskRowKind.header : TaskHeader {
+        entry: root.entry;
+    }
+
+    if root.entry.kind != TaskRowKind.header : TaskItem {
+        y: root.entry.kind == TaskRowKind.focus ? 4px : 0px;
+        height: parent.height - (root.entry.kind == TaskRowKind.focus ? 8px : 0px);
+        entry: root.entry;
+        custom-order: root.custom-order;
+    }
+}
+
+// Quick entry. Only the title is needed; Enter saves and keeps the field open for the
+// next task, Escape closes it.
+component QuickAdd inherits Rectangle {
+    border-radius: Theme.control-radius + 3px;
+    background: Theme.tile;
+    border-width: 1px;
+    border-color: Theme.border;
+    height: 70px;
+
+    function submit() {
+        TasksActions.quick-add(TasksState.draft, TasksState.draft-priority, TasksState.draft-due, TasksState.draft-time,
+            TasksState.draft-category);
+        title.focus-input();
+    }
+
+    init => {
+        title.focus-input();
+    }
+
+    FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                TasksState.adding = false;
+                return accept;
+            }
+            reject
+        }
+
+        VerticalLayout {
+            padding: 8px;
+            spacing: 6px;
+
+            HorizontalLayout {
+                spacing: 6px;
+
+                title := Field {
+                    horizontal-stretch: 1;
+                    height: 26px;
+                    font-size: Theme.font-md;
+                    placeholder: TasksState.draft-error != "" ? TasksState.draft-error : "Add a task…";
+                    invalid: TasksState.draft-error != "";
+                    text <=> TasksState.draft;
+                    accepted => { root.submit(); }
+                }
+
+                TextButton {
+                    text: "Add";
+                    clicked => { root.submit(); }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+
+                Stepper {
+                    name: "priority";
+                    text: Priorities.name(TasksState.draft-priority);
+                    has-mark: true;
+                    mark: Priorities.colour(TasksState.draft-priority);
+                    step(delta) => { TasksState.draft-priority = Math.mod(TasksState.draft-priority + delta + 5, 5); }
+                }
+
+                Stepper {
+                    name: "due date";
+                    text: TasksActions.day-label(TasksState.draft-due);
+                    step(delta) => {
+                        if TasksState.draft-due == -10000 {
+                            TasksState.draft-due = delta > 0 ? 0 : -10000;
+                        } else if TasksState.draft-due == 0 && delta < 0 {
+                            TasksState.draft-due = -10000;
+                        } else {
+                            TasksState.draft-due += delta;
+                        }
+                    }
+                }
+
+                if TasksState.draft-due != -10000 : Field {
+                    width: 58px;
+                    placeholder: "Time";
+                    text <=> TasksState.draft-time;
+                    invalid: self.text != "" && !TasksActions.time-valid(self.text);
+                    accepted => { root.submit(); }
+                }
+
+                Field {
+                    width: 86px;
+                    placeholder: "Label";
+                    text <=> TasksState.draft-category;
+                    accepted => { root.submit(); }
+                }
+            }
+        }
+    }
+}
+
+// Editing one task. Opened by clicking a task or pressing Enter on it.
+component TaskEditor inherits Rectangle {
+    property <int> priority: TasksState.form.priority;
+    property <int> due: TasksState.form.due-offset;
+    property <string> time-text: TasksState.form.time;
+    property <bool> confirm-delete;
+
+    function save() {
+        TasksActions.save({
+            id: TasksState.form.id,
+            title: title.text,
+            notes: notes.text,
+            priority: root.priority,
+            due-offset: root.due,
+            time: root.due == -10000 ? "" : root.time-text,
+            category: category.text,
+            source: TasksState.form.source,
+            sync-note: TasksState.form.sync-note,
+            origin: TasksState.form.origin,
+            time-allowed: TasksState.form.time-allowed,
+            error: "",
+        });
+    }
+
+    init => {
+        title.focus-input();
+    }
+
+    FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                if root.confirm-delete {
+                    root.confirm-delete = false;
+                } else {
+                    TasksState.editing = false;
+                }
+                return accept;
+            }
+            reject
+        }
+
+        VerticalLayout {
+            spacing: 8px;
+
+            HorizontalLayout {
+                spacing: 6px;
+                height: 28px;
+
+                IconButton {
+                    icon: Icons.back;
+                    tooltip: "Back";
+                    clicked => { TasksState.editing = false; }
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: TasksState.form.id == 0 ? "New task" : "Edit task";
+                    font-size: Theme.font-lg;
+                    font-weight: 600;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                }
+
+                if TasksState.form.id != 0 : IconButton {
+                    icon: Icons.trash;
+                    tooltip: "Delete task";
+                    tint: Theme.text-secondary;
+                    clicked => { root.confirm-delete = true; }
+                }
+            }
+
+            title := Field {
+                height: 30px;
+                font-size: Theme.font-lg;
+                placeholder: "Title";
+                text: TasksState.form.title;
+                invalid: self.text == "";
+                accepted => { root.save(); }
+            }
+
+            Rectangle {
+                height: 50px;
+                border-radius: 7px;
+                background: Theme.tile;
+                border-width: 1px;
+                border-color: notes.has-focus ? Theme.text-secondary : Theme.border;
+
+                if notes.text == "" : Text {
+                    x: 8px;
+                    y: 6px;
+                    text: "Notes";
+                    font-size: 11.5px;
+                    color: Theme.text-tertiary;
+                }
+
+                notes := TextInput {
+                    x: 8px;
+                    y: 6px;
+                    width: parent.width - 16px;
+                    height: parent.height - 12px;
+                    text: TasksState.form.notes;
+                    font-size: 11.5px;
+                    color: Theme.text;
+                    single-line: false;
+                    wrap: word-wrap;
+                    selection-background-color: Theme.text.with-alpha(0.25);
+                    selection-foreground-color: Theme.text;
+                    accessible-label: "Notes";
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+
+                Stepper {
+                    name: "priority";
+                    text: Priorities.name(root.priority);
+                    has-mark: true;
+                    mark: Priorities.colour(root.priority);
+                    step(delta) => { root.priority = Math.mod(root.priority + delta + 5, 5); }
+                }
+
+                Stepper {
+                    name: "due date";
+                    text: TasksActions.day-label(root.due);
+                    step(delta) => {
+                        if root.due == -10000 {
+                            root.due = delta > 0 ? 0 : -10000;
+                        } else if root.due == 0 && delta < 0 {
+                            root.due = -10000;
+                        } else {
+                            root.due += delta;
+                        }
+                    }
+                }
+
+                if root.due != -10000 && TasksState.form.time-allowed : Field {
+                    width: 58px;
+                    placeholder: "Time";
+                    text <=> root.time-text;
+                    invalid: self.text != "" && !TasksActions.time-valid(self.text);
+                    accepted => { root.save(); }
+                }
+
+                category := Field {
+                    width: 96px;
+                    placeholder: "Label";
+                    text: TasksState.form.category;
+                    accepted => { root.save(); }
+                }
+            }
+
+            Text {
+                text: TasksState.form.error != "" ? TasksState.form.error
+                    : TasksState.form.source + (TasksState.form.sync-note != "" ? " · " + TasksState.form.sync-note : "")
+                    + (TasksState.form.origin != "" ? "\n" + TasksState.form.origin : "");
+                font-size: 10.5px;
+                color: TasksState.form.error != "" ? Theme.danger : Theme.text-tertiary;
+                wrap: word-wrap;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+
+                if root.confirm-delete : Text {
+                    horizontal-stretch: 1;
+                    text: "Delete this task permanently?";
+                    font-size: 11.5px;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                }
+
+                TextButton {
+                    text: root.confirm-delete ? "Keep" : "Cancel";
+                    clicked => {
+                        if root.confirm-delete {
+                            root.confirm-delete = false;
+                        } else {
+                            TasksState.editing = false;
+                        }
+                    }
+                }
+
+                TextButton {
+                    text: root.confirm-delete ? "Delete" : "Save";
+                    clicked => {
+                        if root.confirm-delete {
+                            TasksActions.delete(TasksState.form.id);
+                        } else {
+                            root.save();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// A completed task: restore it, or delete it permanently after confirming.
+component ArchiveItem inherits Rectangle {
+    in property <ArchiveRow> item;
+    in property <bool> confirming;
+    callback ask-delete();
+    callback cancel-delete();
+
+    border-radius: Theme.control-radius;
+    background: hover.has-hover ? Theme.tile : transparent;
+    accessible-role: list-item;
+    accessible-label: root.item.title;
+    accessible-description: root.item.detail + (root.item.notes != "" ? ". " + root.item.notes : "");
+
+    hover := TouchArea {
+        VerticalLayout {
+            x: 10px;
+            width: parent.width - 20px - (hover.has-hover || root.confirming ? 72px : 0px);
+            alignment: center;
+            spacing: 1px;
+
+            Text {
+                text: root.item.title;
+                font-size: Theme.font-md;
+                color: Theme.text-secondary;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.confirming ? "Delete permanently?" : hover.has-hover && root.item.notes != "" ? root.item.notes : root.item.detail;
+                font-size: 10.5px;
+                color: root.confirming ? Theme.text : Theme.text-tertiary;
+                overflow: elide;
+            }
+        }
+
+        if hover.has-hover && !root.confirming : HorizontalLayout {
+            x: parent.width - self.preferred-width - 6px;
+            height: parent.height;
+            alignment: center;
+
+            IconButton {
+                width: 28px;
+                height: 28px;
+                icon: Icons.restore;
+                icon-size: 14px;
+                tooltip: "Restore";
+                tint: Theme.text-secondary;
+                clicked => { TasksActions.restore(root.item.id); }
+            }
+
+            IconButton {
+                width: 28px;
+                height: 28px;
+                icon: Icons.trash;
+                icon-size: 14px;
+                tooltip: "Delete permanently";
+                tint: Theme.text-secondary;
+                clicked => { root.ask-delete(); }
+            }
+        }
+
+        if root.confirming : HorizontalLayout {
+            x: parent.width - self.preferred-width - 6px;
+            height: parent.height;
+            alignment: center;
+            spacing: 4px;
+
+            TextButton {
+                text: "Keep";
+                clicked => { root.cancel-delete(); }
+            }
+
+            TextButton {
+                text: "Delete";
+                clicked => {
+                    root.cancel-delete();
+                    TasksActions.delete-completed(root.item.id);
+                }
+            }
+        }
+    }
+}
+
+// Completed tasks by day, searchable, with restore and permanent deletion.
+component Archive inherits Rectangle {
+    property <int> confirm: 0;
+    property <bool> confirm-clear;
+
+    VerticalLayout {
+        spacing: 6px;
+
+        Field {
+            height: 26px;
+            placeholder: "Search completed tasks";
+            text <=> TasksState.search;
+            edited(text) => { TasksActions.search-changed(text); }
+        }
+
+        if TasksState.archive.length == 0 : VerticalLayout {
+            vertical-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+
+            Text {
+                horizontal-alignment: center;
+                text: TasksState.search == "" ? "Your completed work will appear here." : "No completed tasks match.";
+                font-size: Theme.font-md;
+                color: Theme.text-secondary;
+            }
+        }
+
+        if TasksState.archive.length > 0 : ListView {
+            vertical-stretch: 1;
+
+            for item in TasksState.archive : Rectangle {
+                height: item.kind == ArchiveRowKind.header ? 24px : 44px;
+
+                if item.kind == ArchiveRowKind.header : Text {
+                    x: 6px;
+                    y: 8px;
+                    text: item.title;
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: Theme.text-secondary;
+                }
+
+                if item.kind == ArchiveRowKind.task : ArchiveItem {
+                    item: item;
+                    height: parent.height;
+                    confirming: root.confirm == item.id;
+                    ask-delete => { root.confirm = item.id; }
+                    cancel-delete => { root.confirm = 0; }
+                }
+            }
+        }
+
+        if TasksState.archive.length > 0 && TasksState.search == "" : HorizontalLayout {
+            spacing: 6px;
+            alignment: end;
+
+            if root.confirm-clear : Text {
+                horizontal-stretch: 1;
+                text: "Permanently delete every completed Lilt task? Tasks from Google are kept.";
+                font-size: 10.5px;
+                color: Theme.text;
+                wrap: word-wrap;
+                vertical-alignment: center;
+            }
+
+            if root.confirm-clear : TextButton {
+                text: "Keep";
+                clicked => { root.confirm-clear = false; }
+            }
+
+            TextButton {
+                text: root.confirm-clear ? "Delete" : "Clear completed";
+                clicked => {
+                    if root.confirm-clear {
+                        root.confirm-clear = false;
+                        TasksActions.clear-completed();
+                    } else {
+                        root.confirm-clear = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component TasksView inherits Rectangle {
+    property <bool> list-view: TasksState.view != TaskView.done;
+    property <bool> busy: TasksState.adding || TasksState.editing;
+    property <bool> filter-open;
+    changed busy => {
+        TasksActions.busy(self.busy);
+    }
+
+    init => {
+        TasksActions.opened();
+        TasksActions.busy(root.busy);
+    }
+
+    VerticalLayout {
+        padding: Theme.padding;
+        padding-bottom: 10px;
+        spacing: 8px;
+
+        if TasksState.editing : TaskEditor {
+            vertical-stretch: 1;
+        }
+
+        if !TasksState.editing : HorizontalLayout {
+            height: 32px;
+            spacing: 6px;
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+
+                Text {
+                    text: "Tasks";
+                    font-size: Theme.font-lg;
+                    font-weight: 600;
+                    color: Theme.text;
+                }
+
+                Text {
+                    text: TasksState.date-label + (TasksState.ready ? " · " + TasksState.open-count + " open" : "");
+                    font-size: 10.5px;
+                    color: Theme.text-secondary;
+                }
+            }
+
+            // Today's progress: completed today against what is left for today.
+            if TasksState.done-today + TasksState.left-today > 0 : VerticalLayout {
+                alignment: center;
+                spacing: 3px;
+                accessible-role: progress-indicator;
+                accessible-label: "Today's progress";
+                accessible-value: TasksState.done-today + " of " + (TasksState.done-today + TasksState.left-today) + " done";
+
+                Text {
+                    horizontal-alignment: right;
+                    text: TasksState.done-today + " of " + (TasksState.done-today + TasksState.left-today) + " today";
+                    font-size: 10.5px;
+                    color: Theme.text-secondary;
+                }
+
+                Rectangle {
+                    width: 64px;
+                    height: 3px;
+                    border-radius: 1.5px;
+                    background: Theme.track;
+
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * TasksState.done-today / (TasksState.done-today + TasksState.left-today);
+                        border-radius: 1.5px;
+                        background: Theme.accent;
+                        animate width { duration: Theme.fade-duration * 2; easing: ease-out; }
+                    }
+                }
+            }
+
+            if TasksState.ready && root.list-view : IconButton {
+                icon: Icons.sort;
+                tooltip: TasksState.custom-order ? "Sorted by priority, then your order. Sort by due date instead"
+                    : "Sorted by priority, then due date. Use your own order instead";
+                tint: TasksState.custom-order ? Theme.text : Theme.text-secondary;
+                clicked => { TasksActions.toggle-order(); }
+            }
+
+            IconButton {
+                icon: AppState.tasks-layout == TasksLayout.beside ? Icons.below : Icons.beside;
+                tooltip: AppState.tasks-layout == TasksLayout.beside ? "Show tasks below" : "Show tasks beside";
+                tint: Theme.text-secondary;
+                clicked => { TasksActions.toggle-layout(); }
+            }
+
+            if TasksState.ready : IconButton {
+                icon: TasksState.adding ? Icons.close : Icons.plus;
+                tooltip: TasksState.adding ? "Close quick add" : "Add a task (N)";
+                tint: Theme.text;
+                clicked => { TasksState.adding = !TasksState.adding; }
+            }
+        }
+
+        if !TasksState.editing && TasksState.ready : HorizontalLayout {
+            height: 24px;
+            spacing: 6px;
+
+            Chip {
+                text: "All " + TasksState.open-count;
+                selected: TasksState.view == TaskView.all;
+                clicked => {
+                    TasksState.view = TaskView.all;
+                    TasksActions.view-changed();
+                }
+            }
+
+            Chip {
+                text: "Today " + TasksState.due-today-count;
+                selected: TasksState.view == TaskView.today;
+                clicked => {
+                    TasksState.view = TaskView.today;
+                    TasksActions.view-changed();
+                }
+            }
+
+            Chip {
+                text: "Upcoming " + TasksState.upcoming-count;
+                selected: TasksState.view == TaskView.upcoming;
+                clicked => {
+                    TasksState.view = TaskView.upcoming;
+                    TasksActions.view-changed();
+                }
+            }
+
+            Chip {
+                text: "Done";
+                selected: TasksState.view == TaskView.done;
+                clicked => {
+                    TasksState.view = TaskView.done;
+                    TasksActions.view-changed();
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            if root.list-view : Chip {
+                text: TasksState.priority-filter < 0 ? "Any priority" : Priorities.name(TasksState.priority-filter);
+                has-mark: TasksState.priority-filter >= 0;
+                mark: Priorities.colour(TasksState.priority-filter);
+                selected: root.filter-open || TasksState.priority-filter >= 0;
+                clicked => { root.filter-open = !root.filter-open; }
+            }
+        }
+
+        if !TasksState.editing && TasksState.adding : QuickAdd { }
+
+        if !TasksState.editing && TasksState.ready && root.list-view && TasksState.rows.length > 0 : ListView {
+            vertical-stretch: 1;
+
+            for row in TasksState.rows : TaskRowView {
+                entry: row;
+                custom-order: TasksState.custom-order;
+            }
+        }
+
+        // Empty, first-use and error states.
+        if !TasksState.editing && root.list-view && (TasksState.rows.length == 0 || !TasksState.ready) : VerticalLayout {
+            vertical-stretch: 1;
+            alignment: center;
+            spacing: 3px;
+
+            Text {
+                horizontal-alignment: center;
+                text: !TasksState.ready ? (TasksState.error != "" ? "Tasks are unavailable" : "Loading…") : TasksState.empty-title;
+                font-size: Theme.font-md;
+                font-weight: 600;
+                color: Theme.text;
+            }
+
+            Text {
+                horizontal-alignment: center;
+                text: !TasksState.ready ? TasksState.error : TasksState.empty-detail;
+                font-size: 11px;
+                color: Theme.text-secondary;
+                wrap: word-wrap;
+            }
+        }
+
+        if !TasksState.editing && TasksState.ready && !root.list-view : Archive {
+            vertical-stretch: 1;
+        }
+
+        if !TasksState.editing && TasksState.sync-status != SyncStatus.none : HorizontalLayout {
+            height: 18px;
+            spacing: 6px;
+
+            Icon {
+                data: Icons.cloud;
+                size: 12px;
+                color: TasksState.sync-status == SyncStatus.failed ? Theme.danger : Theme.text-tertiary;
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                text: TasksState.sync-text;
+                font-size: 10.5px;
+                color: TasksState.sync-status == SyncStatus.failed ? Theme.danger : Theme.text-tertiary;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+
+            if TasksState.sync-status == SyncStatus.failed || TasksState.sync-status == SyncStatus.offline : Text {
+                text: "Retry";
+                font-size: 10.5px;
+                color: Theme.text;
+                vertical-alignment: center;
+                accessible-role: button;
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { TasksActions.refresh(); }
+                }
+            }
+        }
+    }
+
+    // Priority filter menu.
+    if root.filter-open && !TasksState.editing : Rectangle {
+        x: parent.width - self.width - Theme.padding;
+        y: Theme.padding + 32px + 8px + 24px + 4px;
+        width: 136px;
+        height: menu.preferred-height;
+        border-radius: Theme.control-radius + 2px;
+        background: Theme.surface-hover;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        menu := VerticalLayout {
+            padding: 4px;
+
+            for p in [-1, 4, 3, 2, 1, 0] : Rectangle {
+                height: 26px;
+                border-radius: Theme.control-radius;
+                background: pick.has-hover ? Theme.control-hover : TasksState.priority-filter == p ? Theme.tile : transparent;
+                accessible-role: button;
+                accessible-label: p < 0 ? "Any priority" : Priorities.name(p);
+
+                if p >= 0 : Rectangle {
+                    x: 10px;
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 3.5px;
+                    background: Priorities.colour(p);
+                }
+
+                Text {
+                    x: p >= 0 ? 24px : 10px;
+                    text: p < 0 ? "Any priority" : Priorities.name(p);
+                    font-size: 11.5px;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                }
+
+                pick := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        TasksState.priority-filter = p;
+                        root.filter-open = false;
+                        TasksActions.view-changed();
+                    }
+                }
+            }
+        }
+    }
+
+    // Undo, shown briefly after completing a task.
+    if TasksState.undo-visible && !TasksState.editing : Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 12px;
+        width: min(parent.width - 2 * Theme.padding, undo-row.preferred-width + 24px);
+        height: 34px;
+        border-radius: 17px;
+        background: Theme.surface-hover;
+        border-width: 1px;
+        border-color: Theme.border;
+        opacity: 0;
+        animate opacity { duration: Theme.fade-duration; }
+        init => {
+            self.opacity = 1;
+        }
+
+        undo-row := HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 4px;
+            spacing: 8px;
+
+            Text {
+                text: TasksState.undo-text;
+                font-size: 11.5px;
+                color: Theme.text;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+
+            VerticalLayout {
+                alignment: center;
+                TextButton {
+                    text: "Undo";
+                    clicked => { TasksActions.undo(); }
+                }
+            }
+        }
+    }
+}

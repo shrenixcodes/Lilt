@@ -64,6 +64,8 @@ media thread.
 | `src/ambient/` | Colour science (OKLab/OKLCH, contrast) and palette extraction |
 | `src/system/` | CPU, memory and network readings and the sampling policy |
 | `src/calendar/` | ICS parsing, recurrence expansion, time zones and the agenda |
+| `src/tasks/` | The task model, priority ordering, labels and the SQLite store with migrations |
+| `src/app/tasks.rs` | The tasks box's controller: list and archive rows, quick entry, completion and undo |
 | `src/settings/` | Versioned settings document, validation, migration and atomic saving |
 | `src/clock.rs`, `src/hotkey.rs`, `src/startup.rs`, `src/actions.rs`, `src/dialogs.rs` | Clock text, global shortcut, start-with-Windows, quick actions, file dialog |
 | `src/snapshots.rs` | Headless UI tests |
@@ -112,6 +114,7 @@ uses the native move loop with the top edge held fixed.
 | Playing bars | A Slint timer steps them about 14 times a second (no per-frame animation) while media plays, the compact island is on screen and motion is not reduced; stopped otherwise |
 | CPU / memory / network | 2 s / 5 s / 1 s, only while the expanded island is visible; 5 s / 10 s / 5 s in low-power mode; off otherwise |
 | Calendar | Rebuilt when the island expands and each minute while expanded; the file is re-read only if its modification time changed |
+| Tasks | The database is opened when the tasks box is first shown; active tasks are kept in memory and the list is rebuilt after each change and each minute while visible; the archive is queried only when shown |
 | Full-screen state | Shell app-bar notification, plus one query at start-up |
 
 ## Media session selection
@@ -202,6 +205,7 @@ sides.
 | --- | --- | --- |
 | Settings | `%APPDATA%\Lilt\settings.json` | Shortly after a change, atomically; never on start-up |
 | Log | `%LOCALAPPDATA%\Lilt\logs\lilt.log` | On notable events; rotated at 512 KB |
+| Tasks | `%LOCALAPPDATA%\Lilt\tasks.sqlite3` | On each change, in a transaction (SQLite, write-ahead log) |
 | Start with Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Lilt` | When toggled |
 
 ## Testing

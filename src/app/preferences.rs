@@ -51,6 +51,12 @@ impl App {
         state.set_show_calendar(settings.widgets.calendar);
         state.set_show_system(settings.widgets.system);
         state.set_show_actions(settings.widgets.quick_actions);
+        state.set_show_tasks(settings.widgets.tasks);
+        app.tasks.set_order(super::tasks::sort_mode(settings.tasks.order));
+        state.set_tasks_layout(match settings.tasks.layout {
+            settings::TaskLayout::Beside => crate::ui::TasksLayout::Beside,
+            settings::TaskLayout::Below => crate::ui::TasksLayout::Below,
+        });
         state.set_show_artwork(settings.music.show_artwork);
         state.set_show_progress(settings.music.show_progress);
 
@@ -182,7 +188,7 @@ impl App {
     }
 
     /// Fills the settings window from the current settings.
-    fn refresh_settings_window(&self) {
+    pub(super) fn refresh_settings_window(&self) {
         let window = self.settings_window.borrow();
         let Some(window) = window.as_ref() else { return };
         let monitors = placement::monitors();
@@ -403,6 +409,8 @@ fn to_data(s: &Settings, monitors: &[placement::Monitor]) -> SettingsData {
         show_calendar: s.widgets.calendar,
         show_system: s.widgets.system,
         show_actions: s.widgets.quick_actions,
+        show_tasks: s.widgets.tasks,
+        tasks_below: s.tasks.layout == settings::TaskLayout::Below,
         show_artwork: s.music.show_artwork,
         show_progress: s.music.show_progress,
         ambient_enabled: s.ambient.enabled,
@@ -442,6 +450,8 @@ fn from_data(d: &SettingsData, monitors: &[placement::Monitor], previous: &Setti
     s.widgets.calendar = d.show_calendar;
     s.widgets.system = d.show_system;
     s.widgets.quick_actions = d.show_actions;
+    s.widgets.tasks = d.show_tasks;
+    s.tasks.layout = if d.tasks_below { settings::TaskLayout::Below } else { settings::TaskLayout::Beside };
     s.music.show_artwork = d.show_artwork;
     s.music.show_progress = d.show_progress;
     s.ambient.enabled = d.ambient_enabled;

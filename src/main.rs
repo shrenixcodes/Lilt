@@ -20,6 +20,7 @@ mod settings;
 mod snapshots;
 mod startup;
 mod system;
+mod tasks;
 mod window;
 
 mod ui {

@@ -3,16 +3,17 @@
 //! DWM's own materials (acrylic, Mica) fill a window's whole rectangle and ignore window
 //! regions, so they cannot follow the island's pill shape. Instead a second window sits
 //! directly beneath the island. It is layered and transparent to input, so it never
-//! intercepts clicks, and it hosts a single Windows.UI.Composition visual: the host
-//! backdrop brush (the blurred content behind the window) clipped to a rounded rectangle
-//! that tracks the island's shape. DWM composites it on the GPU; Lilt only updates the
-//! shape when the island's outline changes.
+//! intercepts clicks, and it hosts Windows.UI.Composition visuals: the host backdrop
+//! brush (the blurred content behind the window), each clipped to a rounded rectangle
+//! that tracks one of the island's surfaces (the island itself and, when shown, the tasks
+//! box). DWM composites them on the GPU; Lilt only updates the shapes when an outline
+//! changes.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 
 use windows::System::DispatcherQueueController;
 use windows::UI::Composition::Desktop::DesktopWindowTarget;
-use windows::UI::Composition::{CompositionRoundedRectangleGeometry, Compositor, SpriteVisual};
+use windows::UI::Composition::{CompositionRoundedRectangleGeometry, Compositor, ContainerVisual, SpriteVisual};
 use windows::Win32::Foundation::{COLORREF, HWND, RECT};
 use windows::Win32::Graphics::Dwm::{DWMWA_USE_HOSTBACKDROPBRUSH, DwmSetWindowAttribute};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -47,7 +48,7 @@ fn compositor() -> windows::core::Result<Compositor> {
     })
 }
 
-/// The island's outline in physical pixels, relative to the island window.
+/// The outline of one surface in physical pixels, relative to the island window.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shape {
     pub x: f32,
@@ -59,10 +60,12 @@ pub struct Shape {
 
 pub struct Backdrop {
     hwnd: HWND,
+    compositor: Compositor,
     _target: DesktopWindowTarget,
-    visual: SpriteVisual,
-    geometry: CompositionRoundedRectangleGeometry,
-    shape: Cell<Option<Shape>>,
+    root: ContainerVisual,
+    /// One blurred, clipped visual per surface, created as surfaces appear.
+    visuals: RefCell<Vec<(SpriteVisual, CompositionRoundedRectangleGeometry)>>,
+    shapes: RefCell<Vec<Shape>>,
 }
 
 impl Backdrop {
@@ -110,34 +113,57 @@ impl Backdrop {
             }
             let interop: ICompositorDesktopInterop = compositor.cast()?;
             let target = unsafe { interop.CreateDesktopWindowTarget(hwnd, true)? };
-            let visual = compositor.CreateSpriteVisual()?;
-            visual.SetBrush(&compositor.CreateHostBackdropBrush()?)?;
-            let geometry = compositor.CreateRoundedRectangleGeometry()?;
-            visual.SetClip(&compositor.CreateGeometricClipWithGeometry(&geometry)?)?;
-            target.SetRoot(&visual)?;
-            Ok(Self { hwnd, _target: target, visual, geometry, shape: Cell::new(None) })
+            let root = compositor.CreateContainerVisual()?;
+            target.SetRoot(&root)?;
+            Ok(Self {
+                hwnd,
+                compositor: compositor.clone(),
+                _target: target,
+                root,
+                visuals: RefCell::new(Vec::new()),
+                shapes: RefCell::new(Vec::new()),
+            })
         };
         build().map_err(destroy)
     }
 
-    /// Clips the blur to the island's outline. Cheap when nothing changed.
-    pub fn set_shape(&self, shape: Shape) {
-        if self.shape.replace(Some(shape)) == Some(shape) {
+    /// Clips the blur to the surfaces' outlines. Cheap when nothing changed.
+    pub fn set_shapes(&self, shapes: &[Shape]) {
+        if self.shapes.borrow().as_slice() == shapes {
             return;
         }
-        // Inset half a pixel so the blur never shows outside the island's antialiased edge.
-        const INSET: f32 = 0.5;
-        let size = Vector2 { X: (shape.width - 2.0 * INSET).max(0.0), Y: (shape.height - 2.0 * INSET).max(0.0) };
-        let radius = (shape.radius - INSET).max(0.0);
-        let result = (|| -> windows::core::Result<()> {
-            self.visual.SetOffset(Vector3 { X: shape.x + INSET, Y: shape.y + INSET, Z: 0.0 })?;
-            self.visual.SetSize(size)?;
-            self.geometry.SetSize(size)?;
-            self.geometry.SetCornerRadius(Vector2 { X: radius, Y: radius })
-        })();
-        if let Err(err) = result {
-            tracing::debug!(%err, "backdrop shape not updated");
+        self.shapes.replace(shapes.to_vec());
+        if let Err(err) = self.apply(shapes) {
+            tracing::debug!(%err, "backdrop shapes not updated");
         }
+    }
+
+    fn apply(&self, shapes: &[Shape]) -> windows::core::Result<()> {
+        let mut visuals = self.visuals.borrow_mut();
+        while visuals.len() < shapes.len() {
+            let visual = self.compositor.CreateSpriteVisual()?;
+            visual.SetBrush(&self.compositor.CreateHostBackdropBrush()?)?;
+            let geometry = self.compositor.CreateRoundedRectangleGeometry()?;
+            visual.SetClip(&self.compositor.CreateGeometricClipWithGeometry(&geometry)?)?;
+            self.root.Children()?.InsertAtTop(&visual)?;
+            visuals.push((visual, geometry));
+        }
+        // Inset half a pixel so the blur never shows outside a surface's antialiased edge.
+        const INSET: f32 = 0.5;
+        for (index, (visual, geometry)) in visuals.iter().enumerate() {
+            let Some(shape) = shapes.get(index) else {
+                visual.SetIsVisible(false)?;
+                continue;
+            };
+            let size = Vector2 { X: (shape.width - 2.0 * INSET).max(0.0), Y: (shape.height - 2.0 * INSET).max(0.0) };
+            let radius = (shape.radius - INSET).max(0.0);
+            visual.SetIsVisible(true)?;
+            visual.SetOffset(Vector3 { X: shape.x + INSET, Y: shape.y + INSET, Z: 0.0 })?;
+            visual.SetSize(size)?;
+            geometry.SetSize(size)?;
+            geometry.SetCornerRadius(Vector2 { X: radius, Y: radius })?;
+        }
+        Ok(())
     }
 
     /// Places the backdrop exactly beneath the island, with the island's visibility.

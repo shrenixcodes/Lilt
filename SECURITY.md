@@ -28,6 +28,7 @@ Lilt works entirely on your PC.
 | What | Where |
 | --- | --- |
 | Settings | `%APPDATA%\Lilt\settings.json` |
+| Tasks | `%LOCALAPPDATA%\Lilt\tasks.sqlite3` (your tasks; never sent anywhere) |
 | Logs | `%LOCALAPPDATA%\Lilt\logs\` (application events only, no media or calendar content) |
 | Start with Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `Lilt` |
 | Installation (installer) | `%LOCALAPPDATA%\Programs\Lilt` by default, and its uninstall entry under `HKCU` |

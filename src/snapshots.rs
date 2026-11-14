@@ -16,8 +16,9 @@ use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, PhysicalSize, PlatformError};
 
 use crate::ui::{
-    AgendaEntry, AppState, Appearance, AppearanceTokens, CalendarState, Island, MediaAvailability, MediaInfo, Page,
-    SettingsData, SettingsWindow, SystemInfo, Theme,
+    AgendaEntry, AppState, Appearance, AppearanceTokens, ArchiveRow, ArchiveRowKind, CalendarState, Island,
+    MediaAvailability, MediaInfo, Page, SettingsData, SettingsWindow, SystemInfo, TaskForm, TaskView, TasksActions,
+    TasksLayout, TasksState, Theme,
 };
 
 /// Desktop-like backdrop the transparent island is composited onto.
@@ -40,7 +41,7 @@ impl Platform for TestPlatform {
 
 pub struct Harness {
     pub island: Island,
-    window: Rc<MinimalSoftwareWindow>,
+    pub window: Rc<MinimalSoftwareWindow>,
     pub clock: Rc<Cell<Duration>>,
     scale: f32,
 }
@@ -85,10 +86,9 @@ impl Harness {
 
     /// Renders the window composited over the given wallpaper.
     pub fn render_on(&self, wallpaper: impl Fn(u32, u32) -> [u8; 3]) -> RgbaImage {
-        // The window is the expanded width plus a 10 px margin on each side, by 270 logical
-        // pixels (see ui/island.slint).
-        let width = self.state().get_expanded_width().max(340.0) + 20.0;
-        let size = PhysicalSize::new((width * self.scale).round() as u32, (270.0 * self.scale).round() as u32);
+        // The window's logical size as laid out by ui/island.slint.
+        let (width, height) = (self.island.get_window_width(), self.island.get_window_height());
+        let size = PhysicalSize::new((width * self.scale).round() as u32, (height * self.scale).round() as u32);
         self.window.set_size(size);
         let mut buffer = vec![PremultipliedRgbaColor::default(); (size.width * size.height) as usize];
         // Conditional elements are created during the first render and start their fade-in
@@ -636,6 +636,383 @@ fn playing_bars_work_in_liquid_glass() {
     let (a, b) = two_frames(&h, 70);
     save(&b, "glass-compact-visualizer");
     assert_ne!(glyph(&a), glyph(&b));
+}
+
+/// Example tasks for rendering tests only; never shown to users.
+fn sample_tasks() -> Vec<crate::tasks::Task> {
+    use crate::tasks::tests::task;
+    use crate::tasks::{Priority, Source, SyncState};
+    let mut tasks = vec![
+        task(1, Priority::Critical, Some(-1)),
+        task(2, Priority::High, Some(0)),
+        task(3, Priority::High, Some(2)),
+        task(4, Priority::Medium, None),
+        task(5, Priority::Low, Some(6)),
+        task(6, Priority::None, None),
+    ];
+    let titles = [
+        "Send the signed contract to Priya",
+        "Prepare slides for the team meeting",
+        "Review the pull request for the release",
+        "Book a dentist appointment",
+        "Renew the domain",
+        "Read the design notes",
+    ];
+    for (task, title) in tasks.iter_mut().zip(titles) {
+        task.title = title.into();
+    }
+    tasks[1].due_minute = Some(17 * 60);
+    tasks[1].category = "Work".into();
+    tasks[2].source = Source::GoogleTasks;
+    tasks[2].sync = SyncState::Synced;
+    tasks
+}
+
+fn set_appearance(h: &Harness, appearance: Appearance) {
+    h.theme().set_appearance(appearance);
+    h.theme().set_live_blur(appearance == Appearance::LiquidGlass);
+}
+
+fn tasks_harness(appearance: Appearance) -> Harness {
+    let h = Harness::new(1.0);
+    set_appearance(&h, appearance);
+    fill_tasks(&h);
+    h
+}
+
+fn fill_tasks(h: &Harness) {
+    use crate::app::tasks::build_rows;
+    use crate::tasks::tests::NOW;
+    use crate::tasks::{SortMode, View};
+    let state = h.state();
+    state.set_show_tasks(true);
+    state.set_expanded(true);
+    let tasks = h.island.global::<TasksState>();
+    tasks.set_ready(true);
+    tasks.set_date_label("Sat 14 Nov".into());
+    let sample = sample_tasks();
+    tasks.set_rows(slint::ModelRc::new(slint::VecModel::from(build_rows(
+        &sample,
+        View::All,
+        None,
+        SortMode::Priority,
+        NOW,
+        true,
+    ))));
+    tasks.set_open_count(6);
+    tasks.set_due_today_count(2);
+    tasks.set_upcoming_count(2);
+    tasks.set_done_today(3);
+    tasks.set_left_today(2);
+    let actions = h.island.global::<TasksActions>();
+    actions.on_day_label(|offset| if offset == -10000 { "No date".into() } else { "Today".into() });
+    actions.on_time_valid(|text| crate::app::tasks::parse_time(&text).is_some());
+}
+
+#[test]
+fn tasks_box_sits_beside_or_below_in_both_appearances() {
+    let h = tasks_harness(Appearance::Midnight);
+    let midnight = h.render_on(wallpaper);
+    save(&midnight, "tasks-midnight");
+    // Beside: the dashboard (460) and the tasks box (400) with a 10 px gap, plus margins.
+    assert_eq!((midnight.width(), midnight.height()), (890, 340));
+    set_appearance(&h, Appearance::LiquidGlass);
+    let glass = h.render_on(wallpaper);
+    save(&glass, "tasks-glass");
+    assert_ne!(midnight, glass);
+    // The gap between the boxes is empty: clicks there reach the desktop.
+    let gap = (h.island.get_tasks_x() as u32 - 5, 120);
+    assert_eq!(glass.get_pixel(gap.0, gap.1).0[..3], wallpaper(gap.0, gap.1));
+
+    h.state().set_tasks_layout(TasksLayout::Below);
+    let below = h.render_on(wallpaper);
+    save(&below, "tasks-glass-below");
+    // Below: both boxes as wide as the dashboard, one above the other.
+    assert_eq!((below.width(), below.height()), (480, 600));
+    assert_eq!(h.island.get_tasks_box_width(), 460.0);
+    assert!(h.island.get_tasks_y() > h.island.get_body_height());
+    set_appearance(&h, Appearance::Midnight);
+    save(&h.render_on(wallpaper), "tasks-midnight-below");
+
+    // Without Tasks the island is exactly the original.
+    h.state().set_show_tasks(false);
+    let plain = h.render();
+    assert_eq!((plain.width(), plain.height()), (480, 270));
+}
+
+#[test]
+fn tasks_states_render() {
+    let h = tasks_harness(Appearance::Midnight);
+    for (appearance, name) in [(Appearance::Midnight, "midnight"), (Appearance::LiquidGlass, "glass")] {
+        set_appearance(&h, appearance);
+        fill_tasks(&h);
+        let tasks = h.island.global::<TasksState>();
+
+        tasks.set_adding(true);
+        tasks.set_draft("Call the bank".into());
+        tasks.set_draft_priority(3);
+        tasks.set_draft_due(0);
+        save(&h.render_on(wallpaper), &format!("tasks-quick-add-{name}"));
+        tasks.set_adding(false);
+
+        tasks.set_undo_text("Completed · Book a dentist appointment".into());
+        tasks.set_undo_visible(true);
+        save(&h.render_on(wallpaper), &format!("tasks-undo-{name}"));
+        tasks.set_undo_visible(false);
+
+        tasks.set_form(TaskForm {
+            id: 2,
+            title: "Prepare slides for the team meeting".into(),
+            notes: "Ten slides at most; include the roadmap.".into(),
+            priority: 3,
+            due_offset: 0,
+            time: "17:00".into(),
+            category: "Work".into(),
+            source: "Lilt".into(),
+            time_allowed: true,
+            ..Default::default()
+        });
+        tasks.set_editing(true);
+        save(&h.render_on(wallpaper), &format!("tasks-editor-{name}"));
+        tasks.set_editing(false);
+
+        tasks.set_view(TaskView::Done);
+        let archive = vec![
+            ArchiveRow { kind: ArchiveRowKind::Header, title: "Today".into(), ..Default::default() },
+            ArchiveRow {
+                kind: ArchiveRowKind::Task,
+                id: 9,
+                title: "Pay the electricity bill".into(),
+                detail: "Completed 09:12 · High · was due Today".into(),
+                priority: 3,
+                ..Default::default()
+            },
+            ArchiveRow { kind: ArchiveRowKind::Header, title: "Earlier this week".into(), ..Default::default() },
+            ArchiveRow {
+                kind: ArchiveRowKind::Task,
+                id: 10,
+                title: "Send the quarterly report".into(),
+                detail: "Completed Tue 10, 16:40 · Google Tasks".into(),
+                ..Default::default()
+            },
+        ];
+        tasks.set_archive(slint::ModelRc::new(slint::VecModel::from(archive)));
+        save(&h.render_on(wallpaper), &format!("tasks-archive-{name}"));
+        tasks.set_archive(slint::ModelRc::default());
+        save(&h.render_on(wallpaper), &format!("tasks-archive-empty-{name}"));
+        tasks.set_view(TaskView::All);
+
+        tasks.set_rows(slint::ModelRc::default());
+        tasks.set_open_count(0);
+        tasks.set_done_today(0);
+        tasks.set_left_today(0);
+        tasks.set_empty_title("Nothing competing for your attention.".into());
+        tasks.set_empty_detail("Add a task to get started: press N or the + button.".into());
+        save(&h.render_on(wallpaper), &format!("tasks-empty-{name}"));
+    }
+}
+
+#[test]
+fn completing_a_task_ticks_it_at_once() {
+    let h = tasks_harness(Appearance::Midnight);
+    let completed = Rc::new(Cell::new(0));
+    let seen = completed.clone();
+    h.island.global::<TasksActions>().on_complete(move |id| seen.set(id));
+    let before = h.render();
+    // The focus card's completion circle: the box's padding + 12 + 9 in, and below the
+    // header, the filter chips and the card's "Focus now" label.
+    let (x, y) = (h.island.get_tasks_x() + 14.0 + 12.0 + 9.0, 14.0 + 32.0 + 8.0 + 24.0 + 8.0 + 4.0 + 30.0 + 6.0);
+    let position = slint::LogicalPosition::new(x, y);
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerPressed {
+        position,
+        button: slint::platform::PointerEventButton::Left,
+    });
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerReleased {
+        position,
+        button: slint::platform::PointerEventButton::Left,
+    });
+    assert_eq!(completed.get(), 1, "the critical overdue task is first");
+    let after = h.render();
+    save(&after, "tasks-completing");
+    // Inside the circle, away from the tick mark.
+    let (px, py) = (x as u32 - 4, y as u32 - 4);
+    // The circle fills with the accent while the row fades out.
+    let (was, now) = (before.get_pixel(px, py)[0], after.get_pixel(px, py)[0]);
+    assert!(now > was + 30, "circle {was} -> {now}");
+}
+
+fn key(h: &Harness, text: &str) {
+    h.window.dispatch_event(slint::platform::WindowEvent::KeyPressed { text: text.into() });
+    h.window.dispatch_event(slint::platform::WindowEvent::KeyReleased { text: text.into() });
+}
+
+#[test]
+fn tasks_keyboard_quick_add() {
+    let h = tasks_harness(Appearance::Midnight);
+    let added = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let seen = added.clone();
+    h.island.global::<TasksActions>().on_quick_add(move |title, priority, due, _, _| {
+        seen.borrow_mut().push((title.to_string(), priority, due));
+    });
+    let tasks = h.island.global::<TasksState>();
+    h.render();
+    // N opens quick entry when nothing else has the keyboard.
+    key(&h, "n");
+    assert!(tasks.get_adding(), "N opens quick add");
+    h.render();
+    for c in "Call the bank".chars() {
+        key(&h, &c.to_string());
+    }
+    key(&h, "\n");
+    assert_eq!(added.borrow().as_slice(), [("Call the bank".to_string(), 0, -10000)]);
+    // Escape closes the field first, and only then the island.
+    key(&h, "\u{1b}");
+    assert!(!tasks.get_adding(), "Escape closes quick add");
+    assert!(h.state().get_expanded(), "the island stays open");
+}
+
+fn advance(h: &Harness, ms: u64) {
+    h.clock.set(h.clock.get() + Duration::from_millis(ms));
+    slint::platform::update_timers_and_animations();
+}
+
+fn open_controller(h: &Harness, path: &std::path::Path) -> Rc<crate::app::tasks::TasksController> {
+    use crate::app::tasks::{Hooks, TasksController};
+    let controller = TasksController::new(&h.island, path.to_path_buf(), true, crate::tasks::SortMode::Priority);
+    controller.connect(Hooks {
+        busy: Box::new(|_| {}),
+        order_changed: Box::new(|_| {}),
+        layout_toggled: Box::new(|| {}),
+    });
+    controller
+}
+
+/// Titles of the tasks in the list, in display order.
+fn listed(h: &Harness) -> Vec<String> {
+    use slint::Model;
+    h.island
+        .global::<TasksState>()
+        .get_rows()
+        .iter()
+        .filter(|r| r.kind != crate::ui::TaskRowKind::Header)
+        .map(|r| r.title.to_string())
+        .collect()
+}
+
+fn id_of(h: &Harness, title: &str) -> i32 {
+    use slint::Model;
+    let rows = h.island.global::<TasksState>().get_rows();
+    rows.iter().find(|r| r.title == title).map(|r| r.id).unwrap_or_else(|| panic!("{title} not listed"))
+}
+
+#[test]
+fn tasks_work_end_to_end() {
+    let dir = std::env::temp_dir().join(format!("lilt-tasks-e2e-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let path = dir.join("tasks.sqlite3");
+    let h = Harness::new(1.0);
+    let _controller = open_controller(&h, &path);
+    h.state().set_show_tasks(true);
+    h.state().set_expanded(true);
+    // Showing the box opens the database.
+    h.render();
+    let state = h.island.global::<TasksState>();
+    let actions = h.island.global::<TasksActions>();
+    assert!(state.get_ready(), "{}", state.get_error());
+    assert!(state.get_first_use());
+
+    // Create: with only a title, and with every option.
+    actions.invoke_quick_add("Read the design notes".into(), 0, -10000, "".into(), "".into());
+    actions.invoke_quick_add("Send the contract".into(), 4, -1, "".into(), "Work".into());
+    actions.invoke_quick_add("Prepare slides".into(), 3, 0, "17:30".into(), "".into());
+    assert_eq!(listed(&h), ["Send the contract", "Prepare slides", "Read the design notes"]);
+    assert_eq!((state.get_open_count(), state.get_due_today_count()), (3, 2));
+    assert_eq!(state.get_draft(), "", "the field is cleared for the next task");
+    assert!(!state.get_first_use());
+
+    // Bad input is refused with an explanation.
+    actions.invoke_quick_add("Bad time".into(), 0, 0, "25:00".into(), "".into());
+    assert!(state.get_draft_error().contains("time"));
+    actions.invoke_quick_add("   ".into(), 0, -10000, "".into(), "".into());
+    assert!(state.get_draft_error().contains("title"));
+    assert_eq!(state.get_open_count(), 3);
+
+    // Complete: the counts change at once, the row leaves after its tick, undo restores.
+    let contract = id_of(&h, "Send the contract");
+    actions.invoke_complete(contract);
+    assert_eq!(state.get_open_count(), 2);
+    assert!(state.get_undo_visible());
+    assert!(listed(&h).contains(&"Send the contract".to_string()), "still shown while the tick plays");
+    advance(&h, 500);
+    assert!(!listed(&h).contains(&"Send the contract".to_string()));
+    assert_eq!(state.get_done_today(), 1);
+    actions.invoke_undo();
+    assert_eq!(state.get_open_count(), 3);
+    assert_eq!(listed(&h)[0], "Send the contract");
+
+    // Edit: a new priority moves the task at once.
+    actions.invoke_edit(id_of(&h, "Read the design notes"));
+    assert!(state.get_editing());
+    let mut form = state.get_form();
+    assert_eq!(form.source, "Lilt task, stored on this PC");
+    form.title = "Read the design notes again".into();
+    form.priority = 4;
+    actions.invoke_save(form);
+    assert!(!state.get_editing());
+    assert_eq!(listed(&h), ["Send the contract", "Read the design notes again", "Prepare slides"]);
+
+    // Defer to tomorrow, and undo.
+    actions.invoke_defer(id_of(&h, "Prepare slides"));
+    assert_eq!(state.get_due_today_count(), 1);
+    actions.invoke_undo();
+    assert_eq!(state.get_due_today_count(), 2);
+
+    // Your own order, within a priority.
+    actions.invoke_toggle_order();
+    assert!(state.get_custom_order());
+    actions.invoke_move(id_of(&h, "Read the design notes again"), -1);
+    assert_eq!(listed(&h)[..2], ["Read the design notes again", "Send the contract"]);
+    actions.invoke_toggle_order();
+
+    // Archive: search, restore and delete.
+    actions.invoke_complete(id_of(&h, "Prepare slides"));
+    advance(&h, 500);
+    state.set_view(TaskView::Done);
+    actions.invoke_view_changed();
+    let archived = |h: &Harness| {
+        use slint::Model;
+        h.island.global::<TasksState>().get_archive().iter().map(|r| r.title.to_string()).collect::<Vec<_>>()
+    };
+    assert_eq!(archived(&h), ["Today", "Prepare slides"]);
+    state.set_search("nothing like this".into());
+    actions.invoke_search_changed("nothing like this".into());
+    advance(&h, 200);
+    assert!(archived(&h).is_empty());
+    state.set_search("".into());
+    actions.invoke_search_changed("".into());
+    advance(&h, 200);
+    let slides = {
+        use slint::Model;
+        state.get_archive().iter().find(|r| r.title == "Prepare slides").map(|r| r.id).unwrap()
+    };
+    actions.invoke_restore(slides);
+    assert!(archived(&h).is_empty());
+    state.set_view(TaskView::All);
+    actions.invoke_view_changed();
+    assert!(listed(&h).contains(&"Prepare slides".to_string()));
+    actions.invoke_complete(slides);
+    advance(&h, 500);
+    actions.invoke_delete_completed(slides);
+    actions.invoke_clear_completed();
+    assert_eq!(state.get_open_count(), 2);
+
+    // Everything survives reopening the database.
+    drop(_controller);
+    let again = open_controller(&h, &path);
+    again.open();
+    assert_eq!(listed(&h), ["Send the contract", "Read the design notes again"]);
+    drop(again);
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// WCAG relative luminance of an sRGB colour.

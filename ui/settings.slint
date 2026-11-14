@@ -26,6 +26,8 @@ export struct SettingsData {
     show-calendar: bool,
     show-system: bool,
     show-actions: bool,
+    show-tasks: bool,
+    tasks-below: bool,
     show-artwork: bool,
     show-progress: bool,
     ambient-enabled: bool,
@@ -668,6 +670,24 @@ export component SettingsWindow inherits Window {
                         Switch {
                             checked: root.data.show-actions;
                             toggled => { root.data.show-actions = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Tasks";
+                        description: "A prioritised task list next to the expanded island. Tasks are stored on this PC.";
+                        Switch {
+                            checked: root.data.show-tasks;
+                            toggled => { root.data.show-tasks = self.checked; root.edited(); }
+                        }
+                    }
+                    if root.data.show-tasks : Row {
+                        label: "Tasks layout";
+                        description: "Where the tasks box sits when the island is expanded.";
+                        ComboBox {
+                            width: 180px;
+                            model: ["Beside the island", "Below the island"];
+                            current-index: root.data.tasks-below ? 1 : 0;
+                            selected => { root.data.tasks-below = self.current-index == 1; root.edited(); }
                         }
                     }
                     Row {

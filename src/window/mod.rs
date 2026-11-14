@@ -8,6 +8,7 @@
 
 mod adapter;
 mod backdrop;
+mod clipboard;
 mod input;
 pub mod placement;
 mod surface;
@@ -110,6 +111,16 @@ impl Platform for Win32Platform {
 
     fn click_interval(&self) -> Duration {
         Duration::from_millis(unsafe { GetDoubleClickTime() } as u64)
+    }
+
+    fn set_clipboard_text(&self, text: &str, clipboard: slint::platform::Clipboard) {
+        if clipboard == slint::platform::Clipboard::DefaultClipboard {
+            clipboard::set_text(text);
+        }
+    }
+
+    fn clipboard_text(&self, clipboard: slint::platform::Clipboard) -> Option<String> {
+        (clipboard == slint::platform::Clipboard::DefaultClipboard).then(clipboard::text).flatten()
     }
 }
 

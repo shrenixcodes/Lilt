@@ -188,6 +188,13 @@ export global Theme {
     out property <color> text-on-light: tokens.text-on-light;
     out property <color> live: #6fd39a;
 
+    // Task priorities, used as small marks next to a written label, never alone.
+    out property <color> priority-critical: #f07878;
+    out property <color> priority-high: #f0a35a;
+    out property <color> priority-medium: #e6c766;
+    out property <color> priority-low: #79aef0;
+    out property <color> danger: #f08a8a;
+
     // Settings window
     out property <color> window-background: live-blur ? tokens.blurred-window-background : tokens.window-background;
     out property <color> sidebar: live-blur ? tokens.blurred-sidebar : tokens.sidebar;

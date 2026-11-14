@@ -59,3 +59,88 @@ export enum Page {
     calendar,
     system,
 }
+
+// Where the tasks box sits next to the expanded island.
+export enum TasksLayout {
+    beside,
+    below,
+}
+
+export enum TaskView {
+    all,
+    today,
+    upcoming,
+    done,
+}
+
+export enum TaskRowKind {
+    // "Critical · 2"
+    header,
+    task,
+    // The task to work on next, shown first and larger.
+    focus,
+}
+
+export struct TaskRow {
+    kind: TaskRowKind,
+    id: int,
+    title: string,
+    // Category, source and sync notes, e.g. "Work · Google Tasks".
+    meta: string,
+    due: string,
+    overdue: bool,
+    // 0 = none, 1 = low … 4 = critical
+    priority: int,
+    priority-label: string,
+    // Tasks in the group, for headers.
+    count: int,
+    // From Google: drawn with a source mark.
+    imported: bool,
+    can-move-up: bool,
+    can-move-down: bool,
+}
+
+export enum ArchiveRowKind {
+    header,
+    task,
+}
+
+export struct ArchiveRow {
+    kind: ArchiveRowKind,
+    id: int,
+    title: string,
+    // "Completed 14:05 · High · was due Fri 13 · Google Tasks"
+    detail: string,
+    notes: string,
+    priority: int,
+}
+
+// A task being created or edited.
+export struct TaskForm {
+    // 0 for a new task.
+    id: int,
+    title: string,
+    notes: string,
+    priority: int,
+    // Days from today; -10000 for no due date.
+    due-offset: int,
+    time: string,
+    category: string,
+    // "Lilt", "Google Tasks · My Tasks", …
+    source: string,
+    // Explains what synchronises, if anything.
+    sync-note: string,
+    origin: string,
+    // Google Tasks stores dates only.
+    time-allowed: bool,
+    error: string,
+}
+
+export enum SyncStatus {
+    // Google is not connected; nothing to show.
+    none,
+    synced,
+    syncing,
+    offline,
+    failed,
+}

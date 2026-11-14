@@ -5,6 +5,7 @@ mod calendar;
 mod media;
 mod preferences;
 mod system;
+pub(crate) mod tasks;
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -74,6 +75,7 @@ pub struct App {
     glass_fallback: Cell<Option<Fallback>>,
     /// Whether the settings window should show the system acrylic.
     window_blur: Cell<bool>,
+    tasks: Rc<tasks::TasksController>,
 }
 
 thread_local! {
@@ -120,11 +122,18 @@ pub fn run() -> Result<(), slint::PlatformError> {
     window::create_next_as(WindowKind::Island);
     let island = Island::new()?;
     let tray = Tray::new()?;
+    let settings = App::load_settings();
+    let tasks = tasks::TasksController::new(
+        &island,
+        crate::tasks::store::default_path(),
+        clock::uses_24_hour_clock(),
+        tasks::sort_mode(settings.tasks.order),
+    );
 
     let app = Rc::new(App {
         island,
         tray,
-        settings: RefCell::new(App::load_settings()),
+        settings: RefCell::new(settings),
         save_timer: slint::Timer::default(),
         settings_window: RefCell::new(None),
         shortcut_problem: RefCell::new(None),
@@ -152,12 +161,14 @@ pub fn run() -> Result<(), slint::PlatformError> {
         zones: WindowsZones::default(),
         glass_fallback: Cell::new(None),
         window_blur: Cell::new(false),
+        tasks,
     });
     CURRENT.with(|c| *c.borrow_mut() = Rc::downgrade(&app));
     App::connect(&app);
     App::connect_media(&app);
     App::connect_calendar(&app);
     App::connect_preferences(&app);
+    App::connect_tasks(&app);
     App::refresh_clock(&app);
     app.tray.set_light_taskbar(light_taskbar());
 
@@ -218,14 +229,24 @@ impl App {
         if let Some(native) = window::find(app.island.window()) {
             let island = app.island.as_weak();
             native.set_shape_source(move || {
-                let island = island.upgrade()?;
-                Some(window::Shape {
+                let Some(island) = island.upgrade() else { return Vec::new() };
+                let mut shapes = vec![window::Shape {
                     x: island.get_body_x(),
                     y: island.get_body_y(),
                     width: island.get_body_width(),
                     height: island.get_body_height(),
                     radius: island.get_body_radius(),
-                })
+                }];
+                if island.get_tasks_shown() {
+                    shapes.push(window::Shape {
+                        x: island.get_tasks_x(),
+                        y: island.get_tasks_y(),
+                        width: island.get_tasks_box_width(),
+                        height: island.get_tasks_box_height(),
+                        radius: island.get_tasks_radius(),
+                    });
+                }
+                shapes
             });
             let weak = weak.clone();
             native.set_notice_handler(move |notice| {
@@ -351,7 +372,8 @@ impl App {
 
     fn schedule_collapse(app: &Rc<Self>) {
         let general = app.settings.borrow().general.clone();
-        if !general.auto_collapse {
+        // Never while a task is being typed or edited.
+        if !general.auto_collapse || app.tasks.busy.get() {
             return;
         }
         let weak = Rc::downgrade(app);
@@ -395,6 +417,7 @@ impl App {
         state.set_weekday(text.weekday.into());
         state.set_date(text.date.into());
         app.refresh_agenda();
+        app.tick_tasks();
 
         let weak = Rc::downgrade(app);
         let wait = Duration::from_millis(clock::millis_to_next_minute() + 20);

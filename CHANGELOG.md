@@ -20,6 +20,12 @@ All notable changes to Lilt are documented here. The format follows
   on screen, settle into the flat idle bars when playback pauses, and stay still with
   reduced motion.
 
+- **Tasks**: a prioritised task list in its own box beside or below the expanded island,
+  with quick entry (N), priorities, due dates and times, labels, a "Focus now" task,
+  completion with undo, postponing, your own order within a priority, and a searchable
+  archive with restore and permanent deletion. Tasks are stored in SQLite on this PC.
+- Copy, cut and paste in Lilt's text fields.
+
 ### Changed
 
 - The original appearance is now called **Midnight**. It is unchanged and remains the

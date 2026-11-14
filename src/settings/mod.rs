@@ -28,6 +28,7 @@ pub struct Settings {
     pub performance: Performance,
     pub shortcuts: Shortcuts,
     pub calendar: Calendar,
+    pub tasks: Tasks,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -120,6 +121,8 @@ pub struct Widgets {
     pub calendar: bool,
     pub system: bool,
     pub quick_actions: bool,
+    /// The Tasks side tab of the expanded island.
+    pub tasks: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -153,6 +156,33 @@ pub struct Shortcuts {
     pub toggle: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TaskOrder {
+    /// Priority, then the urgency of the due date.
+    #[default]
+    Priority,
+    /// Priority, then the user's own order.
+    Custom,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TaskLayout {
+    /// The tasks box sits to the right of the expanded island.
+    #[default]
+    Beside,
+    /// The tasks box sits below the expanded island.
+    Below,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Tasks {
+    pub order: TaskOrder,
+    pub layout: TaskLayout,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Calendar {
@@ -173,6 +203,7 @@ impl Default for Settings {
             performance: Performance::default(),
             shortcuts: Shortcuts::default(),
             calendar: Calendar::default(),
+            tasks: Tasks::default(),
         }
     }
 }
@@ -203,7 +234,7 @@ impl Default for Position {
 
 impl Default for Widgets {
     fn default() -> Self {
-        Self { media: true, calendar: true, system: true, quick_actions: true }
+        Self { media: true, calendar: true, system: true, quick_actions: true, tasks: true }
     }
 }
 

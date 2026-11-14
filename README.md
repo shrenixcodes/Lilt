@@ -36,6 +36,10 @@ megabytes of memory and no measurable CPU or GPU time.
   Calendar to see the week ahead, including recurring events and time zones.
 - **System readings.** CPU and memory use and network throughput, sampled only while
   you are looking at them.
+- **Tasks.** A prioritised task list in its own box beside or below the expanded island:
+  quick entry, priorities from Critical to none, due dates and times, a "Focus now" task,
+  a satisfying tick with undo, and a searchable archive of completed work. Tasks are
+  stored on this PC.
 - **Quick actions.** One click to sound, display and brightness, Bluetooth and Wi-Fi
   settings, Windows Settings, the Snipping Tool, Task Manager and File Explorer.
 - **Settings.** Appearance, widgets, sizes, display and position, ambient colour,
@@ -73,6 +77,9 @@ To uninstall, use *Settings → Apps → Installed apps → Lilt*.
 | Close the expanded island | **Esc**, click elsewhere, or move the pointer away for a few seconds |
 | Move the island | Drag the compact island sideways |
 | Open the agenda or system details | Click the calendar or system tile |
+| Add a task | Expand the island, then press **N** or click **+** in the tasks box |
+| Complete, edit or postpone a task | Click its circle; click the task; hover and click the clock |
+| Move the tasks box | Click the layout button in its header, or *Settings → Widgets* |
 | Show or hide the island, open Settings, quit | Use the Lilt icon in the notification area |
 
 ### Appearances
@@ -120,6 +127,18 @@ polling. Measured on a release build:
 These were measured with Midnight; Liquid Glass has not been benchmarked side by side yet.
 
 [PERFORMANCE.md](PERFORMANCE.md) has the full results, the test machine and the method.
+
+### Tasks
+
+Tasks are grouped by priority, from Critical to No priority. Within a priority, overdue
+tasks come first, then tasks due today, then the nearest dates, then undated tasks. The
+sort button switches to your own order, which you change with the arrows that appear on
+hover (or Alt+Up and Alt+Down); a task never moves above one of higher priority. The first
+task is shown as *Focus now*.
+
+Completing a task ticks it at once and updates the counts; it leaves the list a moment
+later, and **Undo** brings it back. Completed tasks stay in **Done**, grouped by day and
+searchable, until you restore or delete them.
 
 ## Privacy
 

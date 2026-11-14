@@ -51,7 +51,7 @@ pub enum Notice {
 }
 
 type NoticeHandler = Rc<dyn Fn(Notice)>;
-type ShapeSource = Box<dyn Fn() -> Option<Shape>>;
+type ShapeSource = Box<dyn Fn() -> Vec<Shape>>;
 
 pub struct Win32Window {
     window: slint::Window,
@@ -70,7 +70,8 @@ pub struct Win32Window {
     notice: RefCell<Option<NoticeHandler>>,
     /// The live blur beneath the island (Liquid Glass).
     backdrop: RefCell<Option<Backdrop>>,
-    /// The island's outline in logical pixels, read after each frame for the backdrop.
+    /// The outlines of the island's surfaces in logical pixels, read after each frame for
+    /// the backdrop.
     shape_source: RefCell<Option<ShapeSource>>,
     /// Whether an ordinary window shows the system acrylic behind its content.
     system_backdrop: Cell<bool>,
@@ -130,22 +131,20 @@ impl Win32Window {
         *self.notice.borrow_mut() = Some(Rc::new(handler));
     }
 
-    /// Supplies the island's current outline, in logical pixels relative to the window.
-    pub fn set_shape_source(&self, source: impl Fn() -> Option<Shape> + 'static) {
+    /// Supplies the current outlines of the island's surfaces, in logical pixels relative
+    /// to the window.
+    pub fn set_shape_source(&self, source: impl Fn() -> Vec<Shape> + 'static) {
         *self.shape_source.borrow_mut() = Some(Box::new(source));
     }
 
-    fn physical_shape(&self) -> Option<Shape> {
+    fn physical_shapes(&self) -> Vec<Shape> {
         let source = self.shape_source.borrow();
-        let shape = (source.as_ref()?)()?;
+        let Some(source) = source.as_ref() else { return Vec::new() };
         let k = self.scale.get();
-        Some(Shape {
-            x: shape.x * k,
-            y: shape.y * k,
-            width: shape.width * k,
-            height: shape.height * k,
-            radius: shape.radius * k,
-        })
+        source()
+            .into_iter()
+            .map(|s| Shape { x: s.x * k, y: s.y * k, width: s.width * k, height: s.height * k, radius: s.radius * k })
+            .collect()
     }
 
     /// Turns the live blur behind the island on or off. Returns whether it is on.
@@ -160,9 +159,7 @@ impl Win32Window {
         let Some(hwnd) = self.ensure_hwnd() else { return false };
         match Backdrop::new() {
             Ok(backdrop) => {
-                if let Some(shape) = self.physical_shape() {
-                    backdrop.set_shape(shape);
-                }
+                backdrop.set_shapes(&self.physical_shapes());
                 backdrop.follow(hwnd);
                 self.backdrop.replace(Some(backdrop));
                 true
@@ -362,10 +359,8 @@ impl Win32Window {
         }
         drop(slot);
         // The island's outline may be animating; keep the blur beneath it in step.
-        if let Some(backdrop) = self.backdrop.borrow().as_ref()
-            && let Some(shape) = self.physical_shape()
-        {
-            backdrop.set_shape(shape);
+        if let Some(backdrop) = self.backdrop.borrow().as_ref() {
+            backdrop.set_shapes(&self.physical_shapes());
         }
         true
     }
