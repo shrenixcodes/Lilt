@@ -39,6 +39,9 @@ export component ProgressBar inherits Rectangle {
     in property <bool> seekable: false;
     in property <color> fill: Theme.accent;
     callback seek(float);
+    // Animated locally because globals cannot animate.
+    property <color> shown-fill: root.fill;
+    animate shown-fill { duration: Theme.ambient-duration; easing: ease-in-out; }
 
     height: 12px;
     property <length> track-height: touch.has-hover && seekable ? 5px : 3px;
@@ -54,7 +57,7 @@ export component ProgressBar inherits Rectangle {
             x: 0;
             width: parent.width * clamp(root.value, 0, 1);
             border-radius: parent.border-radius;
-            background: root.fill;
+            background: root.shown-fill;
         }
     }
 
@@ -77,6 +80,7 @@ export component Meter inherits Rectangle {
         border-radius: parent.border-radius;
         background: Theme.accent;
         animate width { duration: Theme.fade-duration * 2; easing: ease-out; }
+        animate background { duration: Theme.ambient-duration; easing: ease-in-out; }
     }
 }
 

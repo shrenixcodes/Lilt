@@ -99,6 +99,7 @@ export component ActivityView inherits Rectangle {
             Text {
                 text: AppState.media.playing ? "Now playing" : "Paused";
                 color: Theme.accent;
+                animate color { duration: Theme.ambient-duration; }
                 font-size: Theme.font-xs;
                 font-weight: 600;
             }

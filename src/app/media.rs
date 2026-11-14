@@ -6,8 +6,9 @@ use std::time::{Duration, Instant};
 use slint::ComponentHandle;
 
 use super::App;
+use crate::ambient::{AmbientPalette, Rgb};
 use crate::media::{Command, MediaState, MediaUpdate, PlaybackStatus};
-use crate::ui::{AppActions, AppState, MediaAvailability, MediaInfo};
+use crate::ui::{AppActions, AppState, MediaAvailability, MediaInfo, Theme};
 
 /// How long the track-change banner stays in the compact island.
 const ACTIVITY_DURATION: Duration = Duration::from_millis(3500);
@@ -53,9 +54,11 @@ impl App {
                 state.set_media(MediaInfo { availability, ..Default::default() });
                 state.set_has_artwork(false);
                 state.set_artwork(slint::Image::default());
+                app.apply_palette(&AmbientPalette::NEUTRAL);
             }
             MediaUpdate::Artwork(Some(artwork)) => {
                 tracing::debug!(palette = ?artwork.palette, "artwork received");
+                app.apply_palette(&artwork.palette);
                 let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
                     &artwork.pixels,
                     artwork.width,
@@ -67,6 +70,7 @@ impl App {
             MediaUpdate::Artwork(None) => {
                 state.set_has_artwork(false);
                 state.set_artwork(slint::Image::default());
+                app.apply_palette(&AmbientPalette::NEUTRAL);
             }
             MediaUpdate::State(media) => {
                 let track = (media.source_id.clone(), media.title.clone(), media.artist.clone());
@@ -82,6 +86,15 @@ impl App {
         }
         app.media_ready.set(true);
         App::update_progress_timer(app);
+    }
+
+    /// Hands the artwork palette to the UI, which cross-fades to it.
+    fn apply_palette(&self, palette: &AmbientPalette) {
+        let colour = |c: Rgb| slint::Color::from_rgb_u8(c.r, c.g, c.b);
+        let theme = self.island.global::<Theme>();
+        theme.set_accent(colour(palette.accent));
+        theme.set_wash(colour(palette.wash));
+        theme.set_glow(colour(palette.glow));
     }
 
     fn show_activity(app: &Rc<Self>) {

@@ -15,7 +15,7 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, PremultipliedRgb
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, PhysicalSize, PlatformError};
 
-use crate::ui::{AppState, Island, MediaAvailability, MediaInfo};
+use crate::ui::{AppState, Island, MediaAvailability, MediaInfo, Theme};
 
 /// Desktop-like backdrop the transparent island is composited onto.
 const BACKDROP: [u8; 3] = [214, 219, 228];
@@ -184,4 +184,36 @@ fn high_dpi_rendering_scales_the_window() {
     save(&image, "compact-idle-150");
     let width = island_width(&image, 16);
     assert!((280..=296).contains(&width), "scaled compact width {width}");
+}
+
+fn ambient_scene(intensity: f32) -> RgbaImage {
+    let h = Harness::new(1.0);
+    h.state().set_media(playing("Blue Hours"));
+    h.state().set_artwork(solid_artwork([36, 92, 214]));
+    h.state().set_has_artwork(true);
+    let theme = h.island.global::<Theme>();
+    theme.set_ambient(intensity);
+    theme.set_glow(slint::Color::from_rgb_u8(60, 110, 230));
+    theme.set_wash(slint::Color::from_rgb_u8(30, 60, 140));
+    h.state().set_expanded(true);
+    h.render()
+}
+
+#[test]
+fn ambient_colours_tint_the_expanded_player() {
+    let tinted = ambient_scene(1.0);
+    save(&tinted, "expanded-ambient");
+    // Just right of the artwork tile, inside the glow.
+    let glow = tinted.get_pixel(10 + 14 + 72 + 6, 64);
+    assert!(glow[2] > glow[0] + 12, "glow should be blue: {glow:?}");
+    // Near the top of the panel, inside the wash.
+    let wash = tinted.get_pixel(300, 8);
+    assert!(wash[2] > wash[0] + 6, "wash should be blue: {wash:?}");
+}
+
+#[test]
+fn ambient_effects_can_be_disabled() {
+    let plain = ambient_scene(0.0);
+    let glow = plain.get_pixel(10 + 14 + 72 + 6, 64);
+    assert!(glow[2].abs_diff(glow[0]) <= 3, "no tint expected: {glow:?}");
 }

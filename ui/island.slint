@@ -78,6 +78,15 @@ export component Island inherits Window {
         animate width, height, border-radius { duration: Theme.resize-duration; easing: cubic-bezier(0.32, 0.72, 0, 1); }
         animate background { duration: Theme.hover-duration; }
 
+        property <color> wash: Theme.wash;
+        animate wash { duration: Theme.ambient-duration; easing: ease-in-out; }
+
+        // Low-opacity colour wash from the artwork palette, only in the expanded player.
+        if AppState.expanded && root.media-mode && AppState.has-artwork && Theme.ambient > 0: Rectangle {
+            border-radius: island.border-radius;
+            background: @linear-gradient(180deg, island.wash.with-alpha(0.36 * Theme.ambient) 0%, island.wash.with-alpha(0) 62%);
+        }
+
         touch := TouchArea {
             pointer-event(event) => {
                 if event.kind == PointerEventKind.down {

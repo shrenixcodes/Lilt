@@ -37,6 +37,18 @@ component PlayButton inherits Rectangle {
 // Now-playing view with transport controls, or an explanation when nothing plays.
 export component MediaPlayer inherits Rectangle {
     property <bool> active: AppState.media.availability == MediaAvailability.active;
+    property <color> glow: Theme.glow;
+    animate glow { duration: Theme.ambient-duration; easing: ease-in-out; }
+
+    // A restrained accent behind the artwork. Static: it only changes when the artwork
+    // does, through the colour animation above.
+    if root.active && AppState.has-artwork && Theme.ambient > 0: Rectangle {
+        x: -40px;
+        y: (root.height - self.height) / 2;
+        width: 152px;
+        height: 152px;
+        background: @radial-gradient(circle, root.glow.with-alpha(0.45 * Theme.ambient) 0%, root.glow.with-alpha(0.14 * Theme.ambient) 40%, root.glow.with-alpha(0) 70%);
+    }
 
     HorizontalLayout {
         spacing: 14px;
