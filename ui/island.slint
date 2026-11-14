@@ -78,21 +78,20 @@ export component Island inherits Window {
         border-radius: AppState.expanded ? Theme.expanded-radius
             : root.showing-activity ? 26px
             : (Theme.compact-height + (root.hovering ? 2px : 0)) / 2;
-        background: root.hovering ? Theme.surface-hover : Theme.surface;
+        property <color> wash: Theme.wash;
+        animate wash { duration: Theme.ambient-duration; easing: ease-in-out; }
+        property <bool> washed: AppState.expanded && root.media-mode && AppState.has-artwork && Theme.ambient > 0;
+        property <color> base: root.hovering ? Theme.surface-hover : Theme.surface;
+        animate base { duration: Theme.hover-duration; }
+        // The artwork colour tints the expanded surface itself. The software renderer
+        // draws gradients and clipped children as rectangles, so a gradient overlay would
+        // show outside the rounded corners; a solid tint keeps the shape exact.
+        background: self.washed ? self.base.mix(self.wash, 1 - 0.16 * Theme.ambient) : self.base;
+        animate background { duration: Theme.ambient-duration; easing: ease-in-out; }
         border-width: 1px;
         border-color: Theme.border;
         clip: true;
         animate width, height, border-radius { duration: Theme.resize-duration; easing: cubic-bezier(0.32, 0.72, 0, 1); }
-        animate background { duration: Theme.hover-duration; }
-
-        property <color> wash: Theme.wash;
-        animate wash { duration: Theme.ambient-duration; easing: ease-in-out; }
-
-        // Low-opacity colour wash from the artwork palette, only in the expanded player.
-        if AppState.expanded && root.media-mode && AppState.has-artwork && Theme.ambient > 0: Rectangle {
-            border-radius: island.border-radius;
-            background: @linear-gradient(180deg, island.wash.with-alpha(0.36 * Theme.ambient) 0%, island.wash.with-alpha(0) 62%);
-        }
 
         touch := TouchArea {
             pointer-event(event) => {

@@ -211,9 +211,9 @@ fn ambient_colours_tint_the_expanded_player() {
     // Just right of the artwork tile, inside the glow.
     let glow = tinted.get_pixel(10 + 14 + 72 + 6, 64);
     assert!(glow[2] > glow[0] + 12, "glow should be blue: {glow:?}");
-    // Near the top of the panel, inside the wash.
-    let wash = tinted.get_pixel(300, 8);
-    assert!(wash[2] > wash[0] + 6, "wash should be blue: {wash:?}");
+    // In the panel away from the artwork, inside the tint.
+    let wash = tinted.get_pixel(300, 120);
+    assert!(wash[2] > wash[0] + 6, "tint should be blue: {wash:?}");
 }
 
 #[test]
@@ -343,5 +343,57 @@ fn settings_sections_render() {
         });
         assert!(!same, "section {section} rendered the same as the previous one");
         previous = Some(buffer);
+    }
+}
+
+/// A cover with a soft diagonal gradient and a light disc, run through the real artwork
+/// pipeline so the image has rounded corners and its own palette.
+fn processed_cover() -> crate::artwork::Artwork {
+    let cover = RgbaImage::from_fn(300, 300, |x, y| {
+        let t = (x + y) as f32 / 600.0;
+        let (dx, dy) = (x as f32 - 190.0, y as f32 - 110.0);
+        let disc = ((dx * dx + dy * dy).sqrt() < 70.0) as u8 as f32;
+        let mix = |a: f32, b: f32| (a + (b - a) * t + disc * 60.0).min(255.0) as u8;
+        Rgba([mix(24.0, 96.0), mix(52.0, 46.0), mix(150.0, 190.0), 255])
+    });
+    let mut encoded = Vec::new();
+    cover.write_to(&mut std::io::Cursor::new(&mut encoded), image::ImageFormat::Png).expect("encode cover");
+    crate::artwork::ArtworkCache::default().process(&encoded).expect("process cover")
+}
+
+/// Renders the states used in the README with realistic content.
+#[test]
+fn showcase() {
+    let h = Harness::new(1.0);
+    let art = processed_cover();
+    let state = h.state();
+    state.set_media(MediaInfo { session_count: 2, ..playing("Northern Lights") });
+    state.set_artwork(slint::Image::from_rgba8(slint::SharedPixelBuffer::clone_from_slice(
+        &art.pixels,
+        art.width,
+        art.height,
+    )));
+    state.set_has_artwork(true);
+    state.set_progress(0.38);
+    state.set_position_text("1:24".into());
+    state.set_duration_text("3:41".into());
+    let colour = |c: crate::ambient::Rgb| slint::Color::from_rgb_u8(c.r, c.g, c.b);
+    let theme = h.island.global::<Theme>();
+    theme.set_accent(colour(art.palette.accent));
+    theme.set_wash(colour(art.palette.wash));
+    theme.set_glow(colour(art.palette.glow));
+    state.set_system(readings());
+    state.set_calendar_state(CalendarState::Ready);
+    state.set_agenda(slint::ModelRc::new(slint::VecModel::from(vec![
+        entry("Today", "16:30 – 17:00", "Design review", false),
+        entry("Tomorrow", "09:00 – 09:15", "Standup", false),
+    ])));
+    save(&h.render(), "showcase-compact");
+    state.set_expanded(true);
+    let expanded = h.render();
+    save(&expanded, "showcase-expanded");
+    // Nothing may be drawn outside the panel's rounded top corners.
+    for (x, y) in [(12, 3), (expanded.width() - 13, 3)] {
+        assert_eq!(expanded.get_pixel(x, y), &Rgba([BACKDROP[0], BACKDROP[1], BACKDROP[2], 255]), "corner at {x},{y}");
     }
 }
