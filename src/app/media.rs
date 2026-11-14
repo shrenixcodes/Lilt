@@ -55,6 +55,7 @@ impl App {
                 state.set_artwork(slint::Image::default());
             }
             MediaUpdate::Artwork(Some(artwork)) => {
+                tracing::debug!(palette = ?artwork.palette, "artwork received");
                 let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
                     &artwork.pixels,
                     artwork.width,

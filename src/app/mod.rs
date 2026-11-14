@@ -11,8 +11,8 @@ use slint::ComponentHandle;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows::Win32::UI::Shell::{
-    ABM_NEW, ABM_REMOVE, ABN_FULLSCREENAPP, APPBARDATA, QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
-    SHAppBarMessage, SHQueryUserNotificationState,
+    ABM_NEW, ABM_REMOVE, ABN_FULLSCREENAPP, APPBARDATA, QUNS_BUSY, QUNS_PRESENTATION_MODE,
+    QUNS_RUNNING_D3D_FULL_SCREEN, SHAppBarMessage, SHQueryUserNotificationState,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     PBT_APMRESUMEAUTOMATIC, SPI_SETWORKAREA, SetForegroundWindow, WM_DISPLAYCHANGE, WM_POWERBROADCAST,

@@ -1,9 +1,9 @@
 //! Album artwork decoding, normalisation and caching.
 //!
 //! Thumbnails arrive as encoded bytes from the media session. Each distinct image is
-//! decoded once, cropped to a square and scaled to a small fixed size with rounded
-//! corners baked in. Only the small result is kept; the encoded bytes and the
-//! full-size decode are dropped immediately.
+//! decoded once, cropped to a square, scaled to a small fixed size with rounded corners
+//! baked in, and its ambient palette is extracted. Only the small result is kept; the
+//! encoded bytes and the full-size decode are dropped immediately.
 
 use std::collections::VecDeque;
 use std::collections::hash_map::DefaultHasher;
@@ -14,20 +14,26 @@ use std::sync::Arc;
 use image::imageops::FilterType;
 use image::{ImageReader, Limits, RgbaImage};
 
+use crate::ambient::{self, AmbientPalette};
+
 /// Edge length of the stored artwork. Large enough for the expanded player at 200%
 /// display scaling (64 logical px), small enough to keep each entry at 64 KiB.
 pub const SIZE: u32 = 128;
 /// Corner radius as a fraction of the edge length; matches the UI artwork tiles.
 const CORNER_RATIO: f32 = 0.19;
+/// Edge length of the copy used for palette extraction.
+const PALETTE_SIZE: u32 = 32;
 /// Number of processed artworks kept in memory.
 const CACHE_ENTRIES: usize = 8;
 
-/// A processed artwork as straight (not premultiplied) RGBA8 pixels.
+/// A processed artwork as straight (not premultiplied) RGBA8 pixels, with the accent
+/// palette derived from it.
 #[derive(Clone, Debug)]
 pub struct Artwork {
     pub width: u32,
     pub height: u32,
     pub pixels: Arc<[u8]>,
+    pub palette: AmbientPalette,
 }
 
 #[derive(Default)]
@@ -80,8 +86,11 @@ fn decode(bytes: &[u8]) -> image::ImageResult<Artwork> {
     let mut tile = square.resize_exact(SIZE, SIZE, FilterType::Triangle).to_rgba8();
     drop(square);
 
+    let small = image::imageops::resize(&tile, PALETTE_SIZE, PALETTE_SIZE, FilterType::Triangle);
+    let palette = ambient::extract(small.as_raw());
+
     round_corners(&mut tile, SIZE as f32 * CORNER_RATIO);
-    Ok(Artwork { width: SIZE, height: SIZE, pixels: tile.into_raw().into() })
+    Ok(Artwork { width: SIZE, height: SIZE, pixels: tile.into_raw().into(), palette })
 }
 
 /// Applies an anti-aliased rounded-rectangle alpha mask.
@@ -115,6 +124,7 @@ mod tests {
         let art = ArtworkCache::default().process(&png(300, 300, [30, 80, 210])).unwrap();
         assert_eq!((art.width, art.height), (SIZE, SIZE));
         assert_eq!(art.pixels.len(), (SIZE * SIZE * 4) as usize);
+        assert!(!art.palette.monochrome);
     }
 
     #[test]
