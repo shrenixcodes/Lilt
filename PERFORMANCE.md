@@ -7,8 +7,8 @@ what was measured, how, and what has not been verified yet.
 
 | Target | Goal | Measured (release build) |
 | --- | --- | --- |
-| Idle memory | 60–100 MB | **6.3 MB** private working set (27 MB working set including shared system DLLs) |
-| Active memory | below 130 MB | **6.4–6.6 MB** private working set while expanded or changing tracks |
+| Idle memory | below 8 MB | **3.0 MB** private working set in Midnight, 3.2 MB in Liquid Glass (24–25 MB working set including shared system DLLs) |
+| Active memory | below 8 MB | **3.5–3.6 MB** private working set while expanded with the tasks box, or while music plays |
 | Idle CPU | below 0.5 % | **0.000 %** over 120 s |
 | Interaction CPU | below 2 % | **0.021 %** of all cores (0.25 % of one core) while expanding and collapsing every 2 s |
 | Rendering loop | none while idle | 0.1 context switches per second while idle |
@@ -51,7 +51,42 @@ private bytes, CPU time as a share of all 12 logical processors and of one, the 
 2-second interval, context switches per second (wake-ups), GPU engine utilisation, I/O
 and remote TCP endpoints.
 
-## Results
+## Current results
+
+Release build of November 2026, after the system readings stopped using the Performance
+Data Helper (see [Memory](#memory)). Each scenario ran for 30 s after a 10 s settle,
+with separate settings and data, the tasks box enabled and nothing else playing media.
+
+| Scenario | Private WS | Working set | Private bytes | CPU (all cores) | CPU (one core) | Wake-ups/s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Midnight, compact, idle | 3.0 MB | 23.6 MB | 4.0 MB | 0.000 % | 0.000 % | 0.0 |
+| Liquid Glass, compact, idle | 3.2 MB | 25.3 MB | 4.1 MB | 0.000 % | 0.000 % | 0.1 |
+| Liquid Glass, compact, music playing (bars moving) | 3.5 MB | 26.5 MB | 4.6 MB | 0.041 % | 0.49 % | 24.6 |
+| Midnight, expanded with the tasks box, readings live | 3.5 MB | 26.0 MB | 4.4 MB | 0.022 % | 0.26 % | 58.2 |
+| Liquid Glass, expanded with the tasks box, readings live | 3.6 MB | 29.7 MB | 4.6 MB | 0.047 % | 0.56 % | 55.8 |
+
+GPU utilisation and network connections were zero in every row.
+
+### Memory
+
+Task Manager's "Memory" column is the private working set. Measuring it after each
+start-up step showed where it went before this change:
+
+| Step | Private working set |
+| --- | ---: |
+| Process start, logging, COM, the window platform, island and tray created | 1.5 MB |
+| System readings created (`sysinfo`, whose CPU usage uses the Performance Data Helper) | **+4.1 MB** |
+| Island shown: its 890 × 340 drawing surface (1.2 MB) and, in the glass appearances, the blur | +1.3–1.5 MB |
+| Expanded with the tasks box (SQLite, rows, readings) | +0.5–0.7 MB |
+
+Lilt's own Rust heap was only about 0.5 MB of this. The readings now come straight from
+Windows (`GetSystemTimes`, `GlobalMemoryStatusEx`, `GetIfTable2`), which removed the
+4.1 MB and three crates. Before the change the same scenarios measured 7.6–8.3 MB.
+
+## Earlier results
+
+Measured before Tasks, the glass appearances and the change above, over 120 s per
+scenario.
 
 | Scenario | Private WS | Working set | Private bytes | CPU (all cores) | CPU (one core) | Peak | Wake-ups/s |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -89,12 +124,15 @@ toolkits and about 90 MB across seven processes for a WebView2 (Tauri) window.
 
 ## Appearances
 
-The results above were measured with Midnight, before Liquid Glass existed. Midnight
-still renders exactly as it did: its design tokens have their original values, the UI
-tests confirm every Midnight screen is pixel-identical, and it creates no extra windows
-or compositor objects.
+Midnight still renders exactly as it did: its design tokens have their original values,
+the UI tests confirm every Midnight screen is pixel-identical, and it creates no extra
+windows or compositor objects.
 
-Liquid Glass adds no loop or timer of its own. What it costs depends on its material:
+Smoked Glass adds no loop or timer of its own. Liquid Glass reads the brightness behind
+the island (a 16 × 4 grid) when it opens, closes or moves, when another window comes to
+the front, moves or scrolls, and every 3 s while the island is open; nothing while it
+sits compact with no window activity. In the current results it costs 0.2 MB and no
+measurable idle CPU over Midnight. What the glass costs depends on its material:
 
 | Material | Extra work in Lilt | Extra work elsewhere |
 | --- | --- | --- |
@@ -105,11 +143,8 @@ In an isolated prototype on the test machine, creating the compositor, the windo
 the visual added 1.2 MB of private working set and used no CPU while idle. The compositor
 is created only when the live blur is first needed.
 
-A side-by-side benchmark of both appearances has not been recorded yet. Two attempts
-were disturbed because the test PC was in use during the sampling window (input over the
-island), so their numbers are not published here. DWM's GPU cost for the blur could not
-be measured on the test machine either: Windows' transparency effects are off there, so
-DWM draws no blur.
+DWM's GPU cost for the blur has not been measured: the GPU counters attribute the blur
+to DWM, not to Lilt, and the runs above were taken with the session locked.
 
 ## Sampling policy
 
@@ -121,6 +156,7 @@ DWM draws no blur.
 | Network | not sampled | every 1 s | every 5 s |
 | Playback position | not updated | every 1 s while playing | every 1 s while playing |
 | Playing bars | about 14 steps/s while playing and on screen | not drawn | about 14 steps/s while playing |
+| Liquid Glass backdrop | on window changes | on window changes and every 3 s | not sampled (frosted) |
 | Media metadata | Windows events | Windows events | Windows events |
 | Calendar | not refreshed | on expand and every minute (file re-read only if changed) | same |
 
@@ -144,8 +180,9 @@ hidden or behind a full-screen application.
 
 - The tasks box: memory with a large list and archive. The database is opened only when
   the box is first shown, so people who do not use Tasks pay nothing for it.
-- Midnight and Liquid Glass side by side in every scenario, and DWM's GPU cost for the
-  live blur on a PC with transparency effects on.
+- DWM's GPU cost for the live blur, and Smoked Glass in every scenario (it differs from
+  Liquid Glass only in colours and the backdrop sampling).
+- The settings window: it is created only while open and released when closed.
 - Windows Performance Recorder traces (wake-up sources, frame timing) and behaviour on
   the reference low-end configurations above.
 - Interaction with an unlocked desktop (pointer hover, real clicks) and alongside a

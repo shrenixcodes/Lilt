@@ -10,7 +10,7 @@ use windows::Media::Control::{
 };
 use windows::Storage::Streams::{DataReader, IRandomAccessStreamReference};
 use windows::Win32::System::SystemInformation::GetSystemTimePreciseAsFileTime;
-use windows::core::{HSTRING, Result};
+use windows::core::{HSTRING, IUnknown, Interface, Result};
 
 use super::{Command, Message};
 
@@ -97,6 +97,7 @@ struct Properties {
 struct Subscription {
     session: Session,
     source_id: String,
+    identity: usize,
     tokens: [i64; 3],
 }
 
@@ -104,7 +105,7 @@ struct Subscription {
 /// another application starting playback is noticed.
 struct Watch {
     session: Session,
-    source_id: String,
+    identity: usize,
     token: i64,
 }
 
@@ -186,30 +187,39 @@ impl Tracker {
         let sessions = self.sessions();
         self.session_count = sessions.len();
         let ids: Vec<String> = sessions.iter().map(source_id).collect();
-        self.watch(&sessions, &ids);
-        let playing: Vec<String> = sessions
+        let identities: Vec<usize> = sessions.iter().map(identity).collect();
+        let statuses: Vec<PlaybackStatus> = sessions.iter().map(status).collect();
+        self.watch(&sessions, &identities);
+        let playing: Vec<String> = ids
             .iter()
-            .zip(&ids)
-            .filter(|(s, _)| status(s) == PlaybackStatus::Playing)
-            .map(|(_, id)| id.clone())
+            .zip(&statuses)
+            .filter(|(_, status)| **status == PlaybackStatus::Playing)
+            .map(|(id, _)| id.clone())
             .collect();
 
         if self.pinned.as_ref().is_some_and(|p| !ids.contains(p)) {
             self.pinned = None;
         }
-        let system_current = self.manager.GetCurrentSession().ok().map(|s| source_id(&s));
+        let system_current = self.manager.GetCurrentSession().ok();
         let chosen_id = choose(&Selection {
             ids: &ids,
             playing: &playing,
             previously_playing: &self.playing,
             followed: self.current.as_ref().map(|c| c.source_id.as_str()),
             pinned: self.pinned.as_deref(),
-            system_current: system_current.as_deref(),
+            system_current: system_current.as_ref().map(source_id).as_deref(),
         });
         self.playing = playing;
-        let chosen = chosen_id.as_ref().and_then(|id| ids.iter().position(|candidate| candidate == id));
+        // Several sessions can share the chosen source id: browsers publish one per tab.
+        let candidates: Vec<Candidate> = (0..sessions.len())
+            .filter(|&i| Some(&ids[i]) == chosen_id.as_ref())
+            .map(|i| Candidate { identity: identities[i], playing: statuses[i] == PlaybackStatus::Playing })
+            .collect();
+        let chosen_identity =
+            pick_session(&candidates, self.current.as_ref().map(|c| c.identity), system_current.as_ref().map(identity));
+        let chosen = chosen_identity.and_then(|wanted| identities.iter().position(|&i| i == wanted));
 
-        if self.current.as_ref().map(|c| &c.source_id) == chosen_id.as_ref() {
+        if self.current.as_ref().map(|c| c.identity) == chosen_identity {
             return false;
         }
         self.current = None;
@@ -225,10 +235,10 @@ impl Tracker {
     }
 
     /// Keeps one playback subscription per existing session.
-    fn watch(&mut self, sessions: &[Session], ids: &[String]) {
-        self.watches.retain(|w| ids.contains(&w.source_id));
-        for (session, id) in sessions.iter().zip(ids) {
-            if self.watches.iter().any(|w| &w.source_id == id) {
+    fn watch(&mut self, sessions: &[Session], identities: &[usize]) {
+        self.watches.retain(|w| identities.contains(&w.identity));
+        for (session, &id) in sessions.iter().zip(identities) {
+            if self.watches.iter().any(|w| w.identity == id) {
                 continue;
             }
             let changed = notify(&self.events, || Message::SessionsChanged);
@@ -237,7 +247,7 @@ impl Tracker {
                 Ok(())
             });
             match session.PlaybackInfoChanged(&handler) {
-                Ok(token) => self.watches.push(Watch { session: session.clone(), source_id: id.clone(), token }),
+                Ok(token) => self.watches.push(Watch { session: session.clone(), identity: id, token }),
                 Err(err) => tracing::debug!(%err, "could not watch media session"),
             }
         }
@@ -261,7 +271,7 @@ impl Tracker {
                 Ok(())
             }))?,
         ];
-        Ok(Subscription { session, source_id, tokens })
+        Ok(Subscription { identity: identity(&session), session, source_id, tokens })
     }
 
     /// Reads the current state. Media properties are only re-read when `refresh` is set
@@ -389,6 +399,35 @@ fn choose(s: &Selection) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// One of the sessions sharing the chosen source id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Candidate {
+    identity: usize,
+    playing: bool,
+}
+
+/// Which of the sessions sharing a source id to follow: the followed one while it plays,
+/// then one that plays (Windows' current session first), then the followed one, then
+/// Windows' current one, then the first.
+fn pick_session(candidates: &[Candidate], followed: Option<usize>, system_current: Option<usize>) -> Option<usize> {
+    let find = |wanted: Option<usize>, playing: bool| {
+        candidates.iter().find(|c| Some(c.identity) == wanted && (!playing || c.playing)).map(|c| c.identity)
+    };
+    find(followed, true)
+        .or(find(system_current, true))
+        .or(candidates.iter().find(|c| c.playing).map(|c| c.identity))
+        .or(find(followed, false))
+        .or(find(system_current, false))
+        .or(candidates.first().map(|c| c.identity))
+}
+
+/// A session's COM identity. Browsers publish one session per tab under the same source
+/// id and replace them as tabs start and stop playing, so the id alone does not tell
+/// sessions apart.
+fn identity(session: &Session) -> usize {
+    session.cast::<IUnknown>().map_or(0, |unknown| unknown.as_raw() as usize)
+}
+
 fn source_id(session: &Session) -> String {
     session.SourceAppUserModelId().map(|s| s.to_string()).unwrap_or_default()
 }
@@ -500,6 +539,40 @@ mod tests {
         assert_eq!(friendly_source_name(r"C:\Program Files\Foo\tunes.exe"), "tunes");
         assert_eq!(friendly_source_name("Contoso.Player_abc!App"), "Player");
         assert_eq!(friendly_source_name(""), "Media");
+    }
+
+    #[test]
+    fn among_tabs_of_one_browser_the_playing_one_is_followed() {
+        let tab = |identity, playing| Candidate { identity, playing };
+        // Followed tab paused, another tab playing: switch to the playing tab.
+        assert_eq!(pick_session(&[tab(1, false), tab(2, true)], Some(1), None), Some(2));
+        // The followed tab plays: stay, even if another tab plays too.
+        assert_eq!(pick_session(&[tab(1, true), tab(2, true)], Some(1), Some(2)), Some(1));
+        // Several play: Windows' current one first.
+        assert_eq!(pick_session(&[tab(1, true), tab(2, true)], None, Some(2)), Some(2));
+        // None plays: stay with the followed tab, then Windows' current, then the first.
+        assert_eq!(pick_session(&[tab(1, false), tab(2, false)], Some(2), Some(1)), Some(2));
+        assert_eq!(pick_session(&[tab(1, false), tab(2, false)], Some(9), Some(2)), Some(2));
+        assert_eq!(pick_session(&[tab(1, false), tab(2, false)], None, None), Some(1));
+        // The followed session was replaced: its identity is gone, so the new one is used.
+        assert_eq!(pick_session(&[tab(3, true)], Some(1), None), Some(3));
+        assert_eq!(pick_session(&[], Some(1), None), None);
+    }
+
+    /// The same session keeps its identity across lookups, so the followed session is not
+    /// re-subscribed on every change. Checked against whatever sessions this PC has.
+    #[test]
+    fn session_identity_is_stable() {
+        use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
+        let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+        let manager = Manager::RequestAsync().and_then(|m| m.join()).expect("session manager");
+        let list = || manager.GetSessions().map(|l| l.into_iter().collect::<Vec<Session>>()).unwrap_or_default();
+        let (first, second) = (list(), list());
+        assert_eq!(first.len(), second.len());
+        for (a, b) in first.iter().zip(&second) {
+            assert_eq!(identity(a), identity(b), "{}", source_id(a));
+            assert_ne!(identity(a), 0);
+        }
     }
 
     fn ids(list: &[&str]) -> Vec<String> {

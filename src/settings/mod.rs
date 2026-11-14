@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::paths;
 
 /// Current schema version. Bump together with a step in [`migrate`].
-pub const CURRENT_VERSION: u32 = 2;
+pub const CURRENT_VERSION: u32 = 3;
 
 /// Settings files larger than this are rejected as corrupt.
 const MAX_FILE_BYTES: u64 = 256 * 1024;
@@ -61,6 +61,8 @@ pub enum AppearanceMode {
     #[default]
     Midnight,
     /// Dark smoked translucent glass.
+    SmokedGlass,
+    /// Clear glass that darkens only as much as the desktop behind it requires.
     LiquidGlass,
 }
 
@@ -68,14 +70,21 @@ impl AppearanceMode {
     pub fn id(self) -> &'static str {
         match self {
             Self::Midnight => "midnight",
+            Self::SmokedGlass => "smoked-glass",
             Self::LiquidGlass => "liquid-glass",
         }
+    }
+
+    /// Whether the appearance is one of the glass ones.
+    pub fn is_glass(self) -> bool {
+        self != Self::Midnight
     }
 }
 
 impl From<String> for AppearanceMode {
     fn from(id: String) -> Self {
         match id.as_str() {
+            "smoked-glass" => Self::SmokedGlass,
             "liquid-glass" => Self::LiquidGlass,
             // Includes "lilt-dark", Midnight's name in version 1.
             _ => Self::Midnight,
@@ -93,7 +102,7 @@ impl From<AppearanceMode> for String {
 #[serde(default)]
 pub struct Appearance {
     pub theme: AppearanceMode,
-    /// Use frosted surfaces instead of a live blur in Liquid Glass.
+    /// Use frosted surfaces instead of a live blur in the glass appearances.
     pub reduce_transparency: bool,
     /// Compact island width in logical pixels.
     pub compact_width: u32,
@@ -310,6 +319,16 @@ fn migrate(mut value: serde_json::Value, from: u32) -> serde_json::Value {
         }
         value["version"] = 2.into();
     }
+    if from < 3 {
+        // Version 3 added a clear Liquid Glass; version 2's Liquid Glass was the smoked
+        // glass, now called Smoked Glass, so those who chose it keep the same look.
+        if let Some(theme) = value.pointer_mut("/appearance/theme")
+            && theme == "liquid-glass"
+        {
+            *theme = AppearanceMode::SmokedGlass.id().into();
+        }
+        value["version"] = 3.into();
+    }
     value
 }
 
@@ -480,6 +499,23 @@ mod tests {
         assert_eq!(s.ambient.intensity, 35);
         // Loading never writes: the file is upgraded on the next real change.
         assert!(std::fs::read_to_string(&path).unwrap().contains("lilt-dark"));
+    }
+
+    #[test]
+    fn version_2_liquid_glass_keeps_its_smoked_look() {
+        let dir = temp_dir("v2-glass");
+        let path = dir.join("settings.json");
+        std::fs::write(&path, r#"{"version":2,"appearance":{"theme":"liquid-glass","reduce_transparency":true}}"#)
+            .unwrap();
+        let (s, status) = load_from(&path);
+        assert_eq!(status, LoadStatus::Loaded);
+        assert_eq!(s.appearance.theme, AppearanceMode::SmokedGlass);
+        assert!(s.appearance.reduce_transparency);
+        // In a version 3 document the name means the new, clear Liquid Glass.
+        std::fs::write(&path, r#"{"version":3,"appearance":{"theme":"liquid-glass"}}"#).unwrap();
+        assert_eq!(load_from(&path).0.appearance.theme, AppearanceMode::LiquidGlass);
+        std::fs::write(&path, r#"{"version":3,"appearance":{"theme":"smoked-glass"}}"#).unwrap();
+        assert_eq!(load_from(&path).0.appearance.theme, AppearanceMode::SmokedGlass);
     }
 
     #[test]

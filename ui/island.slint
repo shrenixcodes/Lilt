@@ -235,6 +235,16 @@ export component Island inherits Window {
             radius: island.border-radius;
         }
 
+        if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
+            x: island.x;
+            y: island.y + island.height - self.height;
+            width: island.width;
+            full-height: island.height;
+            radius: island.border-radius;
+            rim: Theme.lower-rim;
+            lower: true;
+        }
+
         // The tasks box, created only while expanded. It fades in beside or below the
         // island as the island opens.
         if root.tasks-shown : Rectangle {
@@ -279,6 +289,16 @@ export component Island inherits Window {
                 width: parent.width;
                 full-height: parent.height;
                 radius: Theme.expanded-radius;
+            }
+
+            if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
+                x: 0;
+                y: parent.height - self.height;
+                width: parent.width;
+                full-height: parent.height;
+                radius: Theme.expanded-radius;
+                rim: Theme.lower-rim;
+                lower: true;
             }
         }
     }

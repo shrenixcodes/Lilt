@@ -11,8 +11,8 @@ component PlayingGlyph inherits Rectangle {
     in property <bool> playing;
     // The glyph can be seen: the compact island is on screen and not covered.
     in property <bool> live: true;
-    width: 15px;
-    height: 14px;
+    width: 17px;
+    height: 16px;
 
     property <bool> moving: root.playing && root.live && Theme.motion > 0;
     // Every wave below repeats after 360 steps, so wrapping at a multiple is seamless.
@@ -26,15 +26,15 @@ component PlayingGlyph inherits Rectangle {
         }
     }
 
-    for h[i] in [8px, 13px, 6px, 11px] : Rectangle {
+    for h[i] in [9px, 15px, 7px, 13px] : Rectangle {
         // Two waves per bar at different speeds, so the bars never move in step.
         property <float> level: 0.5 + 0.3 * sin((root.step * (37 + 11 * i) + 71 * i) * 1deg)
             + 0.2 * sin((root.step * (23 + 7 * i) + 43 * i) * 1deg);
-        x: i * 4px;
+        x: i * 4.5px;
         y: (root.height - self.height) / 2;
-        width: 2.5px;
-        height: !root.playing ? 3px : root.moving ? 3px + self.level * 11px : h;
-        border-radius: 1.25px;
+        width: 3px;
+        height: !root.playing ? 3px : root.moving ? 3px + self.level * 13px : h;
+        border-radius: 1.5px;
         background: root.playing ? Theme.accent : Theme.text-tertiary;
         // Steps are drawn as they come; only settling into a still shape is animated.
         animate height { duration: root.moving ? 0ms : Theme.resize-duration; easing: ease-out; }

@@ -414,14 +414,14 @@ fn settings_follow_the_appearance() {
     let midnight = render_settings(&window, &clock);
     save(&midnight, "settings-appearance-midnight");
 
-    // Choosing the Liquid Glass card selects it; the window follows once the
-    // application applies the appearance.
+    // Choosing a glass card selects it; the window follows once the application applies
+    // the appearance.
     settings.set_data(SettingsData { appearance: 1, ..settings_data() });
     settings.set_appearance_note(crate::appearance::Fallback::TransparencyOff.explanation().into());
     let selected = render_settings(&window, &clock);
     assert_ne!(midnight, selected, "selecting a card must show");
     let theme = settings.global::<Theme>();
-    theme.set_appearance(Appearance::LiquidGlass);
+    theme.set_appearance(Appearance::SmokedGlass);
     let glass = render_settings(&window, &clock);
     save(&glass, "settings-appearance-glass");
     assert_ne!(selected, glass);
@@ -429,6 +429,12 @@ fn settings_follow_the_appearance() {
         settings.set_section(section);
         save(&render_settings(&window, &clock), &format!("settings-{section}-glass"));
     }
+    settings.set_section(1);
+    settings.set_data(SettingsData { appearance: 2, ..settings_data() });
+    theme.set_appearance(Appearance::LiquidGlass);
+    let liquid = render_settings(&window, &clock);
+    save(&liquid, "settings-appearance-liquid");
+    assert_ne!(glass, liquid);
 
     // Back to Midnight restores the original window exactly.
     theme.set_appearance(Appearance::Midnight);
@@ -469,11 +475,14 @@ fn switching_appearance_is_instant_and_reversible() {
     h.state().set_expanded(true);
     let expanded = h.render();
 
-    h.theme().set_appearance(Appearance::LiquidGlass);
-    let glass = h.render();
-    assert_ne!(glass, expanded, "the expanded island must change");
-    h.state().set_expanded(false);
-    assert_ne!(h.render(), compact, "the compact island must change");
+    for appearance in GLASS {
+        h.state().set_expanded(true);
+        h.theme().set_appearance(appearance);
+        let glass = h.render();
+        assert_ne!(glass, expanded, "the expanded island must change");
+        h.state().set_expanded(false);
+        assert_ne!(h.render(), compact, "the compact island must change");
+    }
 
     h.theme().set_appearance(Appearance::Midnight);
     assert_eq!(h.render(), compact, "Midnight must be restored exactly");
@@ -481,67 +490,111 @@ fn switching_appearance_is_instant_and_reversible() {
     assert_eq!(h.render(), expanded, "Midnight must be restored exactly");
 }
 
+/// The glass appearances, and the prefix of their snapshot files.
+const GLASS: [Appearance; 2] = [Appearance::SmokedGlass, Appearance::LiquidGlass];
+
+fn glass_name(appearance: Appearance) -> &'static str {
+    if appearance == Appearance::LiquidGlass { "liquid" } else { "glass" }
+}
+
 #[test]
-fn liquid_glass_renders_every_state() {
+fn glass_renders_every_state() {
     let h = Harness::new(1.0);
-    h.theme().set_appearance(Appearance::LiquidGlass);
-    save(&h.render_on(wallpaper), "glass-compact-idle");
-    playing_with_artwork(&h);
-    save(&h.render_on(wallpaper), "glass-compact-media");
-    h.state().set_activity(true);
-    save(&h.render_on(wallpaper), "glass-activity");
-    h.state().set_activity(false);
-    h.state().set_expanded(true);
+    for appearance in GLASS {
+        let name = glass_name(appearance);
+        h.theme().set_live_blur(false);
+        h.state().set_expanded(false);
+        h.state().set_page(Page::Dashboard);
+        h.state().set_media(MediaInfo::default());
+        h.state().set_has_artwork(false);
+        h.theme().set_appearance(appearance);
+        save(&h.render_on(wallpaper), &format!("{name}-compact-idle"));
+        playing_with_artwork(&h);
+        save(&h.render_on(wallpaper), &format!("{name}-compact-media"));
+        h.state().set_activity(true);
+        save(&h.render_on(wallpaper), &format!("{name}-activity"));
+        h.state().set_activity(false);
+        h.state().set_expanded(true);
 
-    // Frosted (no live blur) and over the blur.
-    let frosted = h.render_on(wallpaper);
-    save(&frosted, "glass-expanded-frosted");
-    h.theme().set_live_blur(true);
-    let blurred = h.render_on(wallpaper);
-    save(&blurred, "glass-expanded");
-    assert_ne!(frosted, blurred);
+        // Frosted (no live blur) and over the blur.
+        let frosted = h.render_on(wallpaper);
+        save(&frosted, &format!("{name}-expanded-frosted"));
+        h.theme().set_live_blur(true);
+        let blurred = h.render_on(wallpaper);
+        save(&blurred, &format!("{name}-expanded"));
+        assert_ne!(frosted, blurred);
 
-    // The surface is translucent: the wallpaper shows through, more so over the blur.
-    let midnight_surface = {
-        h.theme().set_appearance(Appearance::Midnight);
-        h.render_on(wallpaper).get_pixel(240, 230).0
-    };
-    let (f, b) = (frosted.get_pixel(240, 230).0, blurred.get_pixel(240, 230).0);
-    let brightness = |p: [u8; 4]| p[0] as u32 + p[1] as u32 + p[2] as u32;
-    assert!(
-        brightness(midnight_surface) < brightness(f) && brightness(f) < brightness(b),
-        "{midnight_surface:?} {f:?} {b:?}"
-    );
-
-    // Nothing, not even the reflections, is drawn outside the rounded corners.
-    for (x, y) in [(12, 3), (blurred.width() - 13, 3)] {
-        assert_eq!(
-            blurred.get_pixel(x, y).0,
-            [wallpaper(x, y)[0], wallpaper(x, y)[1], wallpaper(x, y)[2], 255],
-            "corner at {x},{y}"
+        // The surface is translucent: the wallpaper shows through, more so over the blur.
+        let midnight_surface = {
+            h.theme().set_appearance(Appearance::Midnight);
+            h.render_on(wallpaper).get_pixel(240, 230).0
+        };
+        let (f, b) = (frosted.get_pixel(240, 230).0, blurred.get_pixel(240, 230).0);
+        let brightness = |p: [u8; 4]| p[0] as u32 + p[1] as u32 + p[2] as u32;
+        assert!(
+            brightness(midnight_surface) < brightness(f) && brightness(f) < brightness(b),
+            "{name}: {midnight_surface:?} {f:?} {b:?}"
         );
-    }
-    // The rim lights the top edge: compared with the row just inside it, the edge is far
-    // brighter than Midnight's plain border.
-    let edge =
-        |image: &RgbaImage| brightness(image.get_pixel(240, 0).0) as i32 - brightness(image.get_pixel(240, 1).0) as i32;
-    h.theme().set_appearance(Appearance::LiquidGlass);
-    let glass_edge = edge(&h.render());
-    h.theme().set_appearance(Appearance::Midnight);
-    let midnight_edge = edge(&h.render());
-    assert!(glass_edge > midnight_edge + 60, "rim {glass_edge} vs border {midnight_edge}");
 
-    for page in [Page::System, Page::Calendar] {
-        h.theme().set_appearance(Appearance::LiquidGlass);
-        h.state().set_page(page);
-        save(&h.render_on(wallpaper), &format!("glass-page-{page:?}").to_lowercase());
+        // Nothing, not even the reflections, is drawn outside the rounded corners.
+        for (x, y) in [(12, 3), (blurred.width() - 13, 3)] {
+            assert_eq!(
+                blurred.get_pixel(x, y).0,
+                [wallpaper(x, y)[0], wallpaper(x, y)[1], wallpaper(x, y)[2], 255],
+                "{name}: corner at {x},{y}"
+            );
+        }
+        // The rim lights the top edge: compared with the row just inside it, the edge is
+        // far brighter than Midnight's plain border.
+        let edge = |image: &RgbaImage| {
+            brightness(image.get_pixel(240, 0).0) as i32 - brightness(image.get_pixel(240, 1).0) as i32
+        };
+        h.theme().set_appearance(appearance);
+        let glass_edge = edge(&h.render());
+        h.theme().set_appearance(Appearance::Midnight);
+        let midnight_edge = edge(&h.render());
+        assert!(glass_edge > midnight_edge + 60, "{name}: rim {glass_edge} vs border {midnight_edge}");
+
+        for page in [Page::System, Page::Calendar] {
+            h.theme().set_appearance(appearance);
+            h.state().set_page(page);
+            save(&h.render_on(wallpaper), &format!("{name}-page-{page:?}").to_lowercase());
+        }
     }
 }
 
 #[test]
-fn ambient_colours_work_in_liquid_glass() {
+fn liquid_glass_is_clearer_and_lights_its_lower_edge() {
     let h = Harness::new(1.0);
+    h.theme().set_live_blur(true);
+    playing_with_artwork(&h);
+    h.state().set_expanded(true);
+    h.theme().set_appearance(Appearance::SmokedGlass);
+    let smoked = h.render_on(wallpaper);
     h.theme().set_appearance(Appearance::LiquidGlass);
+    h.theme().set_glass_alpha(crate::appearance::CLEAR_ALPHA);
+    let liquid = h.render_on(wallpaper);
+    save(&liquid, "liquid-expanded-clear");
+    // Over a dark desktop the wallpaper shows through far more than in Smoked Glass.
+    let brightness = |p: [u8; 4]| p[0] as u32 + p[1] as u32 + p[2] as u32;
+    let (s, l) = (smoked.get_pixel(240, 230).0, liquid.get_pixel(240, 230).0);
+    assert!(brightness(l) > brightness(s) + 60, "{s:?} {l:?}");
+    // A denser tint is darker.
+    h.theme().set_glass_alpha(crate::appearance::DENSE_ALPHA);
+    let dense = h.render_on(wallpaper);
+    assert!(brightness(dense.get_pixel(240, 230).0) < brightness(l));
+    // The lower edge is lit too, unlike Smoked Glass's.
+    let bottom = (h.island.get_body_y() + h.island.get_body_height()) as u32 - 1;
+    let lower = |image: &RgbaImage| {
+        brightness(image.get_pixel(240, bottom).0) as i32 - brightness(image.get_pixel(240, bottom - 1).0) as i32
+    };
+    assert!(lower(&liquid) > lower(&smoked) + 30, "{} vs {}", lower(&liquid), lower(&smoked));
+}
+
+#[test]
+fn ambient_colours_work_in_glass() {
+    let h = Harness::new(1.0);
+    h.theme().set_appearance(Appearance::SmokedGlass);
     h.theme().set_live_blur(true);
     h.state().set_media(playing("Blue Hours"));
     h.state().set_artwork(solid_artwork([36, 92, 214]));
@@ -556,13 +609,18 @@ fn ambient_colours_work_in_liquid_glass() {
     assert!(glow[2] > glow[0] + 12, "glow should be blue: {glow:?}");
     let wash = tinted.get_pixel(300, 120);
     assert!(wash[2] > wash[0] + 6, "tint should be blue: {wash:?}");
+    h.theme().set_appearance(Appearance::LiquidGlass);
+    let liquid = h.render();
+    save(&liquid, "liquid-ambient");
+    let wash = liquid.get_pixel(300, 120);
+    assert!(wash[2] > wash[0] + 6, "tint should be blue: {wash:?}");
 }
 
-/// The README image of Liquid Glass: the compact and expanded island over one desktop.
+/// The README images of the glass appearances: the compact and expanded island over one
+/// desktop. Liquid Glass's tint is set as the application would for this desktop.
 #[test]
-fn liquid_glass_showcase() {
+fn glass_showcase() {
     let h = Harness::new(1.0);
-    h.theme().set_appearance(Appearance::LiquidGlass);
     h.theme().set_live_blur(true);
     playing_with_artwork(&h);
     h.state().set_calendar_state(CalendarState::Ready);
@@ -575,16 +633,38 @@ fn liquid_glass_showcase() {
         let mix = |a: f32, b: f32, t: f32| (a + (b - a) * t.clamp(0.0, 1.0)) as u8;
         [mix(38.0, 238.0, u * 0.85 + v * 0.25), mix(64.0, 150.0, v * 0.8 + u * 0.1), mix(196.0, 84.0, u)]
     };
-    let compact = h.render_on(|x, y| desktop(x + 20, y + 10));
-    h.state().set_expanded(true);
-    let expanded = h.render_on(|x, y| desktop(x + 530, y + 10));
-    let mut sheet = RgbaImage::from_fn(1020, 290, |x, y| {
-        let c = desktop(x, y);
-        Rgba([c[0], c[1], c[2], 255])
-    });
-    image::imageops::overlay(&mut sheet, &compact, 20, 10);
-    image::imageops::overlay(&mut sheet, &expanded, 530, 10);
-    save(&sheet, "glass-overview");
+    for appearance in GLASS {
+        h.theme().set_appearance(appearance);
+        h.state().set_expanded(false);
+        set_glass_alpha_for(&h, desktop(300, 30));
+        let compact = h.render_on(|x, y| desktop(x + 20, y + 10));
+        h.state().set_expanded(true);
+        set_glass_alpha_for(&h, desktop(1000, 200));
+        let expanded = h.render_on(|x, y| desktop(x + 530, y + 10));
+        let mut sheet = RgbaImage::from_fn(1020, 290, |x, y| {
+            let c = desktop(x, y);
+            Rgba([c[0], c[1], c[2], 255])
+        });
+        image::imageops::overlay(&mut sheet, &compact, 20, 10);
+        image::imageops::overlay(&mut sheet, &expanded, 530, 10);
+        save(&sheet, &format!("{}-overview", glass_name(appearance)));
+    }
+}
+
+/// Sets Liquid Glass's tint as the application does for the brightest colour behind it.
+fn set_glass_alpha_for(h: &Harness, backdrop: [u8; 3]) {
+    use crate::ambient::Rgb;
+    use crate::appearance::{GlassText, Layer, legible_alpha};
+    let tokens = h.theme().get_liquid_glass();
+    let rgb = |c: slint::Color| Rgb::new(c.red(), c.green(), c.blue());
+    let glass = GlassText {
+        tint: rgb(tokens.blurred_surface),
+        tile: Layer { rgb: rgb(tokens.tile), alpha: tokens.tile.alpha() as f32 / 255.0 },
+        text: rgb(tokens.text),
+        secondary: rgb(tokens.text_secondary),
+        tertiary: rgb(tokens.text_tertiary),
+    };
+    h.theme().set_glass_alpha(legible_alpha(&glass, Rgb::new(backdrop[0], backdrop[1], backdrop[2])));
 }
 
 /// Renders the compact island twice, letting `ms` of time pass in between.
@@ -629,13 +709,15 @@ fn playing_bars_move_only_while_playing_and_visible() {
 }
 
 #[test]
-fn playing_bars_work_in_liquid_glass() {
+fn playing_bars_work_in_glass() {
     let h = Harness::new(1.0);
-    h.theme().set_appearance(Appearance::LiquidGlass);
     h.state().set_media(playing("Blue Hours"));
-    let (a, b) = two_frames(&h, 70);
-    save(&b, "glass-compact-visualizer");
-    assert_ne!(glyph(&a), glyph(&b));
+    for appearance in GLASS {
+        h.theme().set_appearance(appearance);
+        let (a, b) = two_frames(&h, 70);
+        save(&b, &format!("{}-compact-visualizer", glass_name(appearance)));
+        assert_ne!(glyph(&a), glyph(&b));
+    }
 }
 
 /// Example tasks for rendering tests only; never shown to users.
@@ -670,7 +752,7 @@ fn sample_tasks() -> Vec<crate::tasks::Task> {
 
 fn set_appearance(h: &Harness, appearance: Appearance) {
     h.theme().set_appearance(appearance);
-    h.theme().set_live_blur(appearance == Appearance::LiquidGlass);
+    h.theme().set_live_blur(appearance != Appearance::Midnight);
 }
 
 fn tasks_harness(appearance: Appearance) -> Harness {
@@ -717,6 +799,8 @@ fn tasks_box_sits_beside_or_below_in_both_appearances() {
     // Beside: the dashboard (460) and the tasks box (400) with a 10 px gap, plus margins.
     assert_eq!((midnight.width(), midnight.height()), (890, 340));
     set_appearance(&h, Appearance::LiquidGlass);
+    save(&h.render_on(wallpaper), "tasks-liquid");
+    set_appearance(&h, Appearance::SmokedGlass);
     let glass = h.render_on(wallpaper);
     save(&glass, "tasks-glass");
     assert_ne!(midnight, glass);
@@ -743,7 +827,9 @@ fn tasks_box_sits_beside_or_below_in_both_appearances() {
 #[test]
 fn tasks_states_render() {
     let h = tasks_harness(Appearance::Midnight);
-    for (appearance, name) in [(Appearance::Midnight, "midnight"), (Appearance::LiquidGlass, "glass")] {
+    for (appearance, name) in
+        [(Appearance::Midnight, "midnight"), (Appearance::SmokedGlass, "glass"), (Appearance::LiquidGlass, "liquid")]
+    {
         set_appearance(&h, appearance);
         fill_tasks(&h);
         let tasks = h.island.global::<TasksState>();
@@ -1039,9 +1125,28 @@ fn contrast(text: slint::Color, background: [f32; 3]) -> f32 {
 }
 
 #[test]
-fn liquid_glass_text_stays_legible_on_any_wallpaper() {
+fn liquid_glass_text_meets_aa_at_the_tint_chosen_for_each_wallpaper() {
     let h = Harness::new(1.0);
-    let tokens: AppearanceTokens = h.theme().get_liquid_glass();
+    for wallpaper in [[255u8, 255, 255], [0, 0, 0], [214, 120, 40], [120, 200, 240], [128, 128, 128]] {
+        set_glass_alpha_for(&h, wallpaper);
+        let tokens: AppearanceTokens = h.theme().get_liquid_glass();
+        let backdrop = wallpaper.map(f32::from);
+        for surface in [tokens.surface, tokens.blurred_surface] {
+            let base = over(surface, backdrop);
+            let tile = over(tokens.tile, base);
+            for background in [base, tile] {
+                assert!(contrast(tokens.text, background) >= 4.5, "text on {background:?}");
+                assert!(contrast(tokens.text_secondary, background) >= 4.5, "secondary text on {background:?}");
+                assert!(contrast(tokens.text_tertiary, background) >= 3.0, "tertiary text on {background:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn smoked_glass_text_stays_legible_on_any_wallpaper() {
+    let h = Harness::new(1.0);
+    let tokens: AppearanceTokens = h.theme().get_smoked_glass();
     for wallpaper in [[255.0, 255.0, 255.0], [0.0, 0.0, 0.0], [214.0, 120.0, 40.0]] {
         for surface in [tokens.surface, tokens.blurred_surface] {
             let base = over(surface, wallpaper);
@@ -1105,4 +1210,38 @@ fn showcase() {
     for (x, y) in [(12, 3), (expanded.width() - 13, 3)] {
         assert_eq!(expanded.get_pixel(x, y), &Rgba([BACKDROP[0], BACKDROP[1], BACKDROP[2], 255]), "corner at {x},{y}");
     }
+}
+
+/// The application repaints only what changed into a reused buffer; the bars must still
+/// move there, not only in full repaints.
+#[test]
+fn playing_bars_move_with_partial_repaints() {
+    let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
+    let clock = Rc::new(Cell::new(Duration::ZERO));
+    slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), clock: clock.clone() }))
+        .expect("one platform per test thread");
+    window.dispatch_event(slint::platform::WindowEvent::ScaleFactorChanged { scale_factor: 1.0 });
+    let island = Island::new().unwrap();
+    island.show().unwrap();
+    island.global::<AppState>().set_media(playing("Blue Hours"));
+    let (w, h) = (island.get_window_width() as u32, island.get_window_height() as u32);
+    window.set_size(PhysicalSize::new(w, h));
+    let mut buffer = vec![PremultipliedRgbaColor::default(); (w * h) as usize];
+    let mut glyphs = std::collections::HashSet::new();
+    for step in 0..40 {
+        clock.set(clock.get() + Duration::from_millis(35));
+        slint::platform::update_timers_and_animations();
+        window.draw_if_needed(|renderer| {
+            renderer.render(&mut buffer, w as usize);
+        });
+        // After the fade-in, collect the distinct shapes the bars take.
+        if step >= 10 {
+            let image = RgbaImage::from_fn(w, h, |x, y| {
+                let p = buffer[(y * w + x) as usize];
+                Rgba([p.red, p.green, p.blue, p.alpha])
+            });
+            glyphs.insert(glyph(&image));
+        }
+    }
+    assert!(glyphs.len() > 5, "the bars change between partial repaints: {} shapes", glyphs.len());
 }

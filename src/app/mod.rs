@@ -2,6 +2,7 @@
 //! visible according to the displays and the foreground application.
 
 mod calendar;
+mod glass;
 mod media;
 mod preferences;
 mod system;
@@ -20,8 +21,9 @@ use windows::Win32::UI::Shell::{
     QUNS_RUNNING_D3D_FULL_SCREEN, SHAppBarMessage, SHQueryUserNotificationState,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    PBT_APMPOWERSTATUSCHANGE, PBT_APMRESUMEAUTOMATIC, SPI_SETCLIENTAREAANIMATION, SPI_SETWORKAREA, SetForegroundWindow,
-    WM_CLOSE, WM_DISPLAYCHANGE, WM_HOTKEY, WM_POWERBROADCAST, WM_SETTINGCHANGE, WM_TIMECHANGE,
+    PBT_APMPOWERSTATUSCHANGE, PBT_APMRESUMEAUTOMATIC, SPI_SETCLIENTAREAANIMATION, SPI_SETDESKWALLPAPER,
+    SPI_SETWORKAREA, SetForegroundWindow, WM_CLOSE, WM_DISPLAYCHANGE, WM_HOTKEY, WM_POWERBROADCAST, WM_SETTINGCHANGE,
+    WM_TIMECHANGE,
 };
 use windows::core::w;
 
@@ -76,6 +78,8 @@ pub struct App {
     /// Whether the settings window should show the system acrylic.
     window_blur: Cell<bool>,
     tasks: Rc<tasks::TasksController>,
+    /// Liquid Glass's backdrop sampling.
+    glass: glass::GlassSampler,
 }
 
 thread_local! {
@@ -150,9 +154,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         media_ready: Cell::new(false),
         activity_timer: slint::Timer::default(),
         progress_timer: slint::Timer::default(),
-        system_monitor: RefCell::new(
-            SystemMonitor::new().map_err(|err| tracing::warn!(%err, "system readings unavailable")).ok(),
-        ),
+        system_monitor: RefCell::new(Some(SystemMonitor::new())),
         sampling: Cell::new(SamplingPolicy::OFF),
         cpu_timer: slint::Timer::default(),
         memory_timer: slint::Timer::default(),
@@ -162,6 +164,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         glass_fallback: Cell::new(None),
         window_blur: Cell::new(false),
         tasks,
+        glass: glass::GlassSampler::default(),
     });
     CURRENT.with(|c| *c.borrow_mut() = Rc::downgrade(&app));
     App::connect(&app);
@@ -276,6 +279,10 @@ impl App {
         match msg {
             WM_DISPLAYCHANGE => self.place(),
             WM_SETTINGCHANGE if wparam.0 as u32 == SPI_SETWORKAREA.0 => self.place(),
+            // A new wallpaper may be brighter or darker behind Liquid Glass.
+            WM_SETTINGCHANGE if wparam.0 as u32 == SPI_SETDESKWALLPAPER.0 => {
+                App::sample_glass_soon(app, Duration::from_millis(500))
+            }
             // "Animation effects" was switched in Windows.
             WM_SETTINGCHANGE if wparam.0 as u32 == SPI_SETCLIENTAREAANIMATION.0 => {
                 let reduced = preferences::reduced_motion(self.settings.borrow().appearance.motion);
@@ -343,6 +350,7 @@ impl App {
         app.collapse_timer.stop();
         App::update_progress_timer(app);
         App::update_sampling(app);
+        App::update_glass_sampling(app);
         app.refresh_agenda();
         let native = window::find(app.island.window());
         if expanded {
@@ -406,6 +414,7 @@ impl App {
         }
         App::update_progress_timer(app);
         App::update_sampling(app);
+        App::update_glass_sampling(app);
     }
 
     /// Updates the clock text and schedules the next update for the start of the next
@@ -449,6 +458,7 @@ impl App {
         app.record_move();
         app.place();
         App::schedule_save(app);
+        App::sample_glass_soon(app, Duration::ZERO);
     }
 
     fn record_move(&self) {

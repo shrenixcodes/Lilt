@@ -26,7 +26,7 @@ flowchart LR
         App --> State[(AppState and Theme<br/>Slint globals)]
         State --> Render[Software renderer]
         Render --> Layered[Layered island window]
-        App --> Sysinfo[System monitor<br/>sysinfo]
+        App --> Sysinfo[System monitor<br/>GetSystemTimes, GetIfTable2]
         App --> Calendar[Calendar file<br/>and agenda]
         App --> Settings[(settings.json)]
     end
@@ -145,17 +145,18 @@ All colours, sizes, radii, type sizes and durations come from the `Theme` global
 `ui/theme.slint`. The values that differ between appearances form one struct,
 `AppearanceTokens` (surfaces, secondary surfaces, text, borders, shadows, reflections,
 radii, motion and the settings window's colours). Each appearance is one value of it:
-`Theme.midnight` and `Theme.liquid-glass`. `Theme.appearance` selects one, and every
+`Theme.midnight`, `Theme.smoked-glass` and `Theme.liquid-glass`. `Theme.appearance`
+selects one, and every
 other token is derived from the selection, so components never know which appearance
 is active. Adding an appearance means one more enum variant and one more token value.
 
 Switching is a property change: Slint re-renders what changed, the island's surface
 cross-fades over the ambient duration (instant with reduced motion), and no window is
 recreated. Midnight's token values are the original values; the UI tests check that
-switching to Liquid Glass and back restores every pixel.
+switching to either glass appearance and back restores every pixel.
 
-Liquid Glass chooses one of two materials (`src/appearance.rs`, a pure function of the
-settings and the Windows environment):
+The glass appearances choose one of two materials (`src/appearance.rs`, a pure function
+of the settings and the Windows environment):
 
 - **Live blur** when Windows' *Transparency effects* are on, battery saver and Lilt's
   low-power mode are off, *Reduce transparency* is off, and Windows is 10 1903 or later.
@@ -165,6 +166,23 @@ settings and the Windows environment):
 
 The material is re-evaluated when Windows broadcasts a colour or transparency change
 (`ImmersiveColorSet`) or a power status change.
+
+### Liquid Glass's adaptive tint
+
+Liquid Glass's tint over the live blur is `Theme.glass-alpha`, set by
+`src/app/glass.rs`. `src/window/sample.rs` reads the screen area behind the island and
+tasks box with `StretchBlt` into a 16 × 4 bitmap (halftone, so each cell is an average)
+without `CAPTUREBLT`, so layered windows, the island and its blur included, are left
+out. `appearance::legible_alpha` then picks the lightest tint, between 36 % and 86 %,
+at which primary and secondary text reach 4.5:1 and tertiary text 3:1 over the
+brightest cell, on the glass and on its tiles. The island's background animation
+cross-fades the change.
+
+Sampling happens only while Liquid Glass uses the live blur and the island is visible:
+after the island appears, opens, closes or is moved; 300 ms after another window comes
+to the front, finishes moving or scrolling, or is restored (an out-of-context
+`SetWinEventHook`, removed when not needed); after a wallpaper change; and every 3 s
+while the island is open. Nothing is kept but the resulting opacity.
 
 ### The live blur
 
@@ -193,11 +211,11 @@ over it.
 ### Reflections
 
 Slint's software renderer draws gradients as rectangles and draws a clipping
-rectangle's border over its children. Liquid Glass's light is therefore built from
-shapes the renderer draws exactly: the sheen is a radial gradient centred above the
-surface that fades out before it can reach the rounded corners, and the rim is the
-surface's own rounded outline, drawn over it and clipped to the band above the straight
-sides.
+rectangle's border over its children. The glass's light is therefore built from shapes
+the renderer draws exactly: the sheen is a radial gradient centred above the surface
+that fades out before it can reach the rounded corners, and the rim is the surface's own
+rounded outline, drawn over it and clipped to the band above the straight sides.
+Liquid Glass adds a fainter rim clipped to the band below them.
 
 ## Persistence and files
 

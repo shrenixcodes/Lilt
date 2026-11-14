@@ -9,6 +9,8 @@ export enum Appearance {
     // The original minimal dark appearance.
     midnight,
     // Dark smoked translucent glass.
+    smoked-glass,
+    // Clear glass that darkens only as much as the desktop behind it requires.
     liquid-glass,
 }
 
@@ -28,9 +30,11 @@ export struct AppearanceTokens {
     track: color,
     shadow-near: color,
     shadow-far: color,
-    // Reflections: a lit rim along the upper edge and a soft sheen from above.
+    // Reflections: a lit rim along the upper edge and a soft sheen from above, and
+    // optionally a fainter rim along the lower edge where light leaves the glass.
     reflections: bool,
     rim: color,
+    lower-rim: color,
     sheen: color,
     // Text.
     text: color,
@@ -88,6 +92,7 @@ export global Theme {
         shadow-far: #00000024,
         reflections: false,
         rim: transparent,
+        lower-rim: transparent,
         sheen: transparent,
         text: #f3f3f5,
         text-secondary: #a0a0a8,
@@ -117,7 +122,7 @@ export global Theme {
         card-border: #ffffff14,
     };
 
-    out property <AppearanceTokens> liquid-glass: {
+    out property <AppearanceTokens> smoked-glass: {
         // Dense enough to stay legible over any wallpaper without a blur.
         surface: #18181eeb,
         surface-hover: #1e1e25ed,
@@ -135,6 +140,7 @@ export global Theme {
         shadow-far: #0000001a,
         reflections: true,
         rim: #ffffff42,
+        lower-rim: transparent,
         sheen: #ffffff14,
         text: #f6f6f8,
         text-secondary: #b7b7c0,
@@ -164,7 +170,61 @@ export global Theme {
         card-border: #ffffff1a,
     };
 
-    out property <AppearanceTokens> tokens: appearance == Appearance.liquid-glass ? liquid-glass : midnight;
+    // How opaque Liquid Glass's tint is over the live blur, 0..1. The application sets it
+    // from the brightness of the desktop behind the island: low over dark content, so the
+    // desktop's colour shows through, and only as high as text legibility requires over
+    // bright content.
+    in-out property <float> glass-alpha: 0.5;
+
+    out property <AppearanceTokens> liquid-glass: {
+        // Without a blur, sharp content would show through, so the frosted surface stays
+        // dense; it is cooler and lighter than Smoked Glass.
+        surface: #1a1d27eb,
+        surface-hover: #20232eed,
+        blurred-surface: #10131c.with-alpha(glass-alpha),
+        blurred-surface-hover: #10131c.with-alpha(min(1, glass-alpha + 0.04)),
+        tile: #ffffff12,
+        tile-hover: #ffffff1c,
+        control-hover: #ffffff1f,
+        control-pressed: #ffffff12,
+        border: #ffffff29,
+        track: #ffffff2e,
+        shadow-near: #0000002e,
+        shadow-far: #00000014,
+        reflections: true,
+        rim: #ffffff73,
+        lower-rim: #ffffff2b,
+        sheen: #ffffff1f,
+        text: #ffffff,
+        text-secondary: #d2d4dc,
+        text-tertiary: #a9acb8,
+        text-on-light: #0a0a0b,
+        expanded-radius: 32px,
+        tile-radius: 19px,
+        control-radius: 11px,
+        resize-duration: 460ms,
+        fade-duration: 200ms,
+        hover-duration: 160ms,
+        window-background: #1a1d27,
+        blurred-window-background: #10131c8c,
+        sidebar: #151821,
+        blurred-sidebar: #0c0e1559,
+        nav-selected: #ffffff1f,
+        nav-hover: #ffffff10,
+        nav-text: #d2d4dc,
+        window-text: #ffffff,
+        window-text-secondary: #b9bcc6,
+        group-background: #ffffff0d,
+        group-border: #ffffff1f,
+        group-padding: 14px,
+        group-radius: 16px,
+        card: #ffffff0d,
+        card-hover: #ffffff17,
+        card-border: #ffffff21,
+    };
+
+    out property <AppearanceTokens> tokens: appearance == Appearance.liquid-glass ? liquid-glass
+        : appearance == Appearance.smoked-glass ? smoked-glass : midnight;
 
     // Surfaces
     out property <color> surface: live-blur ? tokens.blurred-surface : tokens.surface;
@@ -179,6 +239,7 @@ export global Theme {
     out property <color> shadow-far: tokens.shadow-far;
     out property <bool> reflections: tokens.reflections;
     out property <color> rim: tokens.rim;
+    out property <color> lower-rim: tokens.lower-rim;
     out property <color> sheen: tokens.sheen;
 
     // Text

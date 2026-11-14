@@ -147,6 +147,25 @@ impl Win32Window {
             .collect()
     }
 
+    /// The screen rectangle covered by the window's glass shapes (the island and the
+    /// tasks box), in physical pixels.
+    pub fn glass_area(&self) -> Option<RECT> {
+        let hwnd = self.hwnd.get()?;
+        let mut window = RECT::default();
+        unsafe { GetWindowRect(hwnd, &mut window) }.ok()?;
+        let shapes = self.physical_shapes();
+        let left = shapes.iter().map(|s| s.x).reduce(f32::min)?;
+        let top = shapes.iter().map(|s| s.y).reduce(f32::min)?;
+        let right = shapes.iter().map(|s| s.x + s.width).reduce(f32::max)?;
+        let bottom = shapes.iter().map(|s| s.y + s.height).reduce(f32::max)?;
+        Some(RECT {
+            left: window.left + left.floor() as i32,
+            top: window.top + top.floor() as i32,
+            right: window.left + right.ceil() as i32,
+            bottom: window.top + bottom.ceil() as i32,
+        })
+    }
+
     /// Turns the live blur behind the island on or off. Returns whether it is on.
     pub fn set_live_backdrop(&self, enabled: bool) -> bool {
         if self.kind != WindowKind::Island || !enabled {

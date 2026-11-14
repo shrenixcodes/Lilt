@@ -34,7 +34,7 @@ Logs are written to `%LOCALAPPDATA%\Lilt\logs\lilt.log`. Set `LILT_LOG=debug` (o
 
 Lilt reads its folders from `APPDATA` and `LOCALAPPDATA`, so pointing both at a scratch
 directory runs it with separate settings and logs. Set `LILT_GLASS=frosted` or
-`LILT_GLASS=blur` to force Liquid Glass's material regardless of the Windows settings,
+`LILT_GLASS=blur` to force the glass appearances' material regardless of the Windows settings,
 for example to exercise the live-blur window on a PC with transparency effects off
 (the blur then renders black, which is what Windows draws in that case).
 

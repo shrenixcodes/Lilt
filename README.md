@@ -26,9 +26,11 @@ megabytes of memory and no measurable CPU or GPU time.
   as Spotify, web browsers and the Windows Media Player app: title, artist, album artwork,
   play/pause, previous/next, seeking and a source switcher. A short banner announces
   new tracks.
-- **Two appearances.** *Midnight*, the original minimal near-black look, and *Liquid
-  Glass*, dark smoked glass with a lit rim and soft reflections over a live blur of the
-  desktop. Switch between them instantly in Settings.
+- **Three appearances.** *Midnight*, the original minimal near-black look; *Smoked
+  Glass*, dark smoked glass with a lit rim over a live blur of the desktop; and *Liquid
+  Glass*, clear glass lit along both edges that lets the desktop's colour through and
+  darkens only as much as a bright window behind it requires. Switch instantly in
+  Settings.
 - **Ambient colour.** The expanded player picks up a restrained accent from the current
   album artwork: a soft glow behind the cover, a faint tint of the panel and an
   accent-coloured progress bar. Intensity is adjustable and it can be turned off.
@@ -65,7 +67,7 @@ To uninstall, use *Settings → Apps → Installed apps → Lilt*.
   verified yet.
 - No additional runtimes: Lilt does not use .NET, a web view or the Visual C++
   redistributable.
-- Runs on integrated graphics. Lilt draws on the CPU; in Liquid Glass, Windows' own
+- Runs on integrated graphics. Lilt draws on the CPU; in the glass appearances, Windows' own
   compositor blurs the desktop behind the island on the GPU, as it does for the Start
   menu.
 
@@ -88,13 +90,24 @@ Choose an appearance in *Settings → Appearance & position*; the island, the mu
 dashboard tiles, track banners and the settings window change at once.
 
 - **Midnight** is the original appearance: near-black solid surfaces and quiet borders.
-- **Liquid Glass** is dark smoked glass. Behind the island Windows blurs the desktop,
-  and on Windows 11 22H2 and later the settings window uses the system acrylic. When
-  Windows' *Transparency effects* are off, battery saver or Lilt's low-power mode is
-  on, or you turn on *Reduce transparency*, Liquid Glass keeps its look with frosted
-  surfaces instead of a live blur, and Settings says why.
+- **Smoked Glass** is dark smoked glass with a lit upper rim. Its tint is dense enough
+  that text keeps at least 7:1 contrast over any desktop.
+- **Liquid Glass** is clear glass with light along its upper and lower edges. Over dark
+  content the tint is light and the desktop's colours show through; when a bright window
+  is behind the island, the tint deepens just enough to keep text at WCAG AA contrast
+  (4.5:1). Lilt decides this from the average brightness of the screen behind the island,
+  read as a 16 × 4 grid when the island opens or moves, when another window comes to the
+  front, moves or scrolls, and every 3 seconds while the island is open.
+
+Behind both glass appearances Windows blurs the desktop, and on Windows 11 22H2 and
+later the settings window uses the system acrylic. When Windows' *Transparency effects*
+are off, battery saver or Lilt's low-power mode is on, or you turn on *Reduce
+transparency*, the glass keeps its look with frosted surfaces instead of a live blur,
+and Settings says why.
 
 ![Liquid Glass over a colourful desktop](docs/images/liquid-glass.png)
+
+![Smoked Glass over the same desktop](docs/images/smoked-glass.png)
 
 ### Music
 
@@ -113,18 +126,16 @@ fade over 0.7 seconds when the artwork changes and stay still otherwise.
 
 ## Performance
 
-Lilt is a single process with no web view, and it draws on the CPU (Liquid Glass's live
-blur is drawn by Windows' compositor). Timers only run while
+Lilt is a single process with no web view, and it draws on the CPU (the glass
+appearances' live blur is drawn by Windows' compositor). Timers only run while
 their results are on screen, and media updates arrive as Windows events rather than by
 polling. Measured on a release build:
 
 | State | Memory (Task Manager) | CPU (all cores) |
 | --- | --- | --- |
-| Compact, idle | 6.3 MB | 0.000 % |
-| Expanded, readings live | 6.4 MB | 0.001 % |
-| Expanding and collapsing every 2 s | 6.5 MB | 0.021 % |
-
-These were measured with Midnight; Liquid Glass has not been benchmarked side by side yet.
+| Compact, idle (Midnight / Liquid Glass) | 3.0 / 3.2 MB | 0.000 % |
+| Compact, music playing, bars moving | 3.5 MB | 0.041 % |
+| Expanded with the tasks box, readings live | 3.5–3.6 MB | 0.022–0.047 % |
 
 [PERFORMANCE.md](PERFORMANCE.md) has the full results, the test machine and the method.
 

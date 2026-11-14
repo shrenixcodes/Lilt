@@ -1,11 +1,19 @@
-//! CPU, memory and network readings backed by one persistent `sysinfo` instance.
+//! CPU, memory and network readings, read straight from Windows.
 //!
-//! Each metric is refreshed on its own, so only the data that is about to be shown
-//! is collected. Scheduling lives in [`SamplingPolicy`]; the caller owns the timers.
+//! Each metric is read on its own, so only the data that is about to be shown is
+//! collected. Scheduling lives in [`SamplingPolicy`]; the caller owns the timers.
+//!
+//! CPU usage comes from `GetSystemTimes` rather than the Performance Data Helper, whose
+//! counter tables would cost several megabytes of memory for one number.
 
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use sysinfo::{MemoryRefreshKind, Networks, System};
+use windows::Win32::Foundation::FILETIME;
+use windows::Win32::NetworkManagement::IpHelper::{FreeMibTable, GetIfTable2, MIB_IF_TABLE2};
+use windows::Win32::NetworkManagement::Ndis::MediaConnectStateDisconnected;
+use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+use windows::Win32::System::Threading::GetSystemTimes;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Memory {
@@ -31,54 +39,135 @@ pub struct NetworkRates {
     pub up: f64,
 }
 
+/// Processor time since boot, in 100 ns units, summed over all processors.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CpuTimes {
+    pub idle: u64,
+    /// Kernel and user time; kernel time includes idle time.
+    pub total: u64,
+}
+
+impl CpuTimes {
+    fn now() -> Option<Self> {
+        let (mut idle, mut kernel, mut user) = (FILETIME::default(), FILETIME::default(), FILETIME::default());
+        unsafe { GetSystemTimes(Some(&mut idle), Some(&mut kernel), Some(&mut user)) }.ok()?;
+        let value = |t: FILETIME| (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime);
+        Some(Self { idle: value(idle), total: value(kernel) + value(user) })
+    }
+}
+
+/// Share of processor time spent working between two readings, 0..=100.
+pub fn cpu_usage(before: CpuTimes, after: CpuTimes) -> f32 {
+    let total = after.total.saturating_sub(before.total);
+    let idle = after.idle.saturating_sub(before.idle).min(total);
+    if total == 0 { 0.0 } else { ((total - idle) as f64 / total as f64 * 100.0) as f32 }
+}
+
 pub struct SystemMonitor {
-    system: System,
-    /// `None` if the network counters could not be opened.
-    networks: Option<Networks>,
+    last_cpu: Option<CpuTimes>,
+    /// Received and sent byte counters per interface at the previous network reading.
+    last_octets: HashMap<u64, (u64, u64)>,
     last_network_sample: Option<Instant>,
 }
 
 impl SystemMonitor {
-    pub fn new() -> Result<Self, sysinfo::Error> {
-        let mut system = System::new()?;
-        // Establish the CPU baseline so the first real sample has something to diff against.
-        system.refresh_cpu_usage();
-        let networks = Networks::new_with_refreshed_list()
-            .map_err(|err| tracing::warn!(%err, "network counters unavailable"))
-            .ok();
-        Ok(Self { system, networks, last_network_sample: Some(Instant::now()) })
+    pub fn new() -> Self {
+        // Baselines, so that the first real readings have something to compare with.
+        let mut monitor = Self { last_cpu: CpuTimes::now(), last_octets: HashMap::new(), last_network_sample: None };
+        monitor.network();
+        monitor
     }
 
     /// Average CPU usage since the previous call, 0..=100.
     pub fn cpu(&mut self) -> f32 {
-        self.system.refresh_cpu_usage();
-        self.system.global_cpu_usage().clamp(0.0, 100.0)
+        let now = CpuTimes::now();
+        let usage = match (self.last_cpu, now) {
+            (Some(before), Some(after)) => cpu_usage(before, after),
+            _ => 0.0,
+        };
+        self.last_cpu = now.or(self.last_cpu);
+        usage
     }
 
     pub fn memory(&mut self) -> Memory {
-        self.system.refresh_memory_specifics(MemoryRefreshKind::nothing().with_ram());
-        Memory { total: self.system.total_memory(), available: self.system.available_memory() }
+        let mut status =
+            MEMORYSTATUSEX { dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32, ..Default::default() };
+        match unsafe { GlobalMemoryStatusEx(&mut status) } {
+            Ok(()) => Memory { total: status.ullTotalPhys, available: status.ullAvailPhys },
+            Err(_) => Memory::default(),
+        }
     }
 
     /// Average transfer rates since the previous call across physical-looking interfaces,
     /// or `None` if network counters are unavailable.
     pub fn network(&mut self) -> Option<NetworkRates> {
-        let networks = self.networks.as_mut()?;
-        networks.refresh(true);
+        let counters = interface_octets()?;
         let now = Instant::now();
-        let elapsed = self.last_network_sample.replace(now).map(|t| now.duration_since(t).as_secs_f64()).unwrap_or(0.0);
-        if elapsed < 0.05 {
-            return Some(NetworkRates::default());
-        }
+        let elapsed = self.last_network_sample.replace(now).map(|t| now.duration_since(t).as_secs_f64());
         let (mut down, mut up) = (0u64, 0u64);
-        for (name, data) in networks.iter() {
-            if is_counted_interface(&name.to_string_lossy()) {
-                down += data.received();
-                up += data.transmitted();
+        for (luid, (received, sent)) in &counters {
+            if let Some((was_received, was_sent)) = self.last_octets.get(luid) {
+                down += received.saturating_sub(*was_received);
+                up += sent.saturating_sub(*was_sent);
             }
         }
-        Some(NetworkRates { down: down as f64 / elapsed, up: up as f64 / elapsed })
+        self.last_octets = counters;
+        match elapsed {
+            Some(elapsed) if elapsed >= 0.05 => {
+                Some(NetworkRates { down: down as f64 / elapsed, up: up as f64 / elapsed })
+            }
+            _ => Some(NetworkRates::default()),
+        }
     }
+}
+
+impl Default for SystemMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Byte counters of the counted interfaces, by interface LUID.
+///
+/// Software layers are left out as `sysinfo` did before: interfaces without link speed,
+/// disconnected ones, ones without a hardware address, and every interface that shares
+/// its GUID with another (filter layers stacked on an adapter); then the name filter
+/// below.
+fn interface_octets() -> Option<HashMap<u64, (u64, u64)>> {
+    let mut table: *mut MIB_IF_TABLE2 = std::ptr::null_mut();
+    unsafe { GetIfTable2(&mut table) }.ok().ok()?;
+    if table.is_null() {
+        return None;
+    }
+    // SAFETY: GetIfTable2 succeeded; the table holds NumEntries rows until it is freed.
+    let rows = unsafe { std::slice::from_raw_parts((*table).Table.as_ptr(), (*table).NumEntries as usize) };
+    let eligible: Vec<_> = rows
+        .iter()
+        .filter(|r| {
+            !(r.TransmitLinkSpeed == 0 && r.ReceiveLinkSpeed == 0)
+                && r.MediaConnectState != MediaConnectStateDisconnected
+                && r.PhysicalAddressLength != 0
+        })
+        .collect();
+    let mut groups: HashMap<windows::core::GUID, usize> = HashMap::new();
+    for row in &eligible {
+        *groups.entry(row.InterfaceGuid).or_default() += 1;
+    }
+    let mut counters = HashMap::new();
+    for row in eligible {
+        if groups.get(&row.InterfaceGuid).copied().unwrap_or(0) > 1 {
+            continue;
+        }
+        let length = row.Alias.iter().position(|&c| c == 0).unwrap_or(row.Alias.len());
+        let name = String::from_utf16_lossy(&row.Alias[..length]);
+        if is_counted_interface(&name) {
+            // SAFETY: NET_LUID_LH is a union whose `Value` covers all of it.
+            let luid = unsafe { row.InterfaceLuid.Value };
+            counters.insert(luid, (row.InOctets, row.OutOctets));
+        }
+    }
+    unsafe { FreeMibTable(table as *const _) };
+    Some(counters)
 }
 
 /// Excludes loopback, virtual adapters and driver filter layers. Windows lists filter
@@ -197,9 +286,19 @@ mod tests {
     }
 
     #[test]
+    fn cpu_usage_is_the_busy_share() {
+        let before = CpuTimes { idle: 1_000, total: 4_000 };
+        assert_eq!(cpu_usage(before, CpuTimes { idle: 1_750, total: 5_000 }), 25.0);
+        assert_eq!(cpu_usage(before, before), 0.0);
+        // Counters never run backwards; if they appear to, nothing is reported.
+        assert_eq!(cpu_usage(before, CpuTimes { idle: 0, total: 0 }), 0.0);
+        assert_eq!(cpu_usage(before, CpuTimes { idle: 9_000, total: 5_000 }), 0.0);
+    }
+
+    #[test]
     fn live_readings_are_plausible() {
-        let mut monitor = SystemMonitor::new().expect("system counters");
-        std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+        let mut monitor = SystemMonitor::new();
+        std::thread::sleep(Duration::from_millis(250));
         let cpu = monitor.cpu();
         assert!((0.0..=100.0).contains(&cpu));
         let memory = monitor.memory();

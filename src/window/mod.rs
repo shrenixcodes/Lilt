@@ -11,6 +11,7 @@ mod backdrop;
 mod clipboard;
 mod input;
 pub mod placement;
+pub mod sample;
 mod surface;
 
 use std::cell::{Cell, RefCell};

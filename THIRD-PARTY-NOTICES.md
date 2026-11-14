@@ -133,7 +133,6 @@ redistribution; the full texts are included in each crate's source on
 | [miniz_oxide](https://crates.io/crates/miniz_oxide) | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
 | [moxcms](https://crates.io/crates/moxcms) | 0.8.1 | BSD-3-Clause OR Apache-2.0 |
 | [natord](https://crates.io/crates/natord) | 1.0.9 | MIT |
-| [ntapi](https://crates.io/crates/ntapi) | 0.4.3 | Apache-2.0 OR MIT |
 | [num-traits](https://crates.io/crates/num-traits) | 0.2.19 | MIT OR Apache-2.0 |
 | [num_enum](https://crates.io/crates/num_enum) | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 |
 | [num_enum_derive](https://crates.io/crates/num_enum_derive) | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 |
@@ -204,7 +203,6 @@ redistribution; the full texts are included in each crate's source on
 | [syn](https://crates.io/crates/syn) | 3.0.10 | MIT OR Apache-2.0 |
 | [synstructure](https://crates.io/crates/synstructure) | 0.14.0 | MIT |
 | [sys-locale](https://crates.io/crates/sys-locale) | 0.3.2 | MIT OR Apache-2.0 |
-| [sysinfo](https://crates.io/crates/sysinfo) | 0.40.3 | MIT |
 | [taffy](https://crates.io/crates/taffy) | 0.10.1 | MIT |
 | [text-size](https://crates.io/crates/text-size) | 1.1.1 | MIT OR Apache-2.0 |
 | [thiserror](https://crates.io/crates/thiserror) | 2.0.21 | MIT OR Apache-2.0 |
@@ -242,7 +240,6 @@ redistribution; the full texts are included in each crate's source on
 | [vtable](https://crates.io/crates/vtable) | 0.5.0 | MIT OR Apache-2.0 |
 | [vtable-macro](https://crates.io/crates/vtable-macro) | 0.5.0 | MIT OR Apache-2.0 |
 | [weezl](https://crates.io/crates/weezl) | 0.1.12 | MIT OR Apache-2.0 |
-| [winapi](https://crates.io/crates/winapi) | 0.3.9 | MIT OR Apache-2.0 |
 | [windows](https://crates.io/crates/windows) | 0.62.2 | MIT OR Apache-2.0 |
 | [windows-collections](https://crates.io/crates/windows-collections) | 0.3.2 | MIT OR Apache-2.0 |
 | [windows-core](https://crates.io/crates/windows-core) | 0.62.2 | MIT OR Apache-2.0 |

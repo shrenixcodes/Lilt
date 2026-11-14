@@ -103,6 +103,7 @@ impl App {
             tracing::debug!(?material, live, ?fallback, "appearance applied");
         }
         app.apply_window_appearance();
+        App::update_glass_sampling(app);
     }
 
     /// Gives the settings window the island's appearance, with the system acrylic behind
@@ -365,14 +366,17 @@ pub(super) fn reduced_motion(preference: MotionPreference) -> bool {
 fn ui_appearance(mode: AppearanceMode) -> Appearance {
     match mode {
         AppearanceMode::Midnight => Appearance::Midnight,
+        AppearanceMode::SmokedGlass => Appearance::SmokedGlass,
         AppearanceMode::LiquidGlass => Appearance::LiquidGlass,
     }
 }
 
+/// The appearance's card in the settings window, in the order shown.
 fn appearance_index(mode: AppearanceMode) -> i32 {
     match mode {
         AppearanceMode::Midnight => 0,
-        AppearanceMode::LiquidGlass => 1,
+        AppearanceMode::SmokedGlass => 1,
+        AppearanceMode::LiquidGlass => 2,
     }
 }
 
@@ -428,7 +432,8 @@ fn to_data(s: &Settings, monitors: &[placement::Monitor]) -> SettingsData {
 fn from_data(d: &SettingsData, monitors: &[placement::Monitor], previous: &Settings) -> Settings {
     let mut s = previous.clone();
     s.appearance.theme = match d.appearance {
-        1 => AppearanceMode::LiquidGlass,
+        1 => AppearanceMode::SmokedGlass,
+        2 => AppearanceMode::LiquidGlass,
         _ => AppearanceMode::Midnight,
     };
     s.appearance.reduce_transparency = d.reduce_transparency;
@@ -492,7 +497,14 @@ mod tests {
         let mut data = to_data(&Settings::default(), &[]);
         assert_eq!(data.appearance, 0);
         data.appearance = 1;
+        assert_eq!(from_data(&data, &[], &Settings::default()).appearance.theme, AppearanceMode::SmokedGlass);
+        data.appearance = 2;
         assert_eq!(from_data(&data, &[], &Settings::default()).appearance.theme, AppearanceMode::LiquidGlass);
+        for mode in [AppearanceMode::Midnight, AppearanceMode::SmokedGlass, AppearanceMode::LiquidGlass] {
+            let mut s = Settings::default();
+            s.appearance.theme = mode;
+            assert_eq!(from_data(&to_data(&s, &[]), &[], &s).appearance.theme, mode);
+        }
         // An index this version does not know is treated as Midnight.
         data.appearance = 7;
         assert_eq!(from_data(&data, &[], &Settings::default()).appearance.theme, AppearanceMode::Midnight);

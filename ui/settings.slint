@@ -6,7 +6,7 @@ import { GlassSheen, GlassRim } from "components/glass.slint";
 // Settings as edited in the window. Converted to and from the Rust settings model.
 
 export struct SettingsData {
-    // 0 = Midnight, 1 = Liquid Glass
+    // 0 = Midnight, 1 = Smoked Glass, 2 = Liquid Glass
     appearance: int,
     reduce-transparency: bool,
     auto-collapse: bool,
@@ -308,7 +308,7 @@ component AppearanceCard inherits Rectangle {
     in property <bool> selected;
     callback select();
 
-    min-width: 200px;
+    min-width: 150px;
     horizontal-stretch: 1;
     height: 206px;
     border-radius: 12px;
@@ -548,21 +548,31 @@ export component SettingsWindow inherits Window {
                         }
 
                         AppearanceCard {
-                            name: "Liquid Glass";
-                            description: "Smoked translucent glass with soft reflections.";
-                            tokens: Theme.liquid-glass;
+                            name: "Smoked Glass";
+                            description: "Dark smoked glass with soft reflections.";
+                            tokens: Theme.smoked-glass;
                             glass: true;
                             selected: root.data.appearance == 1;
                             select => { root.data.appearance = 1; root.edited(); }
                         }
+
+                        AppearanceCard {
+                            name: "Liquid Glass";
+                            badge: "New";
+                            description: "Clear glass that darkens only over bright windows.";
+                            tokens: Theme.liquid-glass;
+                            glass: true;
+                            selected: root.data.appearance == 2;
+                            select => { root.data.appearance = 2; root.edited(); }
+                        }
                     }
-                    if root.data.appearance == 1 && root.appearance-note != "" : Text {
+                    if root.data.appearance >= 1 && root.appearance-note != "" : Text {
                         text: root.appearance-note;
                         color: Theme.window-text-secondary;
                         font-size: 11.5px;
                         wrap: word-wrap;
                     }
-                    if root.data.appearance == 1 : Row {
+                    if root.data.appearance >= 1 : Row {
                         label: "Reduce transparency";
                         description: "Use frosted surfaces instead of blurring the desktop behind Lilt.";
                         Switch {
@@ -747,7 +757,7 @@ export component SettingsWindow inherits Window {
                     title: "Performance";
                     Row {
                         label: "Low-power mode";
-                        description: "Turns off ambient effects and the Liquid Glass blur, and samples system readings less often.";
+                        description: "Turns off ambient effects and the glass blur, and samples system readings less often.";
                         Switch {
                             checked: root.data.low-power;
                             toggled => { root.data.low-power = self.checked; root.edited(); }

@@ -8,14 +8,17 @@ All notable changes to Lilt are documented here. The format follows
 
 ### Added
 
-- A second appearance, **Liquid Glass**: dark smoked glass with a lit rim and a soft
+- A second appearance, **Smoked Glass** (first released as Liquid Glass): dark smoked glass with a lit rim and a soft
   reflection, over a live blur of the desktop drawn by Windows' compositor. It applies to
   the island, the music player, dashboard tiles, track banners and the settings window,
   and falls back to frosted surfaces when Windows' transparency effects, battery saver
   or low-power mode rule out the blur, or when *Reduce transparency* is on.
-- *Settings → Appearance* shows both appearances as cards with previews drawn from their
+- *Settings → Appearance* shows the appearances as cards with previews drawn from their
   own design tokens. Switching is immediate and needs no restart.
-- The "now playing" bars in the compact island move like a quiet equalizer while music
+- A third appearance, **Liquid Glass**: clear glass lit along its upper and lower edges.
+  Its tint follows the brightness of the screen behind the island, light over dark
+  content and only as dense as WCAG AA text contrast requires over bright windows.
+- The "now playing" bars in the compact island move like an equalizer while music
   plays. They step about 14 times a second on a timer, only while the compact island is
   on screen, settle into the flat idle bars when playback pauses, and stay still with
   reduced motion.
@@ -32,9 +35,21 @@ All notable changes to Lilt are documented here. The format follows
   default.
 - Appearance and Position are one settings page, *Appearance & position*, with a button
   that resets only those settings.
-- The settings file is now version 2. Version 1 files are read as before and keep their
-  appearance and every other setting; an unknown appearance name falls back to
-  Midnight.
+- The settings file is now version 3. Older files are read as before and keep their
+  appearance and every other setting: a version 2 file that chose Liquid Glass, which
+  was the smoked look, now opens in Smoked Glass. An unknown appearance name falls back
+  to Midnight.
+
+### Fixed
+
+- When a browser plays in one tab while another is paused, or replaces its media
+  session (as Edge does when another tab starts playing), Lilt now follows the session
+  that is playing instead of keeping the paused or stale one, so the title is current and
+  the playing bars move.
+- Lilt's memory use is down from about 7.6–8.3 MB to 3.0–3.6 MB (Task Manager's
+  "Memory"). CPU, memory and network readings now come straight from Windows instead of
+  the `sysinfo` crate, whose CPU reading loaded the Performance Data Helper's counter
+  tables (about 4 MB).
 
 ## [0.1.0]
 
