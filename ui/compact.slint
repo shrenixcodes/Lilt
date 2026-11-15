@@ -3,10 +3,10 @@ import { MediaAvailability } from "types.slint";
 import { AppState } from "state.slint";
 import { ArtworkTile } from "artwork.slint";
 
-// "Now playing" bars. While music plays they move like a quiet equalizer: a timer
-// steps them about 14 times a second, with no per-frame animation, and only while the
-// compact island is on screen. Paused or stopped they settle once into the flat idle
-// shape; with reduced motion they keep their original still heights.
+// "Now playing" bars. While music plays they move like an equalizer: the application
+// advances `AppState.bars-step` about 14 times a second, with no per-frame animation,
+// and only while the compact island is on screen. Paused or stopped they settle once
+// into the flat idle shape; with reduced motion they keep their original still heights.
 component PlayingGlyph inherits Rectangle {
     in property <bool> playing;
     // The glyph can be seen: the compact island is on screen and not covered.
@@ -15,16 +15,8 @@ component PlayingGlyph inherits Rectangle {
     height: 16px;
 
     property <bool> moving: root.playing && root.live && Theme.motion > 0;
-    // Every wave below repeats after 360 steps, so wrapping at a multiple is seamless.
-    property <int> step;
-
-    Timer {
-        interval: 70ms;
-        running: root.moving;
-        triggered => {
-            root.step = Math.mod(root.step + 1, 7200);
-        }
-    }
+    // Every wave below repeats after 360 steps; the application wraps at a multiple.
+    property <int> step: AppState.bars-step;
 
     for h[i] in [9px, 15px, 7px, 13px] : Rectangle {
         // Two waves per bar at different speeds, so the bars never move in step.

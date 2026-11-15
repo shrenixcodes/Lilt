@@ -111,8 +111,34 @@ impl App {
         });
     }
 
+    /// Steps the "now playing" bars while music plays and the compact island is on
+    /// screen with motion allowed, and stops them otherwise. Called on every change of
+    /// playback, visibility, expansion or motion, and once a minute.
+    pub(super) fn update_bars(app: &Rc<Self>) {
+        let state = app.island.global::<AppState>();
+        let moving = bars_move(
+            state.get_media().playing,
+            app.island_visible(),
+            app.expanded(),
+            app.island.global::<Theme>().get_motion() > 0.0,
+        );
+        if !moving {
+            app.bars_timer.stop();
+        } else if !app.bars_timer.running() {
+            let weak = app.island.as_weak();
+            app.bars_timer.start(slint::TimerMode::Repeated, BARS_INTERVAL, move || {
+                if let Some(island) = weak.upgrade() {
+                    let state = island.global::<AppState>();
+                    // Every wave repeats after 360 steps, so wrapping at 7200 is seamless.
+                    state.set_bars_step((state.get_bars_step() + 1) % 7200);
+                }
+            });
+        }
+    }
+
     /// Runs the progress timer only while the position is actually on screen and moving.
     pub(super) fn update_progress_timer(app: &Rc<Self>) {
+        App::update_bars(app);
         app.refresh_progress();
         let moving = app
             .media_state
@@ -160,6 +186,15 @@ fn info(media: &MediaState) -> MediaInfo {
     }
 }
 
+/// About 14 steps a second.
+const BARS_INTERVAL: Duration = Duration::from_millis(70);
+
+/// Whether the "now playing" bars move: music plays and the compact island is on screen
+/// with motion allowed.
+fn bars_move(playing: bool, visible: bool, expanded: bool, motion: bool) -> bool {
+    playing && visible && !expanded && motion
+}
+
 /// `m:ss`, or `h:mm:ss` from one hour.
 fn format_duration(duration: Duration) -> String {
     let total = duration.as_secs();
@@ -170,6 +205,15 @@ fn format_duration(duration: Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bars_move_only_while_playing_compact_visible_and_animated() {
+        assert!(bars_move(true, true, false, true));
+        assert!(!bars_move(false, true, false, true), "paused");
+        assert!(!bars_move(true, false, false, true), "hidden, e.g. behind a full-screen app");
+        assert!(!bars_move(true, true, true, true), "expanded: the bars are not shown");
+        assert!(!bars_move(true, true, false, false), "reduced motion");
+    }
 
     #[test]
     fn durations() {

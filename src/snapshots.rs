@@ -671,9 +671,12 @@ fn set_glass_alpha_for(h: &Harness, backdrop: [u8; 3]) {
 }
 
 /// Renders the compact island twice, letting `ms` of time pass in between.
+/// Renders twice, letting `ms` of time pass and the bars take one step in between, as the
+/// application's bar timer does.
 fn two_frames(h: &Harness, ms: u64) -> (RgbaImage, RgbaImage) {
     let first = h.render();
     h.clock.set(h.clock.get() + Duration::from_millis(ms));
+    h.state().set_bars_step(h.state().get_bars_step() + 1);
     slint::platform::update_timers_and_animations();
     (first, h.render())
 }
@@ -1233,6 +1236,7 @@ fn playing_bars_move_with_partial_repaints() {
     let mut glyphs = std::collections::HashSet::new();
     for step in 0..40 {
         clock.set(clock.get() + Duration::from_millis(35));
+        island.global::<AppState>().set_bars_step(step);
         slint::platform::update_timers_and_animations();
         window.draw_if_needed(|renderer| {
             renderer.render(&mut buffer, w as usize);

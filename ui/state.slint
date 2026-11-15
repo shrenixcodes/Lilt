@@ -46,6 +46,9 @@ export global AppState {
     in property <bool> expanded;
     // The island is shown (not hidden by the user or for a full-screen application).
     in property <bool> on-screen: true;
+    // Steps of the "now playing" bars, advanced by the application about 14 times a
+    // second while music plays and the compact island is on screen.
+    in property <int> bars-step;
     in-out property <Page> page: Page.dashboard;
 
     // The tasks box is enabled in Settings, and where it sits.

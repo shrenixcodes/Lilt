@@ -66,6 +66,8 @@ pub struct App {
     media_ready: Cell<bool>,
     activity_timer: slint::Timer,
     progress_timer: slint::Timer,
+    /// Steps the "now playing" bars while they should move.
+    bars_timer: slint::Timer,
     system_monitor: RefCell<Option<SystemMonitor>>,
     sampling: Cell<SamplingPolicy>,
     cpu_timer: slint::Timer,
@@ -154,6 +156,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         media_ready: Cell::new(false),
         activity_timer: slint::Timer::default(),
         progress_timer: slint::Timer::default(),
+        bars_timer: slint::Timer::default(),
         system_monitor: RefCell::new(Some(SystemMonitor::new())),
         sampling: Cell::new(SamplingPolicy::OFF),
         cpu_timer: slint::Timer::default(),
@@ -288,6 +291,7 @@ impl App {
                 let reduced = preferences::reduced_motion(self.settings.borrow().appearance.motion);
                 self.island.global::<Theme>().set_motion(if reduced { 0.0 } else { 1.0 });
                 self.apply_window_appearance();
+                App::update_bars(app);
             }
             WM_SETTINGCHANGE => match setting_name(lparam).as_deref() {
                 // Regional format changed: the 12/24-hour preference may differ.
@@ -427,6 +431,8 @@ impl App {
         state.set_date(text.date.into());
         app.refresh_agenda();
         app.tick_tasks();
+        // A safety net: whatever happened, the bars move again within a minute.
+        App::update_bars(app);
 
         let weak = Rc::downgrade(app);
         let wait = Duration::from_millis(clock::millis_to_next_minute() + 20);

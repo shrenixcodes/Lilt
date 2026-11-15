@@ -6,6 +6,13 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The "now playing" bars could stay still while music played, for example after a
+  full-screen video. Lilt now steps them itself and checks whether they should move
+  whenever playback, visibility, expansion or the motion setting changes, and once a
+  minute.
+
 ## [0.2.1] - 2026-11-15
 
 ### Added
