@@ -8,6 +8,9 @@ license = "MIT"
 repository = "https://github.com/shrenixcodes/Lilt"
 publish = false
 
+[features]
+dev-build = []
+
 [dependencies]
 image = { version = "0.25", default-features = false, features = ["bmp", "jpeg", "png"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }

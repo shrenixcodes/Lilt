@@ -34,9 +34,9 @@ use windows::core::{PCWSTR, w};
 pub use adapter::{Notice, Win32Window, WindowKind, find};
 pub use glass::Shape;
 
-pub(crate) const ISLAND_CLASS: PCWSTR = w!("Lilt.Island");
-pub(crate) const WINDOW_CLASS: PCWSTR = w!("Lilt.Window");
-const CONTROL_CLASS: PCWSTR = w!("Lilt.Control");
+pub(crate) const ISLAND_CLASS: PCWSTR = crate::identity::ISLAND_CLASS;
+pub(crate) const WINDOW_CLASS: PCWSTR = crate::identity::WINDOW_CLASS;
+const CONTROL_CLASS: PCWSTR = crate::identity::CONTROL_CLASS;
 
 /// Posted to the control window to run work queued from other threads.
 const WM_APP_WAKE: u32 = WM_APP + 1;

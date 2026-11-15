@@ -26,6 +26,24 @@ cargo run                    # debug build, with a console for log output
 cargo build --release        # optimised build: target\release\lilt.exe
 ```
 
+### Local development install
+
+The `D:\Lilt Dev` worktree is the local test branch. After each update, run
+`powershell -ExecutionPolicy Bypass -File .\tools\install-dev.ps1` there. The script
+checks formatting, runs Clippy and tests, builds the complete release executable,
+copies it to `%LOCALAPPDATA%\Programs\Lilt Dev`, and starts it. It creates a
+**Lilt Dev** Start menu shortcut. The installed production Lilt remains separate.
+
+Development settings, task and clipboard databases, and logs use `Lilt Dev`
+folders under `%APPDATA%` and `%LOCALAPPDATA%`. The development build also has
+its own single-instance guard and startup registry value. The two islands can
+overlap on screen; quit either app from its notification-area icon if needed.
+Shared Windows hotkeys can be held by only one running copy at a time.
+
+When testing is complete, merge `dev/local-testing` into `main` only when the
+user requests it. Normal release builds without `dev-build` keep the production
+identity.
+
 Only one instance runs per Windows session; starting another brings the running
 island back and exits. Quit from the notification-area icon.
 

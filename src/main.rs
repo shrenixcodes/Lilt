@@ -14,6 +14,7 @@ mod controls;
 mod dialogs;
 mod fonts;
 mod hotkey;
+mod identity;
 mod instance;
 mod logging;
 mod media;

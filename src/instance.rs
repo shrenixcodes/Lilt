@@ -2,7 +2,6 @@
 
 use windows::Win32::Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE};
 use windows::Win32::System::Threading::CreateMutexW;
-use windows::core::w;
 
 /// Held for the lifetime of the process; releasing it lets a new instance start.
 pub struct InstanceGuard(HANDLE);
@@ -18,7 +17,7 @@ impl Drop for InstanceGuard {
 /// Returns `None` if another Lilt process already holds the guard in this session.
 pub fn acquire() -> Option<InstanceGuard> {
     unsafe {
-        let handle = CreateMutexW(None, true, w!("Local\\Lilt.SingleInstance")).ok()?;
+        let handle = CreateMutexW(None, true, crate::identity::INSTANCE_MUTEX).ok()?;
         if GetLastError() == ERROR_ALREADY_EXISTS {
             let _ = CloseHandle(handle);
             return None;
