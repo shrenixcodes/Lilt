@@ -8,6 +8,15 @@ All notable changes to Lilt are documented here. The format follows
 
 ### Added
 
+- **Clipboard shelf**, in the box next to the expanded island (switch between Tasks and
+  Clipboard in its title). Search copied text and snippets, filter by pinned, recent,
+  snippets, links, code or other text, click to copy back, pin, edit and delete, and
+  save snippets by hand. Remembering copied text is opt-in and off by default, can be
+  paused or turned off at any time and keeps only text: copies marked private by their
+  app (as password managers do), copies from excluded apps and text that looks like a
+  password, key or token are skipped. Stored only on this PC, with a retention period
+  (30 days by default), an entry limit and clear-history controls in
+  *Settings → Clipboard*, plus an optional global shortcut.
 - **Typography for each appearance.** Interface text is now DM Sans everywhere; headings
   use Space Grotesk in Midnight, Instrument Serif in Smoked Glass and the script Allura
   in Liquid Glass (short headings only; longer titles stay in DM Sans). Code uses

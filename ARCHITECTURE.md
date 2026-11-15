@@ -21,6 +21,10 @@ flowchart LR
         Artwork --> Palette[Accent palette]
     end
 
+    subgraph Clip[Clipboard thread]
+        Capture[Privacy checks<br/>and text read] --> ClipStore[(clipboard.sqlite3)]
+    end
+
     subgraph UI[UI thread]
         Loop[Win32 message loop] --> App[App controller]
         App --> State[(AppState and Theme<br/>Slint globals)]
@@ -36,6 +40,8 @@ flowchart LR
     App -- commands --> Tracker
     Shell --> Loop
     Input --> Loop
+    Loop -- WM_CLIPBOARDUPDATE, requests --> Capture
+    ClipStore -- listings --> Loop
 ```
 
 **UI thread.** Runs the message loop, every Slint timer, rendering, the system monitor,
@@ -47,6 +53,16 @@ frame. Nothing ticks while the island is idle.
 WinRT raises change events on thread-pool threads; their handlers only send a message
 to this thread, which reads the new state, decodes artwork, extracts its palette and
 posts the result to the UI thread. Between events it blocks on a channel.
+
+**Clipboard thread.** Started the first time the clipboard shelf is shown or capture is
+turned on. It owns the clipboard database. While capture is on, the control window is
+registered with `AddClipboardFormatListener`; each `WM_CLIPBOARDUPDATE` only sends a
+message to this thread, which waits 150 ms for the copying app to finish, compares the
+clipboard sequence number with the last one seen (so Lilt's own copies and repeated
+notifications are skipped), checks the privacy formats and the copying app, reads the
+text, classifies it and stores it. Searches, copies back to the clipboard and edits run
+here too, so the UI thread never waits on the clipboard or the disk. Between messages
+it blocks on a channel, waking hourly to apply the retention period.
 
 There is no async runtime: the few WinRT operations are awaited synchronously on the
 media thread.
@@ -69,6 +85,8 @@ media thread.
 | `src/settings/` | Versioned settings document, validation, migration and atomic saving |
 | `src/clock.rs`, `src/hotkey.rs`, `src/startup.rs`, `src/actions.rs`, `src/dialogs.rs` | Clock text, global shortcut, start-with-Windows, quick actions, file dialog |
 | `src/fonts.rs` | Registers the bundled fonts with Slint at start-up |
+| `src/clipboard/` | The clipboard shelf: classification and secret checks, capture (`capture.rs`), the SQLite store and the worker thread |
+| `src/app/clipboard.rs` | The shelf's controller: listing, selection, copy back, snippets and capture settings |
 | `src/snapshots.rs` | Headless UI tests |
 | `ui/` | Slint markup: design tokens, island, views, settings window, tray |
 | `benchmarks/` | Process-tree resource measurement |
@@ -248,6 +266,7 @@ Liquid Glass adds a fainter rim clipped to the band below them.
 | Settings | `%APPDATA%\Lilt\settings.json` | Shortly after a change, atomically; never on start-up |
 | Log | `%LOCALAPPDATA%\Lilt\logs\lilt.log` | On notable events; rotated at 512 KB |
 | Tasks | `%LOCALAPPDATA%\Lilt\tasks.sqlite3` | On each change, in a transaction (SQLite, write-ahead log) |
+| Clipboard shelf | `%LOCALAPPDATA%\Lilt\clipboard.sqlite3` | On each kept copy or edit, on the clipboard thread (write-ahead log, `secure_delete`) |
 | Start with Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Lilt` | When toggled |
 
 ## Testing
@@ -258,5 +277,10 @@ Liquid Glass adds a fainter rim clipped to the band below them.
 - `src/snapshots.rs` renders the real UI components headlessly with a controllable clock
   and checks layout, artwork, ambient colours and scaling; images are written to
   `target/ui-snapshots/`.
+- The clipboard store is tested for de-duplication, exact Unicode round trips, search
+  (any part, any language), ordering, retention, limits and that deleted text no
+  longer appears in the database files; classification and the secret checks have
+  their own cases. Two tests that use the real clipboard (privacy formats, own copies)
+  run only on request: `cargo test -- --ignored clipboard::capture`.
 - `tools/media-session` provides a deterministic media session for manual and benchmark
   runs, and `benchmarks/` measures the running application.

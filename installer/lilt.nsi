@@ -139,7 +139,7 @@ Section "Uninstall"
   DeleteRegValue HKCU "${RUN_KEY}" "Lilt"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
 
-  MessageBox MB_YESNO|MB_ICONQUESTION "Also remove your Lilt settings and logs?" /SD IDNO IDNO keep
+  MessageBox MB_YESNO|MB_ICONQUESTION "Also remove your Lilt settings, tasks, clipboard history and logs?" /SD IDNO IDNO keep
     RMDir /r "$APPDATA\Lilt"
     RMDir /r "$LOCALAPPDATA\Lilt"
   keep:

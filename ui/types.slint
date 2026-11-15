@@ -144,3 +144,52 @@ export enum SyncStatus {
     offline,
     failed,
 }
+
+// Which panel the box beside (or below) the expanded island shows.
+export enum SidePanel {
+    tasks,
+    clipboard,
+}
+
+// The clipboard shelf's list filters.
+export enum ClipFilter {
+    all,
+    pinned,
+    recent,
+    snippets,
+    links,
+    code,
+    other,
+}
+
+export enum ClipRowKind {
+    // A section title such as "Pinned"; `title` holds it.
+    header,
+    entry,
+}
+
+// One line of the clipboard shelf.
+export struct ClipRow {
+    kind: ClipRowKind,
+    id: int,
+    // The start of the text, at most two lines are shown.
+    preview: string,
+    // A snippet's title, or a header's text.
+    title: string,
+    // App, time and type, e.g. "Microsoft Edge · 5 min ago · Link".
+    meta: string,
+    // Code, JSON or a command: shown in the code face.
+    technical: bool,
+    pinned: bool,
+    manual: bool,
+    count: int,
+}
+
+// A snippet being edited.
+export struct SnippetForm {
+    // 0 for a new snippet.
+    id: int,
+    title: string,
+    content: string,
+    description: string,
+}

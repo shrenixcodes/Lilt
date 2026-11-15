@@ -2,6 +2,7 @@
 //! visible according to the displays and the foreground application.
 
 mod calendar;
+pub(crate) mod clipboard;
 mod glass;
 mod media;
 mod preferences;
@@ -48,7 +49,7 @@ pub struct App {
     save_timer: slint::Timer,
     settings_window: RefCell<Option<SettingsWindow>>,
     /// Why the configured shortcut could not be registered, shown in the settings window.
-    shortcut_problem: RefCell<Option<String>>,
+    shortcut_problem: RefCell<[Option<String>; 2]>,
     hidden_by_user: Cell<bool>,
     /// A full-screen application, game or presentation owns the display.
     fullscreen_active: Cell<bool>,
@@ -80,6 +81,7 @@ pub struct App {
     /// Whether the settings window should show the system acrylic.
     window_blur: Cell<bool>,
     tasks: Rc<tasks::TasksController>,
+    clipboard: clipboard::ClipboardController,
     /// Liquid Glass's backdrop sampling.
     glass: glass::GlassSampler,
 }
@@ -142,7 +144,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         settings: RefCell::new(settings),
         save_timer: slint::Timer::default(),
         settings_window: RefCell::new(None),
-        shortcut_problem: RefCell::new(None),
+        shortcut_problem: RefCell::new([None, None]),
         hidden_by_user: Cell::new(false),
         fullscreen_active: Cell::new(false),
         clock_timer: slint::Timer::default(),
@@ -167,6 +169,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         glass_fallback: Cell::new(None),
         window_blur: Cell::new(false),
         tasks,
+        clipboard: clipboard::ClipboardController::new(crate::clipboard::store::default_path()),
         glass: glass::GlassSampler::default(),
     });
     CURRENT.with(|c| *c.borrow_mut() = Rc::downgrade(&app));
@@ -175,6 +178,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
     App::connect_calendar(&app);
     App::connect_preferences(&app);
     App::connect_tasks(&app);
+    App::connect_clipboard(&app);
     App::refresh_clock(&app);
     app.tray.set_light_taskbar(light_taskbar());
 
@@ -188,12 +192,15 @@ pub fn run() -> Result<(), slint::PlatformError> {
 
     slint::run_event_loop()?;
     app.island.hide()?;
-    hotkey::unregister(window::control_window());
+    hotkey::unregister(window::control_window(), hotkey::TOGGLE_ID);
+    hotkey::unregister(window::control_window(), hotkey::CLIPBOARD_ID);
     if app.save_timer.running() {
         app.save_now();
     }
     // Stops the media worker and unsubscribes from media session events.
     app.media.replace(None);
+    // Stops clipboard notifications and the clipboard worker.
+    app.clipboard.stop();
     Ok(())
 }
 
@@ -316,6 +323,15 @@ impl App {
                 self.fullscreen_active.set(fullscreen);
                 App::update_visibility(app);
             }
+            crate::clipboard::capture::WM_CLIPBOARDUPDATE => self.clipboard_changed(),
+            WM_HOTKEY if wparam.0 as i32 == hotkey::CLIPBOARD_ID => {
+                if self.hidden_by_user.get() {
+                    App::set_hidden_by_user(app, false);
+                }
+                if self.island_visible() {
+                    App::open_clipboard_shelf(app);
+                }
+            }
             WM_HOTKEY if wparam.0 as i32 == hotkey::TOGGLE_ID => {
                 if self.hidden_by_user.get() {
                     App::set_hidden_by_user(app, false);
@@ -356,6 +372,9 @@ impl App {
         App::update_sampling(app);
         App::update_glass_sampling(app);
         app.refresh_agenda();
+        if !expanded {
+            app.reset_clipboard_ui();
+        }
         let native = window::find(app.island.window());
         if expanded {
             // Taking the focus lets Escape close the island and a click elsewhere
@@ -384,8 +403,8 @@ impl App {
 
     fn schedule_collapse(app: &Rc<Self>) {
         let general = app.settings.borrow().general.clone();
-        // Never while a task is being typed or edited.
-        if !general.auto_collapse || app.tasks.busy.get() {
+        // Never while a task, a search or a snippet is being typed or edited.
+        if !general.auto_collapse || app.tasks.busy.get() || app.clipboard.busy.get() {
             return;
         }
         let weak = Rc::downgrade(app);

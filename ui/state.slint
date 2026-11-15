@@ -1,5 +1,6 @@
 import {
-    AgendaEntry, ArchiveRow, CalendarState, MediaInfo, Page, SyncStatus, SystemInfo, TaskForm, TaskRow, TaskView, TasksLayout,
+    AgendaEntry, ArchiveRow, CalendarState, ClipFilter, ClipRow, MediaInfo, Page, SidePanel, SnippetForm, SyncStatus, SystemInfo,
+    TaskForm, TaskRow, TaskView, TasksLayout,
 } from "types.slint";
 
 // Data published by the Rust side. Views read from here instead of receiving every
@@ -54,6 +55,66 @@ export global AppState {
     // The tasks box is enabled in Settings, and where it sits.
     in property <bool> show-tasks: false;
     in property <TasksLayout> tasks-layout: TasksLayout.beside;
+    // The clipboard shelf is enabled in Settings, and which panel the box shows.
+    in property <bool> show-clipboard: false;
+    in-out property <SidePanel> side-panel: SidePanel.tasks;
+}
+
+// The clipboard shelf, published by the Rust side.
+export global ClipboardState {
+    in property <bool> ready;
+    in property <string> error;
+    in property <[ClipRow]> rows;
+    // Index into `rows` of the entry chosen with the keyboard, or -1.
+    in property <int> selected: -1;
+    // "Remembering copied text · 42 items", "Paused", …
+    in property <string> status;
+    in property <bool> capture-on;
+    in property <bool> paused;
+    // Clipboard capture has not been offered yet: the shelf explains it first.
+    in property <bool> show-intro;
+    in property <string> empty-title;
+    in property <string> empty-detail;
+    // The entry just copied back, for its "Copied" confirmation, or 0.
+    in property <int> copied-id;
+    // A short message such as "Copied" or "Not saved: looks like a password".
+    in property <string> notice;
+    in property <int> history-count;
+    // Incremented to put the keyboard focus in the search field.
+    in-out property <int> search-focus;
+    // The y of the selected entry within the list, to keep it in view.
+    in property <length> selected-top;
+
+    in-out property <string> search;
+    in-out property <ClipFilter> filter: ClipFilter.all;
+    in-out property <bool> editing;
+    in-out property <SnippetForm> form;
+}
+
+export global ClipboardActions {
+    // The shelf is shown and needs its data.
+    callback opened();
+    callback search-changed(string);
+    callback filter-changed();
+    // Copies an entry back to the clipboard; `close` also collapses the island.
+    callback copy(int, bool);
+    callback toggle-pin(int);
+    callback delete(int);
+    // Opens an entry in the snippet editor; 0 starts a new snippet.
+    callback edit(int);
+    callback save(SnippetForm);
+    // Keyboard selection: moves by `delta` entries, or acts on the selected entry.
+    callback move-selection(int);
+    callback copy-selected();
+    callback delete-selected();
+    // Answer to the first-use explanation, and the capture controls.
+    callback set-capture(bool);
+    callback dismiss-intro();
+    callback set-paused(bool);
+    callback clear-history();
+    callback open-settings();
+    // A text field is being edited: the island must not collapse by itself.
+    callback busy(bool);
 }
 
 // Tasks, published by the Rust side. Kept in a global so the box's state survives

@@ -91,6 +91,36 @@ Lilt's own Rust heap was only about 0.5 MB of this. The readings now come straig
 Windows (`GetSystemTimes`, `GlobalMemoryStatusEx`, `GetIfTable2`), which removed the
 4.1 MB and three crates. Before the change the same scenarios measured 7.6–8.3 MB.
 
+### Typography and the clipboard shelf
+
+Measured on 15 November 2026 with the release build, against the previous release
+build (the playing-bars fix, before the bundled fonts and the clipboard shelf), one
+after the other under the same conditions: 30 s per scenario after an 8 s settle,
+separate settings and data, nothing playing. The PC was locked during these runs, which
+raised the wake-ups of both builds equally (about 25 per second even when idle); the
+idle wake-up figures above, taken on an unlocked PC, still describe normal use.
+
+| Scenario | Previous build | This build |
+| --- | ---: | ---: |
+| Midnight, compact, idle | 3.6 MB | 3.6 MB |
+| Liquid Glass, compact, idle | 3.5 MB | 3.6 MB |
+| Midnight, expanded with the tasks box | 3.9 MB | 4.4 MB |
+| Liquid Glass, expanded with the tasks box | 3.8 MB | 4.2 MB |
+| Midnight, expanded on the clipboard shelf, capture on, 500 entries | – | 4.7 MB |
+| Liquid Glass, expanded on the clipboard shelf, capture on, 500 entries | – | 4.7 MB |
+
+Private working set, as in Task Manager. Expanded costs about 0.5 MB more because the
+bundled fonts are now drawn from their outlines (the glyphs in use are rasterised and
+cached) instead of Segoe UI from Windows. The clipboard worker and its database start
+only when the shelf is first shown or capture is turned on, so the compact island pays
+nothing for them. Clipboard capture adds no wake-ups of its own: Lilt is notified of
+clipboard changes and does not poll. The executable grew from 14.8 MB to 17.5 MB, of
+which the five fonts are 0.9 MB.
+
+Searching the shelf is measured by a unit test: 5,000 stored entries (about 3 MB of
+text) must be searched within 500 ms on the clipboard thread, a deliberately loose
+limit for slow machines; the exact time has not been recorded.
+
 ## Earlier results
 
 Measured before Tasks, the glass appearances and the change above, over 120 s per
@@ -182,6 +212,8 @@ hidden or behind a full-screen application.
   the box is first shown, so people who do not use Tasks pay nothing for it.
 - The glass appearances with music playing and while toggling, measured on an idle PC,
   the cost of each screen read, and Smoked Glass in every scenario.
+- The CPU cost of capturing one copy on an unlocked desktop, and the shelf with a
+  search typed into it.
 - The settings window: it is created only while open and released when closed.
 - Windows Performance Recorder traces (wake-up sources, frame timing) and behaviour on
   the reference low-end configurations above.

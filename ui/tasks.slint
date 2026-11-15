@@ -5,6 +5,8 @@ import { ArchiveRow, ArchiveRowKind, SyncStatus, TaskForm, TaskRow, TaskRowKind,
 import { Icon, Icons } from "components/icon.slint";
 import { IconButton, TextButton } from "components/controls.slint";
 import { Heading, Title } from "components/heading.slint";
+import { PanelTabs } from "panel-tabs.slint";
+import { SidePanel } from "types.slint";
 
 // The tasks box: a prioritised list, quick entry, an editor and the archive. All data
 // and every change go through TasksState and TasksActions; nothing here is stored.
@@ -21,15 +23,17 @@ export global Priorities {
 }
 
 // A small rounded choice, used for views and filters.
-component Chip inherits Rectangle {
+export component Chip inherits Rectangle {
     in property <string> text;
     in property <bool> selected;
     in property <bool> has-mark;
     in property <color> mark;
+    // Space either side of the label.
+    in property <length> inset: 10px;
     callback clicked();
 
     height: 24px;
-    width: label.preferred-width + (root.has-mark ? 30px : 20px);
+    width: label.preferred-width + root.inset * 2 + (root.has-mark ? 10px : 0px);
     border-radius: 12px;
     background: root.selected ? Theme.control-hover : touch.has-hover ? Theme.tile : transparent;
     border-width: 1px;
@@ -51,7 +55,7 @@ component Chip inherits Rectangle {
     }
 
     label := Text {
-        x: root.has-mark ? 21px : 10px;
+        x: root.inset + (root.has-mark ? 11px : 0px);
         text: root.text;
         font-size: 11px;
         color: root.selected ? Theme.text : Theme.text-secondary;
@@ -148,11 +152,12 @@ component Stepper inherits Rectangle {
 }
 
 // A single-line text field with a placeholder.
-component Field inherits Rectangle {
+export component Field inherits Rectangle {
     in property <string> placeholder;
     in property <length> font-size: 11px;
     in property <bool> invalid;
     in-out property <string> text <=> input.text;
+    out property <bool> has-focus-inside: input.has-focus;
     callback accepted();
     callback edited(string);
 
@@ -929,10 +934,8 @@ export component TasksView inherits Rectangle {
                 horizontal-stretch: 1;
                 alignment: center;
 
-                Heading {
-                    text: "Tasks";
-                    size: Theme.font-lg;
-                    color: Theme.text;
+                PanelTabs {
+                    current: SidePanel.tasks;
                 }
 
                 Text {

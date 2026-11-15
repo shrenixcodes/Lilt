@@ -1,0 +1,43 @@
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { SidePanel } from "types.slint";
+import { Heading } from "components/heading.slint";
+
+// The title of the box beside the expanded island. With Tasks and the clipboard shelf
+// both on, the other panel's name follows in a quieter colour and switches to it.
+export component PanelTabs inherits HorizontalLayout {
+    in property <SidePanel> current;
+    property <bool> both: AppState.show-tasks && AppState.show-clipboard;
+    property <string> other-name: root.current == SidePanel.tasks ? "Clipboard" : "Tasks";
+
+    spacing: 12px;
+    alignment: start;
+
+    Heading {
+        text: root.current == SidePanel.tasks ? "Tasks" : "Clipboard";
+        size: Theme.font-lg;
+        color: Theme.text;
+    }
+
+    if root.both : Rectangle {
+        width: other.preferred-width;
+        accessible-role: button;
+        accessible-label: "Show " + root.other-name;
+        accessible-action-default => { touch.clicked(); }
+
+        other := Heading {
+            width: parent.width;
+            text: root.other-name;
+            size: Theme.font-lg;
+            color: touch.has-hover ? Theme.text-secondary : Theme.text-tertiary;
+            animate color { duration: Theme.hover-duration; }
+        }
+
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                AppState.side-panel = root.current == SidePanel.tasks ? SidePanel.clipboard : SidePanel.tasks;
+            }
+        }
+    }
+}

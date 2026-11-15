@@ -1,4 +1,4 @@
-import { Switch, Slider, ComboBox, Button, ScrollView, AboutSlint, Palette } from "std-widgets.slint";
+import { Switch, Slider, ComboBox, Button, LineEdit, ScrollView, AboutSlint, Palette } from "std-widgets.slint";
 import { Theme, AppearanceTokens } from "theme.slint";
 import { Icon, Icons } from "components/icon.slint";
 import { GlassSheen, GlassRim } from "components/glass.slint";
@@ -40,6 +40,14 @@ export struct SettingsData {
     launch-at-startup: bool,
     shortcut: string,
     calendar-path: string,
+    show-clipboard: bool,
+    clipboard-capture: bool,
+    clipboard-skip-secrets: bool,
+    clipboard-skip-unknown: bool,
+    // 0 = 1 day, 1 = 7 days, 2 = 30 days, 3 = 90 days, 4 = forever
+    clipboard-retention: int,
+    clipboard-max-items: int,
+    clipboard-shortcut: string,
 }
 
 // A titled group of rows. Liquid Glass draws each group as a frosted card; Midnight
@@ -127,6 +135,46 @@ component SliderRow inherits Row {
         text: root.value + root.unit;
         color: Theme.window-text-secondary;
         font-size: 12px;
+    }
+}
+
+// A global shortcut with Change and Clear buttons. While recording, the next key
+// combination pressed becomes the shortcut.
+component ShortcutRow inherits Row {
+    in property <string> value;
+    in property <string> message;
+    in property <bool> recording;
+    callback record();
+    callback clear();
+    callback key(string, bool, bool, bool, bool);
+
+    description: root.recording ? "Press the new shortcut, or Esc to cancel."
+        : root.message != "" ? root.message
+        : root.value == "" ? "No shortcut assigned." : root.value;
+
+    Button {
+        text: root.recording ? "Listening…" : "Change";
+        clicked => {
+            root.record();
+            scope.focus();
+        }
+    }
+
+    if root.value != "" : Button {
+        text: "Clear";
+        clicked => { root.clear(); }
+    }
+
+    scope := FocusScope {
+        width: 0;
+        height: 0;
+        key-pressed(event) => {
+            if !root.recording {
+                return reject;
+            }
+            root.key(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
+            accept
+        }
     }
 }
 
@@ -439,7 +487,16 @@ export component SettingsWindow inherits Window {
     in property <string> version;
     in property <string> data-folder;
     in property <bool> recording-shortcut;
+    // Which shortcut is being recorded: 0 = expand the island, 1 = open the clipboard shelf.
+    in property <int> recording-target;
     in property <string> shortcut-message;
+    in property <string> clipboard-shortcut-message;
+    // Executable names whose copies are never kept.
+    in property <[string]> clipboard-excluded;
+    // "42 entries · 1.2 MB on disk".
+    in property <string> clipboard-usage;
+    // 1 or 2 while "Clear history" or "Delete everything" waits for a second click.
+    property <int> confirm-clipboard;
     // Why Liquid Glass is not using the live blur, if it is not.
     in property <string> appearance-note;
     in-out property <int> section: 0;
@@ -449,15 +506,19 @@ export component SettingsWindow inherits Window {
     callback reset();
     callback choose-calendar();
     callback clear-calendar();
-    callback record-shortcut();
-    callback clear-shortcut();
+    callback record-shortcut(int);
+    callback clear-shortcut(int);
+    callback add-excluded-app(string);
+    callback remove-excluded-app(int);
+    // Clears copied text, or with `true` everything including pinned entries and snippets.
+    callback clear-clipboard(bool);
     callback shortcut-key(string, bool, bool, bool, bool);
     callback open-data-folder();
     callback reset-position();
     // Restores the defaults of the Appearance & position page only.
     callback reset-appearance();
 
-    property <[string]> sections: ["General", "Appearance & position", "Widgets", "Music", "Ambient visuals", "Performance", "Startup", "Keyboard shortcuts", "About"];
+    property <[string]> sections: ["General", "Appearance & position", "Widgets", "Clipboard", "Music", "Ambient visuals", "Performance", "Startup", "Keyboard shortcuts", "About"];
 
     HorizontalLayout {
         Rectangle {
@@ -704,9 +765,17 @@ export component SettingsWindow inherits Window {
                             toggled => { root.data.show-tasks = self.checked; root.edited(); }
                         }
                     }
-                    if root.data.show-tasks : Row {
-                        label: "Tasks layout";
-                        description: "Where the tasks box sits when the island is expanded.";
+                    Row {
+                        label: "Clipboard shelf";
+                        description: "Copied text and snippets next to the expanded island. See Clipboard for capture and privacy.";
+                        Switch {
+                            checked: root.data.show-clipboard;
+                            toggled => { root.data.show-clipboard = self.checked; root.edited(); }
+                        }
+                    }
+                    if root.data.show-tasks || root.data.show-clipboard : Row {
+                        label: "Box layout";
+                        description: "Where the Tasks and Clipboard box sits when the island is expanded.";
                         ComboBox {
                             width: 180px;
                             model: ["Beside the island", "Below the island"];
@@ -729,6 +798,158 @@ export component SettingsWindow inherits Window {
                 }
 
                 if root.section == 3 : Section {
+                    title: "Clipboard";
+                    Row {
+                        label: "Clipboard shelf";
+                        description: "Copied text and snippets next to the expanded island. Nothing leaves this PC.";
+                        Switch {
+                            checked: root.data.show-clipboard;
+                            toggled => { root.data.show-clipboard = self.checked; root.edited(); }
+                        }
+                    }
+                    if root.data.show-clipboard : Row {
+                        label: "Remember copied text";
+                        description: "Off unless you turn it on. Only text is kept, never images or files.";
+                        Switch {
+                            checked: root.data.clipboard-capture;
+                            toggled => { root.data.clipboard-capture = self.checked; root.edited(); }
+                        }
+                    }
+                }
+
+                if root.section == 3 && root.data.show-clipboard : Section {
+                    title: "Privacy";
+                    Row {
+                        label: "Skip likely passwords and keys";
+                        description: "Text that looks like a password, private key or access token is not kept. The check is cautious and can miss some, so keep password managers excluded.";
+                        Switch {
+                            checked: root.data.clipboard-skip-secrets;
+                            toggled => { root.data.clipboard-skip-secrets = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Skip copies from unknown apps";
+                        description: "Windows does not always say which app copied something. Turn this on to keep only copies from a known app.";
+                        Switch {
+                            checked: root.data.clipboard-skip-unknown;
+                            toggled => { root.data.clipboard-skip-unknown = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Excluded apps";
+                        description: "Copies from these apps are never kept. Apps that mark their copies as private, as most password managers do, are always skipped too.";
+                    }
+                    for app[i] in root.clipboard-excluded : Row {
+                        label: app;
+                        Button {
+                            text: "Remove";
+                            clicked => { root.remove-excluded-app(i); }
+                        }
+                    }
+                    Row {
+                        label: "Exclude another app";
+                        description: "The program's file name, for example KeePass.exe.";
+                        exclude-input := LineEdit {
+                            width: 170px;
+                            placeholder-text: "App.exe";
+                            accepted(text) => {
+                                root.add-excluded-app(text);
+                                self.text = "";
+                            }
+                        }
+                        Button {
+                            text: "Add";
+                            clicked => {
+                                root.add-excluded-app(exclude-input.text);
+                                exclude-input.text = "";
+                            }
+                        }
+                    }
+                }
+
+                if root.section == 3 && root.data.show-clipboard : Section {
+                    title: "Storage";
+                    Row {
+                        label: "Keep copied text for";
+                        description: "Pinned entries and snippets are kept until you delete them.";
+                        ComboBox {
+                            width: 180px;
+                            model: ["1 day", "7 days", "30 days", "90 days", "Forever"];
+                            current-index: root.data.clipboard-retention;
+                            selected => { root.data.clipboard-retention = self.current-index; root.edited(); }
+                        }
+                    }
+                    SliderRow {
+                        label: "Most copied entries kept";
+                        description: "The oldest copied text is removed first.";
+                        value: root.data.clipboard-max-items;
+                        minimum: 50;
+                        maximum: 5000;
+                        unit: "";
+                        edited(v) => { root.data.clipboard-max-items = v; root.edited(); }
+                    }
+                    Row {
+                        label: "Clear history";
+                        description: root.confirm-clipboard == 1 ? "Delete all copied text? Pinned entries and snippets stay. Click again to confirm."
+                            : root.clipboard-usage == "" ? "Copied text, keeping pinned entries and snippets." : root.clipboard-usage;
+                        Button {
+                            text: root.confirm-clipboard == 1 ? "Clear" : "Clear history";
+                            clicked => {
+                                if root.confirm-clipboard == 1 {
+                                    root.confirm-clipboard = 0;
+                                    root.clear-clipboard(false);
+                                } else {
+                                    root.confirm-clipboard = 1;
+                                }
+                            }
+                        }
+                    }
+                    Row {
+                        label: "Delete everything";
+                        description: root.confirm-clipboard == 2 ? "Delete all copied text, pinned entries and snippets? This cannot be undone. Click again to confirm."
+                            : "Copied text, pinned entries and snippets.";
+                        Button {
+                            text: root.confirm-clipboard == 2 ? "Delete" : "Delete everything";
+                            clicked => {
+                                if root.confirm-clipboard == 2 {
+                                    root.confirm-clipboard = 0;
+                                    root.clear-clipboard(true);
+                                } else {
+                                    root.confirm-clipboard = 2;
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        text: "Deleted text is overwritten in Lilt's database file. Windows may still hold older copies elsewhere, for example in backups or restore points, and SSDs can keep data they have moved.";
+                        color: Theme.window-text-secondary;
+                        font-size: 11.5px;
+                        wrap: word-wrap;
+                    }
+                    Rectangle { height: 6px; }
+                }
+
+                if root.section == 3 && root.data.show-clipboard : Section {
+                    title: "Keyboard";
+                    ShortcutRow {
+                        label: "Open the clipboard shelf";
+                        value: root.data.clipboard-shortcut;
+                        message: root.clipboard-shortcut-message;
+                        recording: root.recording-shortcut && root.recording-target == 1;
+                        record => { root.record-shortcut(1); }
+                        clear => { root.clear-shortcut(1); }
+                        key(text, ctrl, alt, shift, win) => { root.shortcut-key(text, ctrl, alt, shift, win); }
+                    }
+                    Text {
+                        text: "Not set by default: Ctrl+Shift+V, the usual choice, already pastes plain text in browsers and Office and pastes in Windows Terminal. In the shelf, the arrow keys choose an entry, Enter copies it and closes the island, Delete removes it and Ctrl+F searches.";
+                        color: Theme.window-text-secondary;
+                        font-size: 11.5px;
+                        wrap: word-wrap;
+                    }
+                    Rectangle { height: 6px; }
+                }
+
+                if root.section == 4 : Section {
                     title: "Music";
                     Row {
                         label: "Show album artwork";
@@ -747,7 +968,7 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 4 : Section {
+                if root.section == 5 : Section {
                     title: "Ambient visuals";
                     Row {
                         label: "Colours from album artwork";
@@ -767,7 +988,7 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 5 : Section {
+                if root.section == 6 : Section {
                     title: "Performance";
                     Row {
                         label: "Low-power mode";
@@ -787,7 +1008,7 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 6 : Section {
+                if root.section == 7 : Section {
                     title: "Startup";
                     Row {
                         label: "Start Lilt when you sign in";
@@ -798,39 +1019,29 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 7 : Section {
+                if root.section == 8 : Section {
                     title: "Keyboard shortcuts";
-                    Row {
+                    ShortcutRow {
                         label: "Expand or collapse the island";
-                        description: root.recording-shortcut ? "Press the new shortcut, or Esc to cancel."
-                            : root.shortcut-message != "" ? root.shortcut-message
-                            : root.data.shortcut == "" ? "No shortcut assigned." : root.data.shortcut;
-                        Button {
-                            text: root.recording-shortcut ? "Listening…" : "Change";
-                            clicked => {
-                                root.record-shortcut();
-                                capture.focus();
-                            }
-                        }
-                        if root.data.shortcut != "" : Button {
-                            text: "Clear";
-                            clicked => { root.clear-shortcut(); }
-                        }
+                        value: root.data.shortcut;
+                        message: root.shortcut-message;
+                        recording: root.recording-shortcut && root.recording-target == 0;
+                        record => { root.record-shortcut(0); }
+                        clear => { root.clear-shortcut(0); }
+                        key(text, ctrl, alt, shift, win) => { root.shortcut-key(text, ctrl, alt, shift, win); }
                     }
-                    capture := FocusScope {
-                        width: 0;
-                        height: 0;
-                        key-pressed(event) => {
-                            if !root.recording-shortcut {
-                                return reject;
-                            }
-                            root.shortcut-key(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
-                            accept
-                        }
+                    if root.data.show-clipboard : ShortcutRow {
+                        label: "Open the clipboard shelf";
+                        value: root.data.clipboard-shortcut;
+                        message: root.clipboard-shortcut-message;
+                        recording: root.recording-shortcut && root.recording-target == 1;
+                        record => { root.record-shortcut(1); }
+                        clear => { root.clear-shortcut(1); }
+                        key(text, ctrl, alt, shift, win) => { root.shortcut-key(text, ctrl, alt, shift, win); }
                     }
                 }
 
-                if root.section == 8 : Section {
+                if root.section == 9 : Section {
                     title: "About";
                     Text {
                         text: "Lilt " + root.version;

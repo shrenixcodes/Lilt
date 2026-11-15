@@ -29,6 +29,7 @@ pub struct Settings {
     pub shortcuts: Shortcuts,
     pub calendar: Calendar,
     pub tasks: Tasks,
+    pub clipboard: Clipboard,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -196,6 +197,57 @@ pub struct Tasks {
     pub layout: TaskLayout,
 }
 
+/// How long copied text is kept. Pinned entries and snippets are kept until deleted.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClipboardRetention {
+    Day,
+    Week,
+    #[default]
+    Month,
+    Quarter,
+    Forever,
+}
+
+impl ClipboardRetention {
+    pub const ALL: [Self; 5] = [Self::Day, Self::Week, Self::Month, Self::Quarter, Self::Forever];
+
+    pub fn retention(self) -> crate::clipboard::Retention {
+        use crate::clipboard::Retention::{Days, Forever};
+        match self {
+            Self::Day => Days(1),
+            Self::Week => Days(7),
+            Self::Month => Days(30),
+            Self::Quarter => Days(90),
+            Self::Forever => Forever,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Clipboard {
+    /// The clipboard shelf in the box beside the expanded island.
+    pub show: bool,
+    /// Remember copied text. Off until the user turns it on.
+    pub capture: bool,
+    /// The shelf has explained capture once (the user turned it on or chose "Not now").
+    pub introduced: bool,
+    /// Skip copies when Windows does not say which app made them.
+    pub skip_unknown_sources: bool,
+    /// Skip text that looks like a password, key or token.
+    pub skip_secrets: bool,
+    /// Executable names whose copies are never remembered.
+    pub excluded_apps: Vec<String>,
+    pub retention: ClipboardRetention,
+    /// Most captured entries kept; pinned entries and snippets do not count.
+    pub max_items: u32,
+    /// Global shortcut that opens the shelf. None by default: the obvious choice,
+    /// Ctrl+Shift+V, is "paste as plain text" in browsers and "paste" in Windows Terminal,
+    /// and a global shortcut would take it from them.
+    pub shortcut: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Calendar {
@@ -217,6 +269,7 @@ impl Default for Settings {
             shortcuts: Shortcuts::default(),
             calendar: Calendar::default(),
             tasks: Tasks::default(),
+            clipboard: Clipboard::default(),
         }
     }
 }
@@ -270,6 +323,22 @@ impl Default for Performance {
     }
 }
 
+impl Default for Clipboard {
+    fn default() -> Self {
+        Self {
+            show: true,
+            capture: false,
+            introduced: false,
+            skip_unknown_sources: false,
+            skip_secrets: true,
+            excluded_apps: crate::clipboard::DEFAULT_EXCLUDED_APPS.iter().map(|s| (*s).to_owned()).collect(),
+            retention: ClipboardRetention::Month,
+            max_items: 500,
+            shortcut: None,
+        }
+    }
+}
+
 impl Default for Shortcuts {
     fn default() -> Self {
         Self { toggle: Some("Ctrl+Alt+Space".into()) }
@@ -285,6 +354,10 @@ pub mod limits {
     pub const AUTO_COLLAPSE_SECONDS: (u32, u32) = (3, 60);
     pub const AMBIENT_INTENSITY: (u32, u32) = (0, 100);
     pub const GLASS_TRANSPARENCY: (u32, u32) = (0, 100);
+    pub const CLIPBOARD_MAX_ITEMS: (u32, u32) = (50, 5000);
+    /// Excluded apps kept, and the longest name.
+    pub const EXCLUDED_APPS: usize = 100;
+    pub const APP_NAME_CHARS: usize = 128;
 }
 
 impl Settings {
@@ -303,6 +376,20 @@ impl Settings {
         self.appearance.glass_transparency =
             self.appearance.glass_transparency.clamp(GLASS_TRANSPARENCY.0, GLASS_TRANSPARENCY.1);
         self.shortcuts.toggle = self.shortcuts.toggle.filter(|s| s.len() <= 48);
+        self.clipboard.shortcut = self.clipboard.shortcut.filter(|s| s.len() <= 48);
+        self.clipboard.max_items = self.clipboard.max_items.clamp(CLIPBOARD_MAX_ITEMS.0, CLIPBOARD_MAX_ITEMS.1);
+        let mut apps: Vec<String> = Vec::new();
+        for app in &self.clipboard.excluded_apps {
+            let app = app.trim();
+            if !app.is_empty()
+                && app.chars().count() <= APP_NAME_CHARS
+                && !apps.iter().any(|a| a.eq_ignore_ascii_case(app))
+                && apps.len() < EXCLUDED_APPS
+            {
+                apps.push(app.to_owned());
+            }
+        }
+        self.clipboard.excluded_apps = apps;
         self.calendar.ics_path = self
             .calendar
             .ics_path
@@ -442,6 +529,31 @@ mod tests {
         assert_eq!(s.calendar.ics_path, None);
         // Unspecified sections keep their defaults.
         assert_eq!(s.widgets, Widgets::default());
+    }
+
+    #[test]
+    fn clipboard_capture_is_off_by_default_and_values_are_cleaned() {
+        let defaults = Clipboard::default();
+        assert!(!defaults.capture && !defaults.introduced && defaults.skip_secrets && defaults.show);
+        assert_eq!(defaults.shortcut, None);
+        assert!(defaults.excluded_apps.iter().any(|a| a == "KeePass.exe"));
+        let dir = temp_dir("clipboard");
+        let path = dir.join("settings.json");
+        // Earlier versions have no clipboard section: it takes the defaults.
+        std::fs::write(&path, r#"{"version":3}"#).unwrap();
+        assert_eq!(load_from(&path).0.clipboard, Clipboard::default());
+        std::fs::write(
+            &path,
+            r#"{"version":3,"clipboard":{"capture":true,"max_items":1,"retention":"week",
+               "excluded_apps":[" Foo.exe ","foo.exe","","Bar.exe"]}}"#,
+        )
+        .unwrap();
+        let (s, status) = load_from(&path);
+        assert_eq!(status, LoadStatus::Loaded);
+        assert!(s.clipboard.capture);
+        assert_eq!(s.clipboard.max_items, limits::CLIPBOARD_MAX_ITEMS.0);
+        assert_eq!(s.clipboard.retention, ClipboardRetention::Week);
+        assert_eq!(s.clipboard.excluded_apps, ["Foo.exe", "Bar.exe"]);
     }
 
     #[test]

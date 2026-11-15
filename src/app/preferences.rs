@@ -13,13 +13,58 @@ use windows::core::{BOOL, HSTRING, PCWSTR, w};
 use super::App;
 use crate::appearance::{self, Fallback, Material};
 use crate::hotkey::{self, Shortcut};
-use crate::settings::{self, AppearanceMode, LoadStatus, MotionPreference, Settings};
+use crate::settings::{self, AppearanceMode, ClipboardRetention, LoadStatus, MotionPreference, Settings};
 use crate::ui::{AppActions, AppState, Appearance, SettingsData, SettingsWindow, Theme};
 use crate::window::{self, WindowKind, placement};
 use crate::{dialogs, paths, startup};
 
+/// The Clipboard page of the settings window.
+pub(super) const CLIPBOARD_SECTION: i32 = 3;
+
 /// Edits are written once they have stopped for this long.
 const SAVE_DELAY: Duration = Duration::from_millis(600);
+
+/// Lilt's two global shortcuts. The index matches `recording-target` in the settings
+/// window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ShortcutKind {
+    Island = 0,
+    Clipboard = 1,
+}
+
+impl ShortcutKind {
+    fn from_index(index: i32) -> Self {
+        if index == 1 { Self::Clipboard } else { Self::Island }
+    }
+
+    fn id(self) -> i32 {
+        match self {
+            Self::Island => hotkey::TOGGLE_ID,
+            Self::Clipboard => hotkey::CLIPBOARD_ID,
+        }
+    }
+
+    fn get(self, settings: &Settings) -> Option<String> {
+        match self {
+            Self::Island => settings.shortcuts.toggle.clone(),
+            Self::Clipboard => settings.clipboard.shortcut.clone(),
+        }
+    }
+
+    fn set(self, settings: &mut Settings, value: Option<String>) {
+        match self {
+            Self::Island => settings.shortcuts.toggle = value,
+            Self::Clipboard => settings.clipboard.shortcut = value,
+        }
+    }
+
+    fn other(self) -> Self {
+        match self {
+            Self::Island => Self::Clipboard,
+            Self::Clipboard => Self::Island,
+        }
+    }
+}
 
 impl App {
     pub(super) fn load_settings() -> Settings {
@@ -78,8 +123,8 @@ impl App {
             _ => {}
         }
 
-        let problem = app.register_shortcut();
-        app.shortcut_problem.replace(problem);
+        App::apply_clipboard(app);
+        app.register_shortcuts();
         App::update_visibility(app);
         App::update_sampling(app);
     }
@@ -132,15 +177,32 @@ impl App {
         window.set_appearance_note(note.into());
     }
 
-    /// Registers the configured shortcut. Returns an explanation if it could not be.
-    fn register_shortcut(&self) -> Option<String> {
+    /// Registers both shortcuts and remembers why one could not be.
+    pub(super) fn register_shortcuts(&self) {
+        for kind in [ShortcutKind::Island, ShortcutKind::Clipboard] {
+            let problem = self.register_shortcut(kind);
+            self.shortcut_problem.borrow_mut()[kind as usize] = problem;
+        }
+    }
+
+    /// Registers one configured shortcut. Returns an explanation if it could not be.
+    fn register_shortcut(&self, kind: ShortcutKind) -> Option<String> {
         let control = window::control_window();
-        hotkey::unregister(control);
-        let text = self.settings.borrow().shortcuts.toggle.clone()?;
+        hotkey::unregister(control, kind.id());
+        // The shelf's shortcut is only needed while the shelf is on.
+        if kind == ShortcutKind::Clipboard && !self.settings.borrow().clipboard.show {
+            return None;
+        }
+        let text = kind.get(&self.settings.borrow())?;
         let Some(shortcut) = Shortcut::parse(&text) else {
             return Some(format!("{text} is not a supported shortcut."));
         };
-        match shortcut.register(control) {
+        if kind == ShortcutKind::Clipboard
+            && kind.other().get(&self.settings.borrow()).as_deref() == Some(text.as_str())
+        {
+            return Some(format!("{shortcut} already expands the island."));
+        }
+        match shortcut.register(control, kind.id()) {
             Ok(()) => None,
             Err(err) => {
                 tracing::warn!(%err, shortcut = %shortcut, "shortcut unavailable");
@@ -163,6 +225,14 @@ impl App {
         self.save_timer.stop();
         if let Err(err) = settings::save_to(&settings::settings_path(), &self.settings.borrow()) {
             tracing::warn!(%err, "settings could not be saved");
+        }
+    }
+
+    /// Opens the settings window on one of its sections.
+    pub(super) fn open_settings_at(app: &Rc<Self>, section: i32) {
+        App::open_settings(app);
+        if let Some(window) = app.settings_window.borrow().as_ref() {
+            window.set_section(section);
         }
     }
 
@@ -192,6 +262,10 @@ impl App {
         if let Some(window) = app.settings_window.borrow().as_ref() {
             let _ = window.show();
         }
+        if app.settings.borrow().clipboard.show {
+            // Fills in the storage line on the Clipboard page.
+            App::refresh_clipboard_usage(app);
+        }
     }
 
     /// Fills the settings window from the current settings.
@@ -203,8 +277,13 @@ impl App {
         labels.extend(monitors.iter().enumerate().map(|(i, m)| m.label(i).into()));
         window.set_monitors(ModelRc::new(VecModel::from(labels)));
         window.set_data(to_data(&self.settings.borrow(), &monitors));
+        let excluded: Vec<SharedString> =
+            self.settings.borrow().clipboard.excluded_apps.iter().map(|a| a.as_str().into()).collect();
+        window.set_clipboard_excluded(ModelRc::new(VecModel::from(excluded)));
         if !window.get_recording_shortcut() {
-            window.set_shortcut_message(self.shortcut_problem.borrow().clone().unwrap_or_default().into());
+            let problems = self.shortcut_problem.borrow();
+            window.set_shortcut_message(problems[0].clone().unwrap_or_default().into());
+            window.set_clipboard_shortcut_message(problems[1].clone().unwrap_or_default().into());
         }
     }
 
@@ -266,26 +345,64 @@ impl App {
             App::schedule_save(app);
             app.refresh_settings_window();
         }));
-        window.on_record_shortcut(super::with(&weak, |app| {
+        let weak_record = weak.clone();
+        window.on_record_shortcut(move |target| {
+            let Some(app) = weak_record.upgrade() else { return };
             // While recording, the old shortcut must not fire.
-            hotkey::unregister(window::control_window());
+            hotkey::unregister(window::control_window(), ShortcutKind::from_index(target).id());
             if let Some(window) = app.settings_window.borrow().as_ref() {
+                window.set_recording_target(target);
                 window.set_recording_shortcut(true);
                 window.set_shortcut_message("".into());
+                window.set_clipboard_shortcut_message("".into());
             }
-        }));
+        });
         let weak_key = weak.clone();
         window.on_shortcut_key(move |text, ctrl, alt, shift, win| {
             let Some(app) = weak_key.upgrade() else { return };
             App::record_shortcut_key(&app, &text, ctrl, alt, shift, win);
         });
-        window.on_clear_shortcut(super::with(&weak, |app| {
-            app.settings.borrow_mut().shortcuts.toggle = None;
-            app.shortcut_problem.replace(None);
-            hotkey::unregister(window::control_window());
-            App::schedule_save(app);
+        let weak_clear = weak.clone();
+        window.on_clear_shortcut(move |target| {
+            let Some(app) = weak_clear.upgrade() else { return };
+            ShortcutKind::from_index(target).set(&mut app.settings.borrow_mut(), None);
+            app.register_shortcuts();
+            App::schedule_save(&app);
             app.refresh_settings_window();
-        }));
+        });
+        let weak_add = weak.clone();
+        window.on_add_excluded_app(move |name| {
+            let Some(app) = weak_add.upgrade() else { return };
+            let name = name.trim().trim_matches('"').to_owned();
+            if name.is_empty() {
+                return;
+            }
+            app.settings.borrow_mut().clipboard.excluded_apps.push(name);
+            let sanitized = app.settings.borrow().clone().sanitize();
+            app.settings.replace(sanitized);
+            App::apply_settings(&app);
+            App::schedule_save(&app);
+            app.refresh_settings_window();
+        });
+        let weak_remove = weak.clone();
+        window.on_remove_excluded_app(move |index| {
+            let Some(app) = weak_remove.upgrade() else { return };
+            {
+                let mut settings = app.settings.borrow_mut();
+                let apps = &mut settings.clipboard.excluded_apps;
+                if let Some(i) = usize::try_from(index).ok().filter(|&i| i < apps.len()) {
+                    apps.remove(i);
+                }
+            }
+            App::apply_settings(&app);
+            App::schedule_save(&app);
+            app.refresh_settings_window();
+        });
+        let weak_clear_clipboard = weak.clone();
+        window.on_clear_clipboard(move |everything| {
+            let Some(app) = weak_clear_clipboard.upgrade() else { return };
+            App::clear_clipboard(&app, everything);
+        });
         window.on_open_data_folder(|| {
             let folder = HSTRING::from(paths::roaming_data_dir().as_os_str());
             let _ = std::fs::create_dir_all(paths::roaming_data_dir());
@@ -306,34 +423,48 @@ impl App {
         {
             return;
         }
+        let kind = app
+            .settings_window
+            .borrow()
+            .as_ref()
+            .map_or(ShortcutKind::Island, |w| ShortcutKind::from_index(w.get_recording_target()));
         let message = if is(Key::Escape) {
-            app.register_shortcut();
+            app.register_shortcuts();
             String::new()
         } else if let Some(shortcut) = hotkey::from_key_event(text, ctrl, alt, shift, win) {
-            let previous = app.settings.borrow().shortcuts.toggle.clone();
-            app.settings.borrow_mut().shortcuts.toggle = Some(shortcut.to_string());
-            match app.register_shortcut() {
+            let previous = kind.get(&app.settings.borrow());
+            kind.set(&mut app.settings.borrow_mut(), Some(shortcut.to_string()));
+            match app.register_shortcut(kind) {
                 None => {
-                    app.shortcut_problem.replace(None);
+                    app.register_shortcuts();
                     App::schedule_save(app);
-                    String::new()
+                    match shortcut.known_conflict() {
+                        Some(apps) => {
+                            format!("{shortcut} is set. Note: {apps}; they no longer receive it while Lilt runs.")
+                        }
+                        None => String::new(),
+                    }
                 }
                 Some(problem) => {
-                    app.settings.borrow_mut().shortcuts.toggle = previous;
-                    app.register_shortcut();
+                    kind.set(&mut app.settings.borrow_mut(), previous);
+                    app.register_shortcuts();
                     problem
                 }
             }
         } else {
-            app.register_shortcut();
-            "Use Ctrl, Alt or Win together with a letter, a number, Space or F1 to F12.".into()
+            app.register_shortcuts();
+            "Use Ctrl, Alt or Win together with a letter, a number, Space or F1 to F12. Win+V stays with Windows."
+                .into()
         };
         if let Some(window) = app.settings_window.borrow().as_ref() {
             window.set_recording_shortcut(false);
         }
         app.refresh_settings_window();
         if let Some(window) = app.settings_window.borrow().as_ref() {
-            window.set_shortcut_message(message.into());
+            match kind {
+                ShortcutKind::Island => window.set_shortcut_message(message.into()),
+                ShortcutKind::Clipboard => window.set_clipboard_shortcut_message(message.into()),
+            }
         }
     }
 
@@ -345,7 +476,7 @@ impl App {
             // event handling.
             slint::Timer::single_shot(Duration::ZERO, move || drop(window));
         }
-        self.register_shortcut();
+        self.register_shortcuts();
     }
 }
 
@@ -431,6 +562,14 @@ fn to_data(s: &Settings, monitors: &[placement::Monitor]) -> SettingsData {
         launch_at_startup: startup::is_enabled(),
         shortcut: s.shortcuts.toggle.clone().unwrap_or_default().into(),
         calendar_path: s.calendar.ics_path.as_ref().map(|p| p.display().to_string()).unwrap_or_default().into(),
+        show_clipboard: s.clipboard.show,
+        clipboard_capture: s.clipboard.capture,
+        clipboard_skip_secrets: s.clipboard.skip_secrets,
+        clipboard_skip_unknown: s.clipboard.skip_unknown_sources,
+        clipboard_retention: ClipboardRetention::ALL.iter().position(|r| *r == s.clipboard.retention).unwrap_or(2)
+            as i32,
+        clipboard_max_items: s.clipboard.max_items as i32,
+        clipboard_shortcut: s.clipboard.shortcut.clone().unwrap_or_default().into(),
     }
 }
 
@@ -471,6 +610,21 @@ fn from_data(d: &SettingsData, monitors: &[placement::Monitor], previous: &Setti
     s.ambient.intensity = d.ambient_intensity.max(0) as u32;
     s.performance.low_power = d.low_power;
     s.performance.hide_in_fullscreen = d.hide_in_fullscreen;
+    s.clipboard.show = d.show_clipboard;
+    if d.clipboard_capture != s.clipboard.capture {
+        s.clipboard.capture = d.clipboard_capture;
+        // Turning capture on or off here answers the shelf's first-use question.
+        s.clipboard.introduced = true;
+    }
+    s.clipboard.skip_secrets = d.clipboard_skip_secrets;
+    s.clipboard.skip_unknown_sources = d.clipboard_skip_unknown;
+    s.clipboard.retention = usize::try_from(d.clipboard_retention)
+        .ok()
+        .and_then(|i| ClipboardRetention::ALL.get(i))
+        .copied()
+        .unwrap_or_default();
+    // In steps of 50, as the slider moves.
+    s.clipboard.max_items = ((d.clipboard_max_items.max(0) as u32 + 25) / 50) * 50;
     s.sanitize()
 }
 

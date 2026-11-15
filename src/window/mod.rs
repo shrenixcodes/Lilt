@@ -7,7 +7,7 @@
 //! another thread posts work, or an animation needs its next frame.
 
 mod adapter;
-mod clipboard;
+pub mod clipboard;
 pub mod glass;
 mod input;
 pub mod placement;

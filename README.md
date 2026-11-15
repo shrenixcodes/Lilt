@@ -42,6 +42,10 @@ megabytes of memory and no measurable CPU or GPU time.
   quick entry, priorities from Critical to none, due dates and times, a "Focus now" task,
   a satisfying tick with undo, and a searchable archive of completed work. Tasks are
   stored on this PC.
+- **Clipboard shelf.** Copied text you can search and copy again, pinned entries and
+  snippets you save by hand, in the box next to the expanded island. Remembering copied
+  text is optional and off until you turn it on; it skips likely passwords and keys and
+  copies from password managers, and everything stays on this PC.
 - **Quick actions.** One click to sound, display and brightness, Bluetooth and Wi-Fi
   settings, Windows Settings, the Snipping Tool, Task Manager and File Explorer.
 - **Settings.** Appearance, widgets, sizes, display and position, ambient colour,
@@ -161,11 +165,43 @@ Completing a task ticks it at once and updates the counts; it leaves the list a 
 later, and **Undo** brings it back. Completed tasks stay in **Done**, grouped by day and
 searchable, until you restore or delete them.
 
+### Clipboard shelf
+
+The box next to the expanded island shows **Tasks** or **Clipboard**; click the other
+name in its title to switch. Turn the shelf on or off in *Settings → Widgets*.
+
+The first time it opens, the shelf asks whether to remember copied text. With capture on,
+text you copy in any app appears under *Recent* with the app it came from (when Windows
+says) and when; repeated copies move to the top instead of piling up. Click an entry to
+copy it back, or use the buttons on hover to pin, edit or delete it. **+** saves a
+snippet: text you reuse, with an optional title and description. Pinned entries and
+snippets are kept until you delete them; copied text is kept for 30 days by default
+(1 day to forever) and up to 500 entries (50 to 5,000).
+
+Search matches any part of the text, a snippet's title or description, or the app.
+Filters show pinned entries, recent copies, snippets, links, code (including JSON and
+commands) or other text. The arrow keys choose an entry, **Enter** copies it and closes
+the island so you can paste straight away, **Delete** removes it and **Ctrl+F** searches.
+
+Pause capture from the shelf's menu or its pause button, turn it off there or in
+*Settings → Clipboard*, and clear the history at any time. Settings also has the app
+exclusion list, the option to skip copies whose app Windows does not report, the
+retention period and size limit, and a global shortcut that opens the shelf. No shortcut
+is set by default: the natural choice, Ctrl+Shift+V, is already "paste as plain text" in
+browsers and Office and "paste" in Windows Terminal, and Lilt would take it from them.
+
+What is never kept: images, files and other non-text content; copies an app marks as
+private (password managers do), copies from excluded apps (several password managers are
+excluded by default), and text that looks like a password, private key or access token.
+That last check is deliberately cautious, so it can miss some secrets; exclude any app
+you copy secrets from.
+
 ## Privacy
 
 Lilt works entirely offline: no telemetry, no update checks, no accounts. Media and
-calendar information is only displayed, never stored or sent anywhere. Details are in
-[SECURITY.md](SECURITY.md).
+calendar information is only displayed, never stored or sent anywhere. Tasks and the
+clipboard shelf are stored on this PC only, and copied text is never logged. Details are
+in [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
 

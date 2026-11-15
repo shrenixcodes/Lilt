@@ -1,0 +1,634 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { ClipboardState, ClipboardActions } from "state.slint";
+import { ClipFilter, ClipRow, ClipRowKind, SidePanel, SnippetForm } from "types.slint";
+import { Icon, Icons } from "components/icon.slint";
+import { IconButton, TextButton } from "components/controls.slint";
+import { Heading, Title } from "components/heading.slint";
+import { Chip, Field } from "tasks.slint";
+import { PanelTabs } from "panel-tabs.slint";
+
+// The clipboard shelf: copied text Lilt remembers on this PC (only with capture on) and
+// snippets saved by hand. All data and every change go through ClipboardState and
+// ClipboardActions; nothing is stored here.
+
+// Row heights, mirrored in src/app/clipboard.rs to keep the keyboard selection in view.
+export global ClipMetrics {
+    out property <length> header: 26px;
+    out property <length> entry: 56px;
+}
+
+component ClipHeader inherits HorizontalLayout {
+    in property <ClipRow> entry;
+    alignment: start;
+    padding-left: 6px;
+    padding-top: 8px;
+    spacing: 6px;
+
+    Text {
+        text: root.entry.title;
+        font-size: 11px;
+        font-weight: 600;
+        color: Theme.text-secondary;
+    }
+
+    Text {
+        text: root.entry.count;
+        font-size: 11px;
+        color: Theme.text-tertiary;
+    }
+}
+
+component ClipItem inherits Rectangle {
+    in property <ClipRow> entry;
+    in property <bool> selected;
+    property <bool> active: touch.has-hover || root.selected;
+    property <bool> copied: ClipboardState.copied-id == root.entry.id;
+    property <bool> confirming;
+
+    border-radius: Theme.control-radius + 2px;
+    background: root.active ? Theme.tile : transparent;
+    border-width: root.selected ? 1px : 0px;
+    border-color: Theme.text.with-alpha(0.3);
+    animate background { duration: Theme.hover-duration; }
+    accessible-role: list-item;
+    accessible-label: root.entry.title != "" ? root.entry.title : root.entry.preview;
+    accessible-description: root.entry.meta + (root.entry.pinned ? ", pinned" : "");
+    accessible-action-default => { ClipboardActions.copy(root.entry.id, false); }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { ClipboardActions.copy(root.entry.id, false); }
+
+        VerticalLayout {
+            x: 10px;
+            width: parent.width - 20px - (root.active ? actions.preferred-width : root.entry.pinned ? 18px : 0px);
+            height: parent.height;
+            alignment: center;
+            spacing: 2px;
+
+            if root.entry.title != "" : Text {
+                text: root.entry.title;
+                font-size: 12px;
+                font-weight: 600;
+                color: Theme.text;
+                overflow: elide;
+            }
+
+            Text {
+                max-height: root.entry.title != "" ? 15px : 30px;
+                text: root.entry.preview;
+                font-family: root.entry.technical ? Theme.code-font : Theme.font;
+                font-size: root.entry.technical ? 11px : 12px;
+                color: root.entry.title != "" ? Theme.text-secondary : Theme.text;
+                wrap: root.entry.title != "" ? no-wrap : word-wrap;
+                overflow: elide;
+                vertical-alignment: top;
+            }
+
+            Text {
+                text: root.confirming ? "Delete this entry?" : root.copied ? "Copied" : root.entry.meta;
+                font-size: 10px;
+                color: root.copied ? Theme.accent : Theme.text-tertiary;
+                overflow: elide;
+            }
+        }
+
+        if !root.active && root.entry.pinned : Icon {
+            x: parent.width - 22px;
+            y: 10px;
+            data: Icons.pin;
+            size: 11px;
+            color: Theme.text-tertiary;
+        }
+
+        actions := HorizontalLayout {
+            x: parent.width - self.preferred-width - 4px;
+            height: parent.height;
+            alignment: center;
+
+            if root.active && !root.confirming : IconButton {
+                width: 26px;
+                height: 26px;
+                icon: Icons.pin;
+                icon-size: 13px;
+                filled: root.entry.pinned;
+                tint: root.entry.pinned ? Theme.text : Theme.text-secondary;
+                tooltip: root.entry.pinned ? "Unpin" : "Pin";
+                clicked => { ClipboardActions.toggle-pin(root.entry.id); }
+            }
+
+            if root.active && !root.confirming : IconButton {
+                width: 26px;
+                height: 26px;
+                icon: Icons.pencil;
+                icon-size: 13px;
+                tint: Theme.text-secondary;
+                tooltip: root.entry.manual ? "Edit snippet" : "Edit as a snippet";
+                clicked => { ClipboardActions.edit(root.entry.id); }
+            }
+
+            if root.active && !root.confirming : IconButton {
+                width: 26px;
+                height: 26px;
+                icon: Icons.trash;
+                icon-size: 13px;
+                tint: Theme.text-secondary;
+                tooltip: "Delete";
+                // Captured text is deleted at once; pinned entries and snippets ask first.
+                clicked => {
+                    if root.entry.pinned || root.entry.manual {
+                        root.confirming = true;
+                    } else {
+                        ClipboardActions.delete(root.entry.id);
+                    }
+                }
+            }
+
+            if root.active && !root.confirming : IconButton {
+                width: 26px;
+                height: 26px;
+                icon: Icons.copy;
+                icon-size: 13px;
+                tint: Theme.text;
+                tooltip: "Copy";
+                clicked => { ClipboardActions.copy(root.entry.id, false); }
+            }
+
+            if root.confirming : TextButton {
+                height: 24px;
+                text: "Keep";
+                clicked => { root.confirming = false; }
+            }
+
+            if root.confirming : Rectangle { width: 4px; }
+
+            if root.confirming : TextButton {
+                height: 24px;
+                text: "Delete";
+                clicked => {
+                    root.confirming = false;
+                    ClipboardActions.delete(root.entry.id);
+                }
+            }
+        }
+    }
+}
+
+// Shown the first time the shelf opens, before any clipboard text is read.
+component Intro inherits VerticalLayout {
+    alignment: center;
+    spacing: 10px;
+    padding-left: 8px;
+    padding-right: 8px;
+
+    HorizontalLayout {
+        alignment: center;
+
+        Icon {
+            data: Icons.clipboard;
+            size: 22px;
+            color: Theme.text-secondary;
+        }
+    }
+
+    Title {
+        horizontal-alignment: center;
+        text: "Remember copied text?";
+        size: Theme.font-md;
+        color: Theme.text;
+    }
+
+    Text {
+        horizontal-alignment: center;
+        text: "Lilt can remember copied text locally so you can find and reuse it later. Clipboard capture is optional and can be paused or disabled anytime.";
+        font-size: 11.5px;
+        color: Theme.text-secondary;
+        wrap: word-wrap;
+    }
+
+    Text {
+        horizontal-alignment: center;
+        text: "Only text is kept, on this PC. Passwords, keys and copies from password managers are skipped.";
+        font-size: 10.5px;
+        color: Theme.text-tertiary;
+        wrap: word-wrap;
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: 8px;
+
+        TextButton {
+            text: "Not now";
+            clicked => { ClipboardActions.dismiss-intro(); }
+        }
+
+        Rectangle {
+            width: on-label.preferred-width + 22px;
+            height: 28px;
+            border-radius: Theme.control-radius;
+            background: on-touch.pressed ? Theme.accent.darker(0.15) : on-touch.has-hover ? Theme.accent.brighter(0.1) : Theme.accent;
+            accessible-role: button;
+            accessible-label: on-label.text;
+            accessible-action-default => { ClipboardActions.set-capture(true); }
+
+            on-label := Text {
+                text: "Turn on capture";
+                font-size: Theme.font-sm;
+                font-weight: 600;
+                color: Theme.text-on-light;
+            }
+
+            on-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { ClipboardActions.set-capture(true); }
+            }
+        }
+    }
+}
+
+component MenuItem inherits Rectangle {
+    in property <string> text;
+    in property <bool> danger;
+    callback clicked();
+    height: 28px;
+    border-radius: Theme.control-radius;
+    background: touch.has-hover ? Theme.control-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+
+    Text {
+        x: 10px;
+        text: root.text;
+        font-size: Theme.font-sm;
+        color: root.danger ? Theme.danger : Theme.text;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Title, text and an optional description. Saving a captured entry here turns it into
+// a snippet, which is kept until deleted.
+component SnippetEditor inherits Rectangle {
+    property <SnippetForm> form: ClipboardState.form;
+
+    init => {
+        content.focus();
+    }
+
+    VerticalLayout {
+        spacing: 8px;
+
+        HorizontalLayout {
+            height: 32px;
+            spacing: 6px;
+
+            Heading {
+                horizontal-stretch: 1;
+                text: root.form.id == 0 ? "New snippet" : "Edit snippet";
+                size: Theme.font-lg;
+                color: Theme.text;
+            }
+
+            TextButton {
+                text: "Cancel";
+                clicked => { ClipboardState.editing = false; }
+            }
+
+            TextButton {
+                text: "Save";
+                clicked => {
+                    ClipboardActions.save({
+                        id: root.form.id,
+                        title: title.text,
+                        content: content.text,
+                        description: description.text,
+                    });
+                }
+            }
+        }
+
+        title := Field {
+            height: 26px;
+            placeholder: "Title (optional)";
+            text: root.form.title;
+            font-size: 12px;
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+            border-radius: 7px;
+            background: Theme.tile;
+            border-width: 1px;
+            border-color: content.has-focus ? Theme.text-secondary : Theme.border;
+            clip: true;
+
+            if content.text == "" : Text {
+                x: 8px;
+                y: 6px;
+                text: "Text to copy";
+                font-size: 12px;
+                color: Theme.text-tertiary;
+            }
+
+            content := TextInput {
+                x: 8px;
+                y: 6px;
+                width: parent.width - 16px;
+                height: parent.height - 12px;
+                text: root.form.content;
+                single-line: false;
+                wrap: word-wrap;
+                font-family: Theme.code-font;
+                font-size: 11.5px;
+                color: Theme.text;
+                selection-background-color: Theme.text.with-alpha(0.25);
+                selection-foreground-color: Theme.text;
+                accessible-label: "Snippet text";
+            }
+        }
+
+        description := Field {
+            height: 26px;
+            placeholder: "Description (optional)";
+            text: root.form.description;
+        }
+    }
+}
+
+export component ClipboardView inherits Rectangle {
+    property <bool> busy: ClipboardState.editing || search.has-focus-inside;
+    property <bool> menu-open;
+    property <bool> confirm-clear;
+    property <int> focus-token: ClipboardState.search-focus;
+    property <int> selected: ClipboardState.selected;
+
+    changed busy => {
+        ClipboardActions.busy(self.busy);
+    }
+    changed focus-token => {
+        search.focus-input();
+    }
+    // Keeps the entry chosen with the keyboard in view.
+    changed selected => {
+        if self.selected < 0 {
+            return;
+        }
+        let top = ClipboardState.selected-top;
+        if top < -list.content-y {
+            list.content-y = -top;
+        } else if top + ClipMetrics.entry > -list.content-y + list.visible-height {
+            list.content-y = -(top + ClipMetrics.entry - list.visible-height);
+        }
+    }
+
+    init => {
+        ClipboardActions.opened();
+    }
+
+    // Arrow keys, Enter, Delete and Ctrl+F are handled by the island (ui/island.slint),
+    // which receives the keys the search field does not use.
+    VerticalLayout {
+        visible: !ClipboardState.editing;
+        padding: Theme.padding;
+        padding-bottom: 10px;
+        spacing: 8px;
+
+        if !ClipboardState.editing : HorizontalLayout {
+            height: 32px;
+            spacing: 6px;
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+
+                PanelTabs {
+                    current: SidePanel.clipboard;
+                }
+
+                Text {
+                    text: ClipboardState.notice != "" ? ClipboardState.notice : ClipboardState.status;
+                    font-size: 10.5px;
+                    color: Theme.text-secondary;
+                    overflow: elide;
+                }
+            }
+
+            if ClipboardState.capture-on : IconButton {
+                icon: ClipboardState.paused ? Icons.play : Icons.pause;
+                icon-size: 13px;
+                tooltip: ClipboardState.paused ? "Resume capture" : "Pause capture";
+                tint: Theme.text-secondary;
+                clicked => { ClipboardActions.set-paused(!ClipboardState.paused); }
+            }
+
+            IconButton {
+                icon: Icons.plus;
+                tooltip: "Add a snippet";
+                tint: Theme.text;
+                clicked => { ClipboardActions.edit(0); }
+            }
+
+            IconButton {
+                icon: Icons.more;
+                tooltip: "More";
+                tint: Theme.text-secondary;
+                clicked => {
+                    root.menu-open = !root.menu-open;
+                    root.confirm-clear = false;
+                }
+            }
+        }
+
+        search := Field {
+            visible: !ClipboardState.editing && !ClipboardState.show-intro;
+            height: ClipboardState.editing || ClipboardState.show-intro ? 0px : 26px;
+            placeholder: "Search copied text and snippets";
+            text <=> ClipboardState.search;
+            font-size: 11.5px;
+            edited(text) => { ClipboardActions.search-changed(text); }
+            accepted => { ClipboardActions.copy-selected(); }
+        }
+
+        if !ClipboardState.editing && !ClipboardState.show-intro : HorizontalLayout {
+            height: 24px;
+            spacing: 4px;
+
+            for chip in [
+                { label: "All", filter: ClipFilter.all },
+                { label: "Pinned", filter: ClipFilter.pinned },
+                { label: "Recent", filter: ClipFilter.recent },
+                { label: "Snippets", filter: ClipFilter.snippets },
+                { label: "Links", filter: ClipFilter.links },
+                { label: "Code", filter: ClipFilter.code },
+                { label: "Other", filter: ClipFilter.other },
+            ] : Chip {
+                inset: 7px;
+                text: chip.label;
+                selected: ClipboardState.filter == chip.filter;
+                clicked => {
+                    ClipboardState.filter = chip.filter;
+                    ClipboardActions.filter-changed();
+                }
+            }
+        }
+
+        if !ClipboardState.editing && ClipboardState.show-intro : Intro {
+            vertical-stretch: 1;
+        }
+
+        if !ClipboardState.editing && !ClipboardState.show-intro && ClipboardState.rows.length == 0 : VerticalLayout {
+            vertical-stretch: 1;
+            alignment: center;
+            spacing: 4px;
+
+            Title {
+                horizontal-alignment: center;
+                text: ClipboardState.empty-title;
+                size: Theme.font-md;
+                color: Theme.text;
+                wrap: word-wrap;
+            }
+
+            Text {
+                horizontal-alignment: center;
+                text: ClipboardState.empty-detail;
+                font-size: 11px;
+                color: Theme.text-secondary;
+                wrap: word-wrap;
+            }
+        }
+
+        list := ListView {
+            visible: !ClipboardState.editing && !ClipboardState.show-intro && ClipboardState.rows.length > 0;
+            // Kept (it is scrolled from above) but takes no room while hidden.
+            vertical-stretch: self.visible ? 1 : 0;
+            max-height: self.visible ? 10000px : 0px;
+
+            for row[index] in ClipboardState.rows : Rectangle {
+                height: row.kind == ClipRowKind.header ? ClipMetrics.header : ClipMetrics.entry;
+
+                if row.kind == ClipRowKind.header : ClipHeader {
+                    entry: row;
+                }
+
+                if row.kind == ClipRowKind.entry : ClipItem {
+                    y: 2px;
+                    height: parent.height - 4px;
+                    entry: row;
+                    selected: ClipboardState.selected == index;
+                }
+            }
+        }
+    }
+
+    // The snippet editor covers the whole box.
+    if ClipboardState.editing : SnippetEditor {
+        x: Theme.padding;
+        y: Theme.padding;
+        width: parent.width - 2 * Theme.padding;
+        height: parent.height - Theme.padding - 10px;
+    }
+
+    // The overflow menu, over the list below the header buttons.
+    if root.menu-open : TouchArea {
+        // A click outside the menu closes it.
+        clicked => {
+            root.menu-open = false;
+            root.confirm-clear = false;
+        }
+    }
+
+    if root.menu-open : Rectangle {
+        x: parent.width - self.width - Theme.padding;
+        y: Theme.padding + 34px;
+        width: 220px;
+        height: menu.preferred-height;
+        border-radius: Theme.control-radius + 2px;
+        background: Theme.window-background;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 12px;
+        drop-shadow-color: #00000066;
+
+        // Swallows clicks between the items.
+        TouchArea { }
+
+        menu := VerticalLayout {
+            padding: 4px;
+            spacing: 2px;
+
+            if !root.confirm-clear && !ClipboardState.capture-on : MenuItem {
+                text: "Turn on capture";
+                clicked => {
+                    root.menu-open = false;
+                    ClipboardActions.set-capture(true);
+                }
+            }
+
+            if !root.confirm-clear && ClipboardState.capture-on : MenuItem {
+                text: ClipboardState.paused ? "Resume capture" : "Pause capture";
+                clicked => {
+                    root.menu-open = false;
+                    ClipboardActions.set-paused(!ClipboardState.paused);
+                }
+            }
+
+            if !root.confirm-clear && ClipboardState.capture-on : MenuItem {
+                text: "Turn off capture";
+                clicked => {
+                    root.menu-open = false;
+                    ClipboardActions.set-capture(false);
+                }
+            }
+
+            if !root.confirm-clear : MenuItem {
+                text: "Clear history…";
+                clicked => { root.confirm-clear = true; }
+            }
+
+            if !root.confirm-clear : MenuItem {
+                text: "Clipboard settings";
+                clicked => {
+                    root.menu-open = false;
+                    ClipboardActions.open-settings();
+                }
+            }
+
+            if root.confirm-clear : Text {
+                text: ClipboardState.history-count == 0 ? "There is no copied text to clear. Pinned items and snippets are cleared one by one."
+                    : "Delete " + ClipboardState.history-count + (ClipboardState.history-count == 1 ? " copied item" : " copied items")
+                    + "? Pinned items and snippets stay.";
+                font-size: 11px;
+                color: Theme.text;
+                wrap: word-wrap;
+            }
+
+            if root.confirm-clear : HorizontalLayout {
+                alignment: end;
+                spacing: 6px;
+                padding-top: 4px;
+
+                TextButton {
+                    text: "Keep";
+                    clicked => { root.confirm-clear = false; }
+                }
+
+                if ClipboardState.history-count > 0 : TextButton {
+                    text: "Clear";
+                    clicked => {
+                        root.confirm-clear = false;
+                        root.menu-open = false;
+                        ClipboardActions.clear-history();
+                    }
+                }
+            }
+        }
+    }
+}

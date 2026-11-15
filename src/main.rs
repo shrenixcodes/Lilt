@@ -8,6 +8,7 @@ mod app;
 mod appearance;
 mod artwork;
 mod calendar;
+mod clipboard;
 mod clock;
 mod dialogs;
 mod fonts;

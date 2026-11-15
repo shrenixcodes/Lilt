@@ -1,4 +1,4 @@
-//! The global keyboard shortcut that toggles the island.
+//! Global keyboard shortcuts: one toggles the island, one opens the clipboard shelf.
 //!
 //! Shortcuts are stored as text such as `Ctrl+Alt+Space` and registered with
 //! `RegisterHotKey` on the platform's control window, so Windows delivers them as
@@ -10,8 +10,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     VK_SPACE,
 };
 
-/// Identifier of Lilt's only hot key.
+/// Identifiers of Lilt's hot keys.
 pub const TOGGLE_ID: i32 = 1;
+pub const CLIPBOARD_ID: i32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Shortcut {
@@ -41,8 +42,26 @@ impl Shortcut {
     }
 
     /// A shortcut needs a key and Ctrl, Alt or Win, so ordinary typing never triggers it.
+    /// Win+V stays with Windows' own clipboard history.
     pub fn is_valid(&self) -> bool {
-        self.key != 0 && (self.ctrl || self.alt || self.win)
+        self.key != 0 && (self.ctrl || self.alt || self.win) && !self.is_windows_clipboard()
+    }
+
+    fn is_windows_clipboard(&self) -> bool {
+        self.win && !self.ctrl && !self.alt && self.key == b'V' as u16
+    }
+
+    /// Apps that use this combination themselves and would no longer receive it while
+    /// Lilt holds it, for a warning in Settings.
+    pub fn known_conflict(&self) -> Option<&'static str> {
+        let v = self.key == b'V' as u16 && !self.win;
+        if v && self.ctrl && self.shift && !self.alt {
+            return Some("browsers and Office use Ctrl+Shift+V to paste plain text, and Windows Terminal to paste");
+        }
+        if v && self.ctrl && self.alt && !self.shift {
+            return Some("Office uses Ctrl+Alt+V for Paste Special");
+        }
+        None
     }
 
     fn modifiers(&self) -> HOT_KEY_MODIFIERS {
@@ -56,9 +75,9 @@ impl Shortcut {
         m
     }
 
-    /// Registers the shortcut with Windows. Fails if another application owns it.
-    pub fn register(&self, window: HWND) -> windows::core::Result<()> {
-        unsafe { RegisterHotKey(Some(window), TOGGLE_ID, self.modifiers(), self.key as u32) }
+    /// Registers the shortcut with Windows as `id`. Fails if another application owns it.
+    pub fn register(&self, window: HWND, id: i32) -> windows::core::Result<()> {
+        unsafe { RegisterHotKey(Some(window), id, self.modifiers(), self.key as u32) }
     }
 }
 
@@ -73,9 +92,9 @@ impl std::fmt::Display for Shortcut {
     }
 }
 
-pub fn unregister(window: HWND) {
+pub fn unregister(window: HWND, id: i32) {
     unsafe {
-        let _ = UnregisterHotKey(Some(window), TOGGLE_ID);
+        let _ = UnregisterHotKey(Some(window), id);
     }
 }
 
@@ -148,6 +167,16 @@ mod tests {
         assert_eq!(Shortcut::parse("Ctrl+A+B"), None);
         assert_eq!(Shortcut::parse("Ctrl+F25"), None);
         assert_eq!(Shortcut::parse("Ctrl+Tab"), None);
+        // Windows' clipboard history keeps its shortcut.
+        assert_eq!(Shortcut::parse("Win+V"), None);
+        assert!(Shortcut::parse("Win+Alt+V").is_some());
+    }
+
+    #[test]
+    fn warns_about_shortcuts_other_apps_use() {
+        assert!(Shortcut::parse("Ctrl+Shift+V").unwrap().known_conflict().is_some());
+        assert!(Shortcut::parse("Ctrl+Alt+V").unwrap().known_conflict().is_some());
+        assert_eq!(Shortcut::parse("Ctrl+Alt+Space").unwrap().known_conflict(), None);
     }
 
     #[test]

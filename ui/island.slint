@@ -1,9 +1,10 @@
 import { Theme } from "theme.slint";
-import { MediaAvailability, Page, TasksLayout } from "types.slint";
-import { AppState, AppActions, TasksState } from "state.slint";
+import { MediaAvailability, Page, SidePanel, TasksLayout } from "types.slint";
+import { AppState, AppActions, ClipboardState, ClipboardActions, TasksState } from "state.slint";
 import { CompactView, ActivityView } from "compact.slint";
 import { ExpandedView } from "expanded.slint";
 import { TasksView } from "tasks.slint";
+import { ClipboardView } from "clipboard.slint";
 import { GlassSheen, GlassRim } from "components/glass.slint";
 
 // Two translucent layers that approximate a soft drop shadow, which the software
@@ -37,9 +38,11 @@ export component Island inherits Window {
     background: transparent;
     default-font-family: Theme.font;
 
-    // With Tasks enabled, the expanded island is two boxes: the dashboard and the tasks,
-    // side by side or one below the other.
-    property <bool> tasks-box: AppState.show-tasks;
+    // With Tasks or the clipboard shelf enabled, the expanded island is two boxes: the
+    // dashboard and the side box, side by side or one below the other.
+    property <bool> tasks-box: AppState.show-tasks || AppState.show-clipboard;
+    // Which panel the side box shows.
+    property <bool> clipboard-panel: AppState.show-clipboard && (AppState.side-panel == SidePanel.clipboard || !AppState.show-tasks);
     property <bool> beside: AppState.tasks-layout == TasksLayout.beside;
     property <length> gap: 10px;
     property <length> tasks-width: root.beside ? 400px : AppState.expanded-width;
@@ -113,7 +116,9 @@ export component Island inherits Window {
                 return reject;
             }
             if event.text == Key.Escape {
-                if TasksState.editing {
+                if root.clipboard-panel && ClipboardState.editing {
+                    ClipboardState.editing = false;
+                } else if TasksState.editing {
                     TasksState.editing = false;
                 } else if TasksState.adding {
                     TasksState.adding = false;
@@ -122,7 +127,27 @@ export component Island inherits Window {
                 }
                 return accept;
             }
-            if root.tasks-box && !TasksState.editing && !TasksState.adding
+            // The clipboard shelf: arrows choose an entry, Enter copies it and closes the
+            // island, Delete removes it, Ctrl+F or / searches.
+            if root.tasks-box && root.clipboard-panel && !ClipboardState.editing && !ClipboardState.show-intro {
+                if event.text == Key.DownArrow || event.text == Key.UpArrow {
+                    ClipboardActions.move-selection(event.text == Key.DownArrow ? 1 : -1);
+                    return accept;
+                }
+                if event.text == Key.Return {
+                    ClipboardActions.copy-selected();
+                    return accept;
+                }
+                if event.text == Key.Delete {
+                    ClipboardActions.delete-selected();
+                    return accept;
+                }
+                if (event.modifiers.control && (event.text == "f" || event.text == "F")) || event.text == "/" {
+                    ClipboardState.search-focus += 1;
+                    return accept;
+                }
+            }
+            if root.tasks-box && !root.clipboard-panel && !TasksState.editing && !TasksState.adding
                 && (event.text == "n" || event.text == "N") && !event.modifiers.control && !event.modifiers.alt {
                 TasksState.adding = true;
                 return accept;
@@ -277,7 +302,12 @@ export component Island inherits Window {
                     radius: Theme.expanded-radius;
                 }
 
-                TasksView {
+                if !root.clipboard-panel : TasksView {
+                    width: parent.width;
+                    height: parent.height;
+                }
+
+                if root.clipboard-panel : ClipboardView {
                     width: parent.width;
                     height: parent.height;
                 }

@@ -327,6 +327,11 @@ fn settings_data() -> SettingsData {
         hide_in_fullscreen: true,
         top_margin: 8,
         shortcut: "Ctrl+Alt+Space".into(),
+        show_tasks: true,
+        show_clipboard: true,
+        clipboard_skip_secrets: true,
+        clipboard_retention: 2,
+        clipboard_max_items: 500,
         ..Default::default()
     }
 }
@@ -363,7 +368,12 @@ fn settings_sections_render() {
     settings.set_data(settings_data());
     settings.show().expect("show settings");
     let mut previous: Option<RgbaImage> = None;
-    for section in 0..9 {
+    settings.set_clipboard_excluded(slint::ModelRc::new(slint::VecModel::from(vec![
+        slint::SharedString::from("KeePass.exe"),
+        slint::SharedString::from("1Password.exe"),
+    ])));
+    settings.set_clipboard_usage("42 entries · 96 KB on disk".into());
+    for section in 0..10 {
         settings.set_section(section);
         let image = render_settings(&window, &clock);
         save(&image, &format!("settings-{section}"));
@@ -1288,4 +1298,176 @@ fn playing_bars_move_with_partial_repaints() {
         }
     }
     assert!(glyphs.len() > 5, "the bars change between partial repaints: {} shapes", glyphs.len());
+}
+
+// --- Clipboard shelf ---------------------------------------------------------------
+
+fn clip_entry(
+    id: i64,
+    text: &str,
+    kind: crate::clipboard::Kind,
+    source: Option<&str>,
+    age: i64,
+) -> crate::clipboard::Summary {
+    crate::clipboard::Summary {
+        id,
+        preview: crate::clipboard::preview(text),
+        title: String::new(),
+        description: String::new(),
+        kind,
+        created_at: CLIP_NOW - age,
+        used_at: CLIP_NOW - age,
+        source: source.map(str::to_owned),
+        pinned: false,
+        manual: false,
+        chars: text.chars().count(),
+        lines: text.lines().count().max(1),
+    }
+}
+
+const CLIP_NOW: i64 = 1_763_100_000;
+
+fn sample_clips() -> Vec<crate::clipboard::Summary> {
+    use crate::clipboard::Kind;
+    let mut pinned =
+        clip_entry(1, "Flat 4B, 22 Park Street, Kolkata 700016", Kind::Text, Some("msedge.exe"), 86_400 * 3);
+    pinned.pinned = true;
+    let mut snippet = clip_entry(2, "Best regards,\nShreyan Bag", Kind::Multiline, None, 86_400 * 9);
+    snippet.manual = true;
+    snippet.title = "Email sign-off".into();
+    snippet.description = "For work email".into();
+    vec![
+        pinned,
+        snippet,
+        clip_entry(3, "https://github.com/shrenixcodes/Lilt/releases", Kind::Url, Some("msedge.exe"), 40),
+        clip_entry(4, "cargo test --release -- --ignored", Kind::Command, Some("WindowsTerminal.exe"), 600),
+        clip_entry(5, "fn main() {\n    println!(\"Grüße, 世界\");\n}", Kind::Code, Some("Code.exe"), 7_200),
+        clip_entry(6, "Meeting moved to Thursday at 15:30 — same room.", Kind::Text, None, 90_000),
+    ]
+}
+
+fn clipboard_harness(appearance: Appearance) -> Harness {
+    let h = Harness::new(1.0);
+    set_appearance(&h, appearance);
+    fill_clipboard(&h);
+    h
+}
+
+fn fill_clipboard(h: &Harness) {
+    use crate::ui::{ClipboardState, SidePanel};
+    let state = h.state();
+    state.set_show_tasks(true);
+    state.set_show_clipboard(true);
+    state.set_side_panel(SidePanel::Clipboard);
+    state.set_expanded(true);
+    let clip = h.island.global::<ClipboardState>();
+    clip.set_ready(true);
+    clip.set_capture_on(true);
+    clip.set_show_intro(false);
+    clip.set_status("Remembering copied text · 6 entries".into());
+    clip.set_history_count(4);
+    let rows = crate::app::clipboard::build_rows(&sample_clips(), true, CLIP_NOW);
+    clip.set_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+    clip.set_selected(-1);
+}
+
+#[test]
+fn clipboard_shelf_renders_in_every_appearance() {
+    use crate::ui::{ClipboardState, SidePanel};
+    let h = clipboard_harness(Appearance::Midnight);
+    let midnight = h.render_on(wallpaper);
+    save(&midnight, "clipboard-midnight");
+    // The shelf takes the tasks box's place: same window, same box.
+    assert_eq!((midnight.width(), midnight.height()), (890, 340));
+    for (appearance, name) in [(Appearance::SmokedGlass, "glass"), (Appearance::LiquidGlass, "liquid")] {
+        set_appearance(&h, appearance);
+        let image = h.render_on(wallpaper);
+        save(&image, &format!("clipboard-{name}"));
+        assert_ne!(image, midnight);
+    }
+    set_appearance(&h, Appearance::Midnight);
+
+    // The keyboard selection is drawn.
+    let clip = h.island.global::<ClipboardState>();
+    // Row 5: the first recent entry, after three headers and two entries, below the
+    // visible part of the list: the list scrolls to it.
+    clip.set_selected_top(26.0 * 3.0 + 56.0 * 2.0);
+    clip.set_selected(5);
+    let selected = h.render_on(wallpaper);
+    save(&selected, "clipboard-selected");
+    assert_ne!(selected, midnight);
+    clip.set_selected(-1);
+
+    // Switching back to Tasks shows the tasks box, and back again the shelf.
+    h.state().set_side_panel(SidePanel::Tasks);
+    let tasks = h.render_on(wallpaper);
+    assert_ne!(tasks, midnight);
+    h.state().set_side_panel(SidePanel::Clipboard);
+    assert_eq!(h.render_on(wallpaper), midnight);
+
+    // Without Tasks, the shelf still has its box.
+    h.state().set_show_tasks(false);
+    let alone = h.render_on(wallpaper);
+    save(&alone, "clipboard-alone");
+    assert_eq!((alone.width(), alone.height()), (890, 340));
+    // Without either, the island is exactly the original.
+    h.state().set_show_clipboard(false);
+    let plain = h.render();
+    assert_eq!((plain.width(), plain.height()), (480, 270));
+}
+
+#[test]
+fn clipboard_states_render() {
+    use crate::ui::{ClipboardState, SnippetForm};
+    let h = clipboard_harness(Appearance::LiquidGlass);
+    let clip = h.island.global::<ClipboardState>();
+
+    // First use: the explanation, before any clipboard text is read.
+    clip.set_show_intro(true);
+    clip.set_capture_on(false);
+    clip.set_rows(slint::ModelRc::new(slint::VecModel::from(Vec::<crate::ui::ClipRow>::new())));
+    let intro = h.render_on(wallpaper);
+    save(&intro, "clipboard-intro-liquid");
+    set_appearance(&h, Appearance::Midnight);
+    save(&h.render_on(wallpaper), "clipboard-intro-midnight");
+
+    // Empty, with capture off.
+    clip.set_show_intro(false);
+    clip.set_status("Capture off · 0 entries".into());
+    clip.set_empty_title("Nothing here yet".into());
+    clip.set_empty_detail("Save snippets with +. Turn on capture in the menu to remember copied text.".into());
+    let empty = h.render_on(wallpaper);
+    save(&empty, "clipboard-empty");
+    assert_ne!(empty, intro);
+
+    // The snippet editor.
+    clip.set_form(SnippetForm {
+        id: 2,
+        title: "Email sign-off".into(),
+        content: "Best regards,\nShreyan Bag".into(),
+        description: "For work email".into(),
+    });
+    clip.set_editing(true);
+    let editor = h.render_on(wallpaper);
+    save(&editor, "clipboard-editor");
+    assert_ne!(editor, empty);
+    clip.set_editing(false);
+
+    // A transient notice replaces the status line.
+    fill_clipboard(&h);
+    let normal = h.render_on(wallpaper);
+    clip.set_notice("Not kept: it looked like a password or key.".into());
+    let notice = h.render_on(wallpaper);
+    save(&notice, "clipboard-notice");
+    assert_ne!(notice, normal);
+}
+
+#[test]
+fn clipboard_rows_scale_with_the_display() {
+    let h = Harness::new(1.5);
+    set_appearance(&h, Appearance::SmokedGlass);
+    fill_clipboard(&h);
+    let image = h.render_on(wallpaper);
+    save(&image, "clipboard-glass-150");
+    assert_eq!((image.width(), image.height()), (1335, 510));
 }
