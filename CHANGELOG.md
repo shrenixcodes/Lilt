@@ -6,6 +6,15 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-16
+
+### Added
+
+- Media controls in the compact island for pausing or resuming playback and skipping to
+  the next track.
+- An update check in the expanded island that compares the installed build with the
+  latest commit on `main` and opens GitHub when an update is available.
+
 ## [0.3.0] - 2026-11-15
 
 ### Added
