@@ -5,6 +5,7 @@ import { MediaPlayer } from "media-player.slint";
 import { SystemTile, SystemPage } from "system-monitor.slint";
 import { CalendarTile, CalendarPage } from "calendar.slint";
 import { QuickActions } from "quick-actions.slint";
+import { SoundPanel, BrightnessPanel, BluetoothPanel, WifiPanel } from "quick-panels.slint";
 
 // Content of the expanded island.
 export component ExpandedView inherits Rectangle {
@@ -40,8 +41,13 @@ export component ExpandedView inherits Rectangle {
 
             if AppState.show-actions: QuickActions {
                 width: 144px;
+                // The first four open a pop-up with the controls; the rest launch apps.
                 activate(index) => {
-                    AppActions.quick-action(index);
+                    if index < 4 {
+                        AppState.page = [Page.sound, Page.brightness, Page.bluetooth, Page.wifi][index];
+                    } else {
+                        AppActions.quick-action(index);
+                    }
                 }
             }
         }
@@ -70,6 +76,26 @@ export component ExpandedView inherits Rectangle {
 
     if AppState.page == Page.calendar: CalendarPage {
         padding: Theme.padding;
+    }
+
+    if AppState.page == Page.sound: SoundPanel {
+        padding: Theme.padding;
+        padding-bottom: 8px;
+    }
+
+    if AppState.page == Page.brightness: BrightnessPanel {
+        padding: Theme.padding;
+        padding-bottom: 8px;
+    }
+
+    if AppState.page == Page.bluetooth: BluetoothPanel {
+        padding: Theme.padding;
+        padding-bottom: 8px;
+    }
+
+    if AppState.page == Page.wifi: WifiPanel {
+        padding: Theme.padding;
+        padding-bottom: 8px;
     }
 
     if AppState.page == Page.system: SystemPage {

@@ -65,7 +65,10 @@ export component Island inherits Window {
         + (AppState.show-media && root.tiles ? 10px : 0)
         + (root.tiles ? 108px : 0)
         + (!AppState.show-media && !root.tiles ? 64px : 0);
-    out property <length> expanded-height: AppState.page == Page.dashboard ? root.dashboard-height : max(root.dashboard-height, 214px);
+    // Quick-control pop-ups need room for a short list.
+    out property <length> expanded-height: AppState.page == Page.dashboard ? root.dashboard-height
+        : AppState.page == Page.calendar || AppState.page == Page.system ? max(root.dashboard-height, 214px)
+        : 250px;
     property <length> activity-width: 340px;
 
     property <bool> media-mode: AppState.show-media && AppState.media.availability == MediaAvailability.active;

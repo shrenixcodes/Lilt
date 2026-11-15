@@ -3,6 +3,7 @@
 
 mod calendar;
 pub(crate) mod clipboard;
+pub(crate) mod controls;
 mod glass;
 mod media;
 mod preferences;
@@ -15,7 +16,10 @@ use std::time::Duration;
 
 use slint::ComponentHandle;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
+use windows::Win32::System::Com::{
+    COINIT_APARTMENTTHREADED, CoInitializeEx, CoInitializeSecurity, EOAC_NONE, RPC_C_AUTHN_LEVEL_DEFAULT,
+    RPC_C_IMP_LEVEL_IMPERSONATE,
+};
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows::Win32::UI::Shell::{
     ABM_NEW, ABM_REMOVE, ABN_FULLSCREENAPP, APPBARDATA, QUNS_BUSY, QUNS_PRESENTATION_MODE,
@@ -82,6 +86,7 @@ pub struct App {
     window_blur: Cell<bool>,
     tasks: Rc<tasks::TasksController>,
     clipboard: clipboard::ClipboardController,
+    controls: controls::ControlsController,
     /// Liquid Glass's backdrop sampling.
     glass: glass::GlassSampler,
 }
@@ -126,6 +131,24 @@ impl Drop for AppBar {
 pub fn run() -> Result<(), slint::PlatformError> {
     // Shell dialogs (the calendar file picker) require a single-threaded apartment.
     let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    // Process-wide COM security, once, before any COM call leaves the process: Windows'
+    // defaults with impersonation allowed, which WMI's brightness classes require
+    // (src/controls/display.rs). The same settings PowerShell and most tools use.
+    if let Err(err) = unsafe {
+        CoInitializeSecurity(
+            None,
+            -1,
+            None,
+            None,
+            RPC_C_AUTHN_LEVEL_DEFAULT,
+            RPC_C_IMP_LEVEL_IMPERSONATE,
+            None,
+            EOAC_NONE,
+            None,
+        )
+    } {
+        tracing::warn!(%err, "COM security could not be set; brightness control may be unavailable");
+    }
     window::install()?;
     window::create_next_as(WindowKind::Island);
     let island = Island::new()?;
@@ -170,6 +193,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         window_blur: Cell::new(false),
         tasks,
         clipboard: clipboard::ClipboardController::new(crate::clipboard::store::default_path()),
+        controls: controls::ControlsController::default(),
         glass: glass::GlassSampler::default(),
     });
     CURRENT.with(|c| *c.borrow_mut() = Rc::downgrade(&app));
@@ -179,6 +203,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
     App::connect_preferences(&app);
     App::connect_tasks(&app);
     App::connect_clipboard(&app);
+    App::connect_controls(&app);
     App::refresh_clock(&app);
     app.tray.set_light_taskbar(light_taskbar());
 
@@ -201,6 +226,8 @@ pub fn run() -> Result<(), slint::PlatformError> {
     app.media.replace(None);
     // Stops clipboard notifications and the clipboard worker.
     app.clipboard.stop();
+    // Stops the quick-controls worker and its Wi-Fi notifications.
+    app.stop_controls();
     Ok(())
 }
 
@@ -404,7 +431,7 @@ impl App {
     fn schedule_collapse(app: &Rc<Self>) {
         let general = app.settings.borrow().general.clone();
         // Never while a task, a search or a snippet is being typed or edited.
-        if !general.auto_collapse || app.tasks.busy.get() || app.clipboard.busy.get() {
+        if !general.auto_collapse || app.tasks.busy.get() || app.clipboard.busy.get() || app.controls.busy.get() {
             return;
         }
         let weak = Rc::downgrade(app);

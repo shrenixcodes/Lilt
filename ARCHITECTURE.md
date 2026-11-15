@@ -54,6 +54,15 @@ WinRT raises change events on thread-pool threads; their handlers only send a me
 to this thread, which reads the new state, decodes artwork, extracts its palette and
 posts the result to the UI thread. Between events it blocks on a channel.
 
+**Controls thread.** Started the first time a quick-control pop-up opens. It owns the
+Native Wifi handle (whose notifications arrive on Windows thread-pool threads and are
+forwarded to it), and makes every call for the pop-ups: radios, Wi-Fi networks and
+connections, paired Bluetooth devices (`Windows.Devices.Enumeration` association
+endpoints), Bluetooth audio connect and disconnect (`KSPROPSETID_BtAudio` one-shot
+requests to the driver behind the device's audio endpoint), volume (Core Audio) and
+brightness (WMI). While a pop-up is open the UI thread asks it to read that pop-up's
+state again every 2 to 10 seconds; when the pop-up closes, nothing runs.
+
 **Clipboard thread.** Started the first time the clipboard shelf is shown or capture is
 turned on. It owns the clipboard database. While capture is on, the control window is
 registered with `AddClipboardFormatListener`; each `WM_CLIPBOARDUPDATE` only sends a
@@ -85,6 +94,8 @@ media thread.
 | `src/settings/` | Versioned settings document, validation, migration and atomic saving |
 | `src/clock.rs`, `src/hotkey.rs`, `src/startup.rs`, `src/actions.rs`, `src/dialogs.rs` | Clock text, global shortcut, start-with-Windows, quick actions, file dialog |
 | `src/fonts.rs` | Registers the bundled fonts with Slint at start-up |
+| `src/controls/` | The quick-control pop-ups' Windows calls: Wi-Fi, radios, Bluetooth, audio, brightness, and their worker thread |
+| `src/app/controls.rs` | The pop-ups' controller: opening, refreshing, actions |
 | `src/clipboard/` | The clipboard shelf: classification and secret checks, capture (`capture.rs`), the SQLite store and the worker thread |
 | `src/app/clipboard.rs` | The shelf's controller: listing, selection, copy back, snippets and capture settings |
 | `src/snapshots.rs` | Headless UI tests |

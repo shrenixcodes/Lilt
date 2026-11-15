@@ -74,4 +74,13 @@ choose, the settings, tasks, clipboard shelf and logs.
     on load. Invalid files are backed up and replaced by defaults.
 - Quick actions open fixed Windows Settings pages and built-in tools only; no command
   line from settings or other input is ever executed.
+- The quick-control pop-ups change only what they show: the default output's volume
+  and mute, the built-in screen's brightness (WMI), the Wi-Fi and Bluetooth radios
+  (`Windows.Devices.Radios`), Wi-Fi connections (Native Wifi) and Bluetooth audio
+  connections. A Wi-Fi password typed into Lilt is written into a Windows Wi-Fi profile,
+  as Windows' own flyout does, and is not kept, logged or sent anywhere by Lilt; the
+  profile is deleted again if the first connection fails. Network names and device
+  names are read only while a pop-up is open and are not stored or logged.
+- Lilt sets COM's process-wide security once at start-up to Windows' defaults with
+  impersonation allowed, which WMI requires for the brightness classes.
 - No credentials are stored, and none are needed.

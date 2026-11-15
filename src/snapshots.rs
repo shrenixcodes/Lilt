@@ -1471,3 +1471,82 @@ fn clipboard_rows_scale_with_the_display() {
     save(&image, "clipboard-glass-150");
     assert_eq!((image.width(), image.height()), (1335, 510));
 }
+
+// --- Quick-control pop-ups -----------------------------------------------------------
+
+fn fill_controls(h: &Harness) {
+    use crate::ui::{ControlsState, DeviceRow, NetworkRow};
+    let c = h.island.global::<ControlsState>();
+    c.set_loading(false);
+    c.set_wifi_available(true);
+    c.set_wifi_radio(1);
+    let network = |ssid: &str, bars, secured, connected, saved| NetworkRow {
+        ssid: ssid.into(),
+        bars,
+        secured,
+        connected,
+        saved,
+        joinable: true,
+    };
+    c.set_networks(slint::ModelRc::new(slint::VecModel::from(vec![
+        network("Home 5G", 4, true, true, true),
+        network("Office", 3, true, false, true),
+        network("Cafe Guest", 2, false, false, false),
+        network("Neighbour", 1, true, false, false),
+    ])));
+    c.set_bluetooth_radio(1);
+    c.set_devices(slint::ModelRc::new(slint::VecModel::from(vec![
+        DeviceRow { name: "WH-1000XM4".into(), address: "a".into(), connected: true, can_connect: true },
+        DeviceRow { name: "Galaxy Buds".into(), address: "b".into(), connected: false, can_connect: true },
+        DeviceRow { name: "MX Master 3".into(), address: "c".into(), connected: false, can_connect: false },
+    ])));
+    c.set_sound_available(true);
+    c.set_volume(0.62);
+    c.set_output_name("Speakers (Realtek(R) Audio)".into());
+    c.set_brightness_available(true);
+    c.set_brightness(0.8);
+}
+
+#[test]
+fn quick_control_popups_render() {
+    use crate::ui::{ControlsState, Page};
+    let h = Harness::new(1.0);
+    h.state().set_expanded(true);
+    fill_controls(&h);
+    let dashboard = h.render_on(wallpaper);
+    for (appearance, mode) in
+        [(Appearance::Midnight, "midnight"), (Appearance::SmokedGlass, "glass"), (Appearance::LiquidGlass, "liquid")]
+    {
+        set_appearance(&h, appearance);
+        for (page, name) in [
+            (Page::Wifi, "wifi"),
+            (Page::Bluetooth, "bluetooth"),
+            (Page::Sound, "sound"),
+            (Page::Brightness, "brightness"),
+        ] {
+            h.state().set_page(page);
+            let image = h.render_on(wallpaper);
+            save(&image, &format!("controls-{name}-{mode}"));
+            assert_ne!(image, dashboard, "{name} in {mode}");
+        }
+    }
+    set_appearance(&h, Appearance::Midnight);
+    let c = h.island.global::<ControlsState>();
+    // A password field opens under a new secured network.
+    h.state().set_page(Page::Wifi);
+    let list = h.render_on(wallpaper);
+    c.set_wifi_password_for("Neighbour".into());
+    let asking = h.render_on(wallpaper);
+    save(&asking, "controls-wifi-password");
+    assert_ne!(asking, list);
+    c.set_wifi_password_for("".into());
+    // Radios off and no adapter say so.
+    c.set_wifi_radio(0);
+    save(&h.render_on(wallpaper), "controls-wifi-off");
+    h.state().set_page(Page::Brightness);
+    c.set_brightness_available(false);
+    save(&h.render_on(wallpaper), "controls-brightness-unavailable");
+    // Collapsing returns to the dashboard.
+    h.state().set_page(Page::Dashboard);
+    assert_eq!(h.render_on(wallpaper), dashboard);
+}

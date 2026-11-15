@@ -58,6 +58,33 @@ export enum Page {
     dashboard,
     calendar,
     system,
+    // The quick-control pop-ups, opened from the quick actions tile.
+    sound,
+    brightness,
+    bluetooth,
+    wifi,
+}
+
+// A Wi-Fi network in the Wi-Fi pop-up.
+export struct NetworkRow {
+    ssid: string,
+    // 1 to 4 bars.
+    bars: int,
+    secured: bool,
+    connected: bool,
+    // Windows has a saved profile (password) for it.
+    saved: bool,
+    // Lilt can join it (open, or a personal password); others need Windows' settings.
+    joinable: bool,
+}
+
+// A paired Bluetooth device in the Bluetooth pop-up.
+export struct DeviceRow {
+    name: string,
+    address: string,
+    connected: bool,
+    // Lilt can connect or disconnect it (headphones and speakers).
+    can-connect: bool,
 }
 
 // Where the tasks box sits next to the expanded island.

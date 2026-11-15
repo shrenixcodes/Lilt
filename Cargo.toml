@@ -13,6 +13,8 @@ image = { version = "0.25", default-features = false, features = ["bmp", "jpeg",
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# WinRT collections, for device queries; already part of the `windows` crate's tree.
+windows-collections = "0.3"
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-software", "software-renderer-systemfonts", "system-tray", "unstable-fontique-011"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
@@ -21,6 +23,8 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["f
 [dependencies.windows]
 version = "0.62"
 features = [
+    "Devices_Enumeration",
+    "Devices_Radios",
     "Foundation",
     "Foundation_Collections",
     "Media_Control",
@@ -49,6 +53,15 @@ features = [
     "Win32_UI_Shell",
     "Win32_UI_Shell_Common",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Wmi",
+    "Win32_System_Variant",
+    "Win32_NetworkManagement_WiFi",
+    "Win32_Media_KernelStreaming",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_Media_Audio",
+    "Win32_Devices_FunctionDiscovery",
 ]
 
 [build-dependencies]

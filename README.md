@@ -46,8 +46,11 @@ megabytes of memory and no measurable CPU or GPU time.
   snippets you save by hand, in the box next to the expanded island. Remembering copied
   text is optional and off until you turn it on; it skips likely passwords and keys and
   copies from password managers, and everything stays on this PC.
-- **Quick actions.** One click to sound, display and brightness, Bluetooth and Wi-Fi
-  settings, Windows Settings, the Snipping Tool, Task Manager and File Explorer.
+- **Quick controls.** Volume, brightness, Bluetooth and Wi-Fi open small pop-ups in the
+  island: change the volume or mute, set the screen's brightness, turn Bluetooth or
+  Wi-Fi on and off, connect to a network (typing its password if it is new), and connect
+  or disconnect Bluetooth headphones and speakers. The other buttons open Windows
+  Settings, the Snipping Tool, Task Manager and File Explorer.
 - **Settings.** Appearance, widgets, sizes, display and position, ambient colour,
   motion, a low-power mode, start with Windows and a global shortcut.
 
@@ -164,6 +167,30 @@ task is shown as *Focus now*.
 Completing a task ticks it at once and updates the counts; it leaves the list a moment
 later, and **Undo** brings it back. Completed tasks stay in **Done**, grouped by day and
 searchable, until you restore or delete them.
+
+### Quick controls
+
+The first row of the quick actions tile opens pop-ups over the expanded island; the
+**×** closes them, and the link at the bottom opens the matching page of Windows
+Settings for anything more.
+
+- **Volume:** the default output's level and mute.
+- **Brightness:** built-in laptop and tablet screens. External monitors usually only
+  change brightness with their own buttons, and the pop-up says so.
+- **Bluetooth:** the on/off switch and your paired devices with their connection state.
+  Headphones and speakers get **Connect** and **Disconnect** when Windows lists their
+  Bluetooth audio driver, through the reconnect and disconnect requests that driver
+  accepts; otherwise connect them in Windows' settings. Mice, keyboards and similar
+  devices connect by themselves when you use them. Pairing a new device happens in
+  Windows' settings.
+- **Wi-Fi:** the on/off switch and the networks in range, strongest first. Click a saved
+  or open network to connect; a new secured network asks for its password, which goes
+  straight into a Windows Wi-Fi profile, just as when you join from Windows' own
+  flyout. If the connection fails, that profile is removed again. Enterprise networks
+  that need a user name are joined in Windows' settings.
+
+If Windows refuses to switch a radio (for example when *Let apps control device radios*
+is off in Privacy & security), the pop-up says so.
 
 ### Clipboard shelf
 

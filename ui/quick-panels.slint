@@ -1,0 +1,598 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState, ControlsState, ControlsActions } from "state.slint";
+import { DeviceRow, NetworkRow, Page } from "types.slint";
+import { Icon, Icons } from "components/icon.slint";
+import { IconButton, TextButton } from "components/controls.slint";
+import { Heading } from "components/heading.slint";
+
+// The pop-ups behind the Sound, Brightness, Bluetooth and Wi-Fi quick actions. They
+// open over the expanded island and change the setting directly; "More settings" opens
+// the matching Windows Settings page. All data comes from ControlsState.
+
+// An on/off switch drawn in the island's style.
+component Toggle inherits Rectangle {
+    in property <bool> on;
+    in property <string> label;
+    callback toggled(bool);
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+    background: root.on ? Theme.accent : Theme.track;
+    animate background { duration: Theme.hover-duration; }
+    accessible-role: switch;
+    accessible-label: root.label;
+    accessible-checkable: true;
+    accessible-checked: root.on;
+    accessible-action-default => { root.toggled(!root.on); }
+
+    Rectangle {
+        x: root.on ? parent.width - self.width - 3px : 3px;
+        y: 3px;
+        width: 14px;
+        height: 14px;
+        border-radius: 7px;
+        background: root.on ? Theme.text-on-light : Theme.text-secondary;
+        animate x { duration: Theme.hover-duration * Theme.motion; easing: ease-out; }
+    }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(!root.on); }
+    }
+}
+
+// A level from 0 to 1 that can be dragged, clicked or changed with the arrow keys.
+component Level inherits Rectangle {
+    in property <float> value;
+    in property <string> label;
+    callback changed(float);
+    property <float> shown: root.value;
+    // Dragging sets `shown` directly; later readings from Windows move it again.
+    changed value => {
+        root.shown = root.value;
+    }
+    height: 24px;
+    accessible-role: slider;
+    accessible-label: root.label;
+    accessible-value: round(root.shown * 100) + " %";
+    accessible-value-minimum: 0;
+    accessible-value-maximum: 100;
+
+    function set(v: float) {
+        root.shown = clamp(v, 0, 1);
+        root.changed(root.shown);
+    }
+
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: 6px;
+        border-radius: 3px;
+        background: Theme.track;
+
+        Rectangle {
+            x: 0;
+            width: parent.width * clamp(root.shown, 0, 1);
+            border-radius: 3px;
+            background: Theme.accent;
+        }
+    }
+
+    Rectangle {
+        x: (parent.width - self.width) * clamp(root.shown, 0, 1);
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        background: Theme.text;
+        border-width: keys.has-focus ? 2px : 0px;
+        border-color: Theme.accent;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                keys.focus();
+                root.set(self.mouse-x / root.width);
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.set(self.mouse-x / root.width);
+            }
+        }
+    }
+
+    keys := FocusScope {
+        width: 0;
+        height: 0;
+        key-pressed(event) => {
+            if event.text == Key.RightArrow || event.text == Key.UpArrow {
+                root.set(root.shown + 0.05);
+                return accept;
+            }
+            if event.text == Key.LeftArrow || event.text == Key.DownArrow {
+                root.set(root.shown - 0.05);
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// Title, an optional on/off switch, a close button, the content, and a link to Windows.
+component Panel inherits VerticalLayout {
+    in property <string> title;
+    in property <string> settings-label: "More settings";
+    in property <int> kind;
+    in property <bool> has-toggle;
+    in property <bool> on;
+    callback toggled(bool);
+
+    spacing: 8px;
+
+    HorizontalLayout {
+        height: 30px;
+        spacing: 8px;
+
+        Heading {
+            horizontal-stretch: 1;
+            text: root.title;
+            size: Theme.font-lg;
+            color: Theme.text;
+        }
+
+        if root.has-toggle : VerticalLayout {
+            alignment: center;
+
+            Toggle {
+                on: root.on;
+                label: root.title;
+                toggled(on) => { root.toggled(on); }
+            }
+        }
+
+        IconButton {
+            icon: Icons.close;
+            tooltip: "Close";
+            tint: Theme.text-secondary;
+            clicked => { AppState.page = Page.dashboard; }
+        }
+    }
+
+    @children
+
+    HorizontalLayout {
+        height: 22px;
+        spacing: 8px;
+
+        Text {
+            horizontal-stretch: 1;
+            text: ControlsState.message;
+            font-size: 10.5px;
+            color: Theme.text-secondary;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: root.settings-label;
+            font-size: 11px;
+            color: link.has-hover ? Theme.text : Theme.text-secondary;
+            vertical-alignment: center;
+            accessible-role: button;
+            accessible-label: root.settings-label;
+            accessible-action-default => { ControlsActions.more-settings(root.kind); }
+
+            link := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { ControlsActions.more-settings(root.kind); }
+            }
+        }
+    }
+}
+
+component Centered inherits VerticalLayout {
+    in property <string> text;
+    vertical-stretch: 1;
+    alignment: center;
+
+    Text {
+        horizontal-alignment: center;
+        text: root.text;
+        font-size: Theme.font-sm;
+        color: Theme.text-secondary;
+        wrap: word-wrap;
+    }
+}
+
+component LevelRow inherits HorizontalLayout {
+    in property <string> icon;
+    in property <string> icon-label;
+    in property <float> value;
+    in property <bool> dimmed;
+    callback icon-clicked();
+    callback changed(float);
+    spacing: 10px;
+    height: 36px;
+
+    IconButton {
+        icon: root.icon;
+        tooltip: root.icon-label;
+        tint: root.dimmed ? Theme.text-tertiary : Theme.text;
+        clicked => { root.icon-clicked(); }
+    }
+
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+
+        Level {
+            value: root.value;
+            label: root.icon-label;
+            changed(v) => { root.changed(v); }
+        }
+    }
+
+    Text {
+        width: 40px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        text: round(root.value * 100) + " %";
+        font-size: Theme.font-sm;
+        color: Theme.text-secondary;
+    }
+}
+
+export component SoundPanel inherits Panel {
+    title: "Sound";
+    settings-label: "Sound settings";
+    kind: 0;
+
+    init => { ControlsActions.opened(0); }
+
+    if !ControlsState.loading && !ControlsState.sound-available : Centered {
+        text: "No audio output is available.";
+    }
+
+    if ControlsState.sound-available : VerticalLayout {
+        vertical-stretch: 1;
+        alignment: center;
+        spacing: 6px;
+
+        Text {
+            text: ControlsState.output-name;
+            font-size: Theme.font-sm;
+            color: Theme.text-secondary;
+            overflow: elide;
+        }
+
+        LevelRow {
+            icon: ControlsState.muted ? Icons.volume-off : Icons.volume;
+            icon-label: ControlsState.muted ? "Unmute" : "Mute";
+            value: ControlsState.volume;
+            dimmed: ControlsState.muted;
+            icon-clicked => { ControlsActions.set-muted(!ControlsState.muted); }
+            changed(v) => { ControlsActions.set-volume(v); }
+        }
+    }
+}
+
+export component BrightnessPanel inherits Panel {
+    title: "Brightness";
+    settings-label: "Display settings";
+    kind: 1;
+
+    init => { ControlsActions.opened(1); }
+
+    if !ControlsState.loading && !ControlsState.brightness-available : Centered {
+        text: "This screen's brightness can't be changed from Lilt. External monitors usually use their own buttons.";
+    }
+
+    if ControlsState.brightness-available : VerticalLayout {
+        vertical-stretch: 1;
+        alignment: center;
+
+        LevelRow {
+            icon: Icons.sun;
+            icon-label: "Brightness";
+            value: ControlsState.brightness;
+            changed(v) => { ControlsActions.set-brightness(v); }
+        }
+    }
+}
+
+component Bars inherits HorizontalLayout {
+    in property <int> bars;
+    spacing: 2px;
+    alignment: end;
+    width: 18px;
+    height: 14px;
+
+    for level in [1, 2, 3, 4] : Rectangle {
+        y: parent.height - self.height;
+        width: 3px;
+        height: 3px + level * 2.75px;
+        border-radius: 1px;
+        background: level <= root.bars ? Theme.text : Theme.track;
+    }
+}
+
+component NetworkItem inherits Rectangle {
+    in property <NetworkRow> network;
+    property <bool> asking: ControlsState.wifi-password-for == root.network.ssid;
+    property <bool> connecting: ControlsState.wifi-connecting == root.network.ssid;
+    height: root.asking ? 76px : 40px;
+    border-radius: Theme.control-radius + 2px;
+    background: touch.has-hover || root.asking ? Theme.tile : transparent;
+    accessible-role: list-item;
+    accessible-label: root.network.ssid;
+    accessible-description: (root.network.connected ? "Connected, " : "") + (root.network.secured ? "secured" : "open")
+        + ", signal " + root.network.bars + " of 4";
+
+    function join() {
+        if root.network.connected || root.connecting {
+            return;
+        }
+        if root.network.joinable && root.network.secured && !root.network.saved {
+            ControlsState.wifi-password-for = root.network.ssid;
+        } else if root.network.joinable || root.network.saved {
+            ControlsActions.join(root.network.ssid, "");
+        } else {
+            ControlsActions.more-settings(3);
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.join(); }
+    }
+
+    HorizontalLayout {
+        y: 0;
+        height: 40px;
+        padding-left: 10px;
+        padding-right: 6px;
+        spacing: 10px;
+
+        VerticalLayout {
+            alignment: center;
+
+            Bars {
+                bars: root.network.bars;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+
+            Text {
+                text: root.network.ssid;
+                font-size: Theme.font-md;
+                color: Theme.text;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.connecting ? "Connecting…"
+                    : root.network.connected ? "Connected"
+                    : !root.network.joinable && !root.network.saved ? "Join in Windows settings"
+                    : root.network.saved ? "Saved" : root.network.secured ? "Secured" : "Open";
+                font-size: 10.5px;
+                color: root.network.connected ? Theme.accent : Theme.text-secondary;
+            }
+        }
+
+        if root.network.secured : VerticalLayout {
+            alignment: center;
+
+            Icon {
+                data: Icons.lock;
+                size: 11px;
+                color: Theme.text-tertiary;
+            }
+        }
+
+        if root.network.connected : VerticalLayout {
+            alignment: center;
+
+            TextButton {
+                height: 26px;
+                text: "Disconnect";
+                clicked => { ControlsActions.disconnect-wifi(); }
+            }
+        }
+    }
+
+    if root.asking : HorizontalLayout {
+        x: 10px;
+        y: 42px;
+        width: parent.width - 16px;
+        height: 28px;
+        spacing: 6px;
+
+        Rectangle {
+            horizontal-stretch: 1;
+            border-radius: 7px;
+            background: Theme.tile;
+            border-width: 1px;
+            border-color: password.has-focus ? Theme.text-secondary : Theme.border;
+
+            if password.text == "" : Text {
+                x: 8px;
+                text: "Password";
+                font-size: 11.5px;
+                color: Theme.text-tertiary;
+                vertical-alignment: center;
+            }
+
+            password := TextInput {
+                x: 8px;
+                width: parent.width - 16px;
+                input-type: InputType.password;
+                single-line: true;
+                font-size: 11.5px;
+                color: Theme.text;
+                vertical-alignment: center;
+                accessible-label: "Password for " + root.network.ssid;
+                init => { self.focus(); }
+                changed has-focus => { ControlsActions.busy(self.has-focus); }
+                accepted => {
+                    ControlsActions.join(root.network.ssid, self.text);
+                    self.text = "";
+                    ControlsState.wifi-password-for = "";
+                }
+            }
+        }
+
+        TextButton {
+            height: 28px;
+            text: "Cancel";
+            clicked => {
+                password.text = "";
+                ControlsState.wifi-password-for = "";
+            }
+        }
+
+        TextButton {
+            height: 28px;
+            text: "Connect";
+            clicked => {
+                ControlsActions.join(root.network.ssid, password.text);
+                password.text = "";
+                ControlsState.wifi-password-for = "";
+            }
+        }
+    }
+}
+
+export component WifiPanel inherits Panel {
+    title: "Wi-Fi";
+    settings-label: "Wi-Fi settings";
+    kind: 3;
+    has-toggle: ControlsState.wifi-available && ControlsState.wifi-radio >= 0;
+    on: ControlsState.wifi-radio == 1;
+    toggled(on) => { ControlsActions.set-radio(3, on); }
+
+    init => { ControlsActions.opened(3); }
+
+    if !ControlsState.loading && !ControlsState.wifi-available : Centered {
+        text: "This PC has no Wi-Fi adapter.";
+    }
+
+    if ControlsState.wifi-available && ControlsState.wifi-radio == 0 : Centered {
+        text: "Wi-Fi is off.";
+    }
+
+    if ControlsState.wifi-available && ControlsState.wifi-radio != 0 && ControlsState.networks.length == 0 : Centered {
+        text: ControlsState.loading ? "Looking for networks…" : "No networks found.";
+    }
+
+    if ControlsState.wifi-available && ControlsState.wifi-radio != 0 && ControlsState.networks.length > 0 : ListView {
+        vertical-stretch: 1;
+
+        for network in ControlsState.networks : Rectangle {
+            height: item.height + 2px;
+
+            item := NetworkItem {
+                y: 1px;
+                network: network;
+            }
+        }
+    }
+}
+
+component DeviceItem inherits Rectangle {
+    in property <DeviceRow> device;
+    height: 40px;
+    border-radius: Theme.control-radius + 2px;
+    background: touch.has-hover ? Theme.tile : transparent;
+    accessible-role: list-item;
+    accessible-label: root.device.name;
+    accessible-description: root.device.connected ? "Connected" : "Paired";
+
+    touch := TouchArea { }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 6px;
+        spacing: 10px;
+
+        VerticalLayout {
+            alignment: center;
+
+            Icon {
+                data: Icons.bluetooth;
+                size: 14px;
+                color: root.device.connected ? Theme.accent : Theme.text-secondary;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+
+            Text {
+                text: root.device.name;
+                font-size: Theme.font-md;
+                color: Theme.text;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.device.connected ? "Connected" : "Paired";
+                font-size: 10.5px;
+                color: root.device.connected ? Theme.accent : Theme.text-secondary;
+            }
+        }
+
+        if root.device.can-connect : VerticalLayout {
+            alignment: center;
+
+            TextButton {
+                height: 26px;
+                text: root.device.connected ? "Disconnect" : "Connect";
+                clicked => { ControlsActions.connect-device(root.device.address, root.device.name, !root.device.connected); }
+            }
+        }
+    }
+}
+
+export component BluetoothPanel inherits Panel {
+    title: "Bluetooth";
+    settings-label: "Add or manage devices";
+    kind: 2;
+    has-toggle: ControlsState.bluetooth-radio >= 0;
+    on: ControlsState.bluetooth-radio == 1;
+    toggled(on) => { ControlsActions.set-radio(2, on); }
+
+    init => { ControlsActions.opened(2); }
+
+    if !ControlsState.loading && ControlsState.bluetooth-radio < 0 : Centered {
+        text: "This PC has no Bluetooth radio.";
+    }
+
+    if ControlsState.bluetooth-radio == 0 : Centered {
+        text: "Bluetooth is off.";
+    }
+
+    if ControlsState.bluetooth-radio == 1 && ControlsState.devices.length == 0 : Centered {
+        text: ControlsState.loading ? "Looking for paired devices…" : "No paired devices. Pair one in Windows settings.";
+    }
+
+    if ControlsState.bluetooth-radio == 1 && ControlsState.devices.length > 0 : ListView {
+        vertical-stretch: 1;
+
+        for device in ControlsState.devices : Rectangle {
+            height: 42px;
+
+            DeviceItem {
+                y: 1px;
+                height: 40px;
+                device: device;
+            }
+        }
+    }
+}

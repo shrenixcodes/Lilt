@@ -212,6 +212,9 @@ hidden or behind a full-screen application.
   the box is first shown, so people who do not use Tasks pay nothing for it.
 - The glass appearances with music playing and while toggling, measured on an idle PC,
   the cost of each screen read, and Smoked Glass in every scenario.
+- Connecting Bluetooth headphones from the Bluetooth pop-up: the development PC's
+  paired devices exposed no Bluetooth audio driver, so the Connect button could not be
+  tried there.
 - The CPU cost of capturing one copy on an unlocked desktop, and the shelf with a
   search typed into it.
 - The settings window: it is created only while open and released when closed.

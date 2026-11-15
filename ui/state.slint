@@ -1,5 +1,5 @@
 import {
-    AgendaEntry, ArchiveRow, CalendarState, ClipFilter, ClipRow, MediaInfo, Page, SidePanel, SnippetForm, SyncStatus, SystemInfo,
+    AgendaEntry, ArchiveRow, CalendarState, ClipFilter, ClipRow, DeviceRow, MediaInfo, NetworkRow, Page, SidePanel, SnippetForm, SyncStatus, SystemInfo,
     TaskForm, TaskRow, TaskView, TasksLayout,
 } from "types.slint";
 
@@ -194,6 +194,51 @@ export global TasksActions {
     pure callback day-label(int) -> string;
     // Whether text is a valid time of day such as 17:30 or 5:30 pm.
     pure callback time-valid(string) -> bool;
+}
+
+// The quick-control pop-ups (Sound, Brightness, Bluetooth, Wi-Fi), published by the Rust
+// side while one is open.
+export global ControlsState {
+    // Nothing has been read yet for the open pop-up.
+    in property <bool> loading: true;
+    // A short message in the open pop-up, such as a failed connection.
+    in property <string> message;
+
+    in property <bool> wifi-available;
+    // -1 unknown, 0 off, 1 on; the same for Bluetooth.
+    in property <int> wifi-radio: -1;
+    in property <[NetworkRow]> networks;
+    // The network being joined.
+    in property <string> wifi-connecting;
+    // The network whose password field is open.
+    in-out property <string> wifi-password-for;
+
+    in property <int> bluetooth-radio: -1;
+    in property <[DeviceRow]> devices;
+
+    in property <bool> sound-available;
+    in property <float> volume;
+    in property <bool> muted;
+    in property <string> output-name;
+
+    in property <bool> brightness-available;
+    in property <float> brightness;
+}
+
+export global ControlsActions {
+    // 0 Sound, 1 Brightness, 2 Bluetooth, 3 Wi-Fi: the pop-up opened.
+    callback opened(int);
+    callback set-radio(int, bool);
+    callback join(string, string);
+    callback disconnect-wifi();
+    callback connect-device(string, string, bool);
+    callback set-volume(float);
+    callback set-muted(bool);
+    callback set-brightness(float);
+    // Opens the matching Windows Settings page.
+    callback more-settings(int);
+    // A password is being typed: the island must not collapse by itself.
+    callback busy(bool);
 }
 
 // User intents handled on the Rust side.

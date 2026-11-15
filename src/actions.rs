@@ -1,5 +1,6 @@
-//! Quick actions. Each action opens a documented Windows Settings page or a built-in
-//! application; Lilt does not change hardware or system settings itself.
+//! Quick actions. The Sound, Brightness, Bluetooth and Wi-Fi buttons open pop-ups with
+//! their controls (src/controls); each pop-up's "more settings" link, and the other
+//! buttons, open a documented Windows Settings page or a built-in application.
 
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;

@@ -10,6 +10,7 @@ mod artwork;
 mod calendar;
 mod clipboard;
 mod clock;
+mod controls;
 mod dialogs;
 mod fonts;
 mod hotkey;

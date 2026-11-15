@@ -8,6 +8,11 @@ All notable changes to Lilt are documented here. The format follows
 
 ### Added
 
+- **Quick controls.** The Volume, Brightness, Bluetooth and Wi-Fi buttons open pop-ups in
+  the island instead of Windows Settings: volume and mute, screen brightness, Bluetooth
+  and Wi-Fi on/off, paired Bluetooth devices (with connect and disconnect for headphones
+  and speakers whose audio driver Windows lists), and Wi-Fi networks with connect (including a password for new networks)
+  and disconnect. Each pop-up links to the matching Settings page.
 - **Clipboard shelf**, in the box next to the expanded island (switch between Tasks and
   Clipboard in its title). Search copied text and snippets, filter by pinned, recent,
   snippets, links, code or other text, click to copy back, pin, edit and delete, and
