@@ -6,6 +6,8 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-15
+
 ### Added
 
 - **Quick controls.** The Volume, Brightness, Bluetooth and Wi-Fi buttons open pop-ups in
