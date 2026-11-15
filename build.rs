@@ -1,6 +1,27 @@
 use std::path::{Path, PathBuf};
 
 fn main() {
+    let revision = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|sha| sha.trim().to_owned())
+        .filter(|sha| sha.len() == 40 && sha.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .unwrap_or_default();
+    println!("cargo:rustc-env=LILT_BUILD_SHA={revision}");
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/packed-refs");
+    if let Some(branch) = std::process::Command::new("git")
+        .args(["symbolic-ref", "-q", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+    {
+        println!("cargo:rerun-if-changed=.git/{}", branch.trim());
+    }
     // Images are decoded at build time into the software renderer's texture format, so
     // the application needs no image decoder for its own assets.
     let config = slint_build::CompilerConfiguration::new()

@@ -864,7 +864,7 @@ fn tasks_box_sits_beside_or_below_in_both_appearances() {
     let below = h.render_on(wallpaper);
     save(&below, "tasks-glass-below");
     // Below: both boxes as wide as the dashboard, one above the other.
-    assert_eq!((below.width(), below.height()), (480, 600));
+    assert_eq!((below.width(), below.height()), (480, 636));
     assert_eq!(h.island.get_tasks_box_width(), 460.0);
     assert!(h.island.get_tasks_y() > h.island.get_body_height());
     set_appearance(&h, Appearance::Midnight);
@@ -873,7 +873,7 @@ fn tasks_box_sits_beside_or_below_in_both_appearances() {
     // Without Tasks the island is exactly the original.
     h.state().set_show_tasks(false);
     let plain = h.render();
-    assert_eq!((plain.width(), plain.height()), (480, 270));
+    assert_eq!((plain.width(), plain.height()), (480, 306));
 }
 
 #[test]
@@ -1413,7 +1413,7 @@ fn clipboard_shelf_renders_in_every_appearance() {
     // Without either, the island is exactly the original.
     h.state().set_show_clipboard(false);
     let plain = h.render();
-    assert_eq!((plain.width(), plain.height()), (480, 270));
+    assert_eq!((plain.width(), plain.height()), (480, 306));
 }
 
 #[test]

@@ -225,7 +225,11 @@ you copy secrets from.
 
 ## Privacy
 
-Lilt works entirely offline: no telemetry, no update checks, no accounts. Media and
+Lilt has no telemetry or accounts. It checks the public GitHub `main` commit on startup,
+every 30 minutes, and when you press the refresh icon in the expanded island. If the
+running build differs, the update button opens the commit history on GitHub; it does
+not download or install code. The request sends only the usual HTTPS request metadata
+to GitHub. Media and
 calendar information is only displayed, never stored or sent anywhere. Tasks and the
 clipboard shelf are stored on this PC only, and copied text is never logged. Details are
 in [SECURITY.md](SECURITY.md).

@@ -18,6 +18,7 @@ windows-collections = "0.3"
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-software", "software-renderer-systemfonts", "system-tray", "unstable-fontique-011"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+ureq = { version = "2.12", features = ["json"] }
 # Vector types for Windows.UI.Composition; already part of the `windows` crate's tree.
 
 [dependencies.windows]
