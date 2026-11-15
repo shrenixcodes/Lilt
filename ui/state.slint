@@ -47,6 +47,9 @@ export global AppState {
     in property <bool> expanded;
     // The island is shown (not hidden by the user or for a full-screen application).
     in property <bool> on-screen: true;
+    in property <bool> update-checking;
+    in property <bool> update-available;
+    in property <string> update-message: "Check for updates";
     // Steps of the "now playing" bars, advanced by the application about 14 times a
     // second while music plays and the compact island is on screen.
     in property <int> bars-step;
@@ -243,6 +246,8 @@ export global ControlsActions {
 
 // User intents handled on the Rust side.
 export global AppActions {
+    callback check-for-updates();
+    callback open-update();
     callback start-drag();
     callback toggle-expanded();
     callback collapse();

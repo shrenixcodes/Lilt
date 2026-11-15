@@ -11,10 +11,11 @@ Only the latest release receives security fixes.
 
 ## What Lilt does with your data
 
-Lilt works entirely on your PC.
+Lilt keeps your personal data on your PC.
 
-- **No network access.** Lilt makes no network requests: no telemetry, update checks,
-  crash reporting or online calendars.
+- **Update checks.** Lilt requests the public `main` commit from GitHub on startup,
+  every 30 minutes, and when you press the refresh icon. It sends no app data. There is
+  no telemetry, crash reporting or online calendar access.
 - **Media information** (titles, artists, artwork, playback position) is read from the
   Windows media session API to display it and is never written to disk or sent anywhere.
   Artwork is held in memory only, at 128 × 128 pixels, for the last eight tracks.

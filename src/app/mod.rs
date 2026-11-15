@@ -9,6 +9,7 @@ mod media;
 mod preferences;
 mod system;
 pub(crate) mod tasks;
+mod updates;
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -89,6 +90,8 @@ pub struct App {
     controls: controls::ControlsController,
     /// Liquid Glass's backdrop sampling.
     glass: glass::GlassSampler,
+    update_checking: Cell<bool>,
+    update_timer: slint::Timer,
 }
 
 thread_local! {
@@ -195,6 +198,8 @@ pub fn run() -> Result<(), slint::PlatformError> {
         clipboard: clipboard::ClipboardController::new(crate::clipboard::store::default_path()),
         controls: controls::ControlsController::default(),
         glass: glass::GlassSampler::default(),
+        update_checking: Cell::new(false),
+        update_timer: slint::Timer::default(),
     });
     CURRENT.with(|c| *c.borrow_mut() = Rc::downgrade(&app));
     App::connect(&app);
@@ -204,6 +209,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
     App::connect_tasks(&app);
     App::connect_clipboard(&app);
     App::connect_controls(&app);
+    App::connect_updates(&app);
     App::refresh_clock(&app);
     app.tray.set_light_taskbar(light_taskbar());
 

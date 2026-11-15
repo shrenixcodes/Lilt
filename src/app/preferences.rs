@@ -109,7 +109,7 @@ impl App {
         let ambient = settings.ambient.enabled && !settings.performance.low_power;
         theme.set_ambient(if ambient { settings.ambient.intensity as f32 / 100.0 } else { 0.0 });
         theme.set_motion(if reduced_motion(settings.appearance.motion) { 0.0 } else { 1.0 });
-        App::update_bars(app);
+        App::update_progress_timer(app);
         App::apply_appearance(app);
 
         let path = settings.calendar.ics_path.clone();
