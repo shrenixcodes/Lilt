@@ -8,7 +8,7 @@ use windows::Win32::System::Registry::{
 use windows::core::{HSTRING, PCWSTR, w};
 
 const RUN_KEY: PCWSTR = w!(r"Software\Microsoft\Windows\CurrentVersion\Run");
-const VALUE: PCWSTR = w!("Lilt");
+const VALUE: PCWSTR = crate::identity::STARTUP_VALUE;
 
 /// The command line registered for this executable.
 fn command() -> Option<String> {

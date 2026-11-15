@@ -8,15 +8,15 @@ fn known_dir(variable: &str) -> PathBuf {
         .filter(|p| p.is_absolute())
         .or_else(|| std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)))
         .unwrap_or_default()
-        .join("Lilt")
+        .join(crate::identity::DATA_DIR)
 }
 
-/// `%APPDATA%\Lilt`: user settings, which roam with the Windows profile.
+/// Roaming user settings for this build's app identity.
 pub fn roaming_data_dir() -> PathBuf {
     known_dir("APPDATA")
 }
 
-/// `%LOCALAPPDATA%\Lilt`: machine-specific data such as logs.
+/// Machine-specific data such as logs for this build's app identity.
 pub fn local_data_dir() -> PathBuf {
     known_dir("LOCALAPPDATA")
 }
@@ -27,7 +27,11 @@ mod tests {
 
     #[test]
     fn directories_are_named_after_the_app() {
-        assert!(roaming_data_dir().ends_with("Lilt"));
-        assert!(local_data_dir().ends_with("Lilt"));
+        #[cfg(feature = "dev-build")]
+        let expected = "Lilt Dev";
+        #[cfg(not(feature = "dev-build"))]
+        let expected = "Lilt";
+        assert!(roaming_data_dir().ends_with(expected));
+        assert!(local_data_dir().ends_with(expected));
     }
 }
