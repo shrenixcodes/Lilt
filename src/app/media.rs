@@ -12,7 +12,7 @@ use crate::ui::{AppActions, AppState, MediaAvailability, MediaInfo, Theme};
 
 /// How long the track-change banner stays in the compact island.
 const ACTIVITY_DURATION: Duration = Duration::from_millis(3500);
-/// Progress refresh interval while the expanded player is visible and playing.
+/// Progress refresh interval while the timeline is visible and playing.
 const PROGRESS_INTERVAL: Duration = Duration::from_secs(1);
 
 impl App {
@@ -145,7 +145,11 @@ impl App {
             .borrow()
             .as_ref()
             .is_some_and(|m| m.status == PlaybackStatus::Playing && m.timeline.is_some());
-        if app.expanded() && app.island_visible() && moving {
+        let visible = app.island_visible() && {
+            let settings = app.settings.borrow();
+            settings.widgets.media && settings.music.show_progress
+        };
+        if visible && moving {
             if !app.progress_timer.running() {
                 let weak = Rc::downgrade(app);
                 app.progress_timer.start(slint::TimerMode::Repeated, PROGRESS_INTERVAL, move || {

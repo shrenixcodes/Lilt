@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lilt compact media preview</title>
+  <style>
+    :root {
+      font-family: system-ui, sans-serif;
+      color: #f3f3f5;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 360px;
+      margin: 0;
+      display: grid;
+      place-items: center;
+    }
+
+    main {
+      width: min(100%, 460px);
+      padding: 32px 24px;
+      display: grid;
+      justify-items: center;
+      gap: 22px;
+      border-radius: 20px;
+      background: #d9dce4;
+    }
+
+    .player {
+      --accent: #a5a4ff;
+      --art-light: #918dff;
+      --art-dark: #45149c;
+      width: 100%;
+      display: grid;
+      justify-items: center;
+    }
+
+    .island {
+      position: relative;
+      width: 254px;
+      height: 38px;
+      padding: 0 15px 0 7px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      overflow: hidden;
+      border: 1px solid #ffffff12;
+      border-radius: 999px;
+      background: #0a0a0b;
+      box-shadow: 0 2px 1px #0000004d, 0 5px 10px #00000024;
+      outline: none;
+      transition: width 420ms cubic-bezier(.32,.72,0,1),
+        height 420ms cubic-bezier(.32,.72,0,1),
+        background 140ms ease-out;
+    }
+
+    .island.is-active,
+    .island:focus-visible {
+      width: 299px;
+      height: 40px;
+      background: #111113;
+    }
+
+    .island:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+
+    .artwork {
+      flex: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 68% 37%, var(--art-light) 0 17%, transparent 18%),
+        linear-gradient(135deg, #2f3699, var(--art-dark));
+    }
+
+    .title {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      color: #a0a0a8;
+      font-size: 12px;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .transport {
+      position: relative;
+      flex: none;
+      width: 17px;
+      height: 26px;
+      transition: width 140ms ease-out;
+    }
+
+    .is-active .transport { width: 54px; }
+
+    .visualizer,
+    .controls {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      transition: opacity 180ms ease-out;
+    }
+
+    .visualizer {
+      left: 50%;
+      width: 17px;
+      height: 16px;
+      transform: translate(-50%, -50%);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      opacity: 1;
+    }
+
+    .visualizer span {
+      width: 3px;
+      height: 3px;
+      border-radius: 1.5px;
+      background: #6c6c75;
+    }
+
+    .island.playing .visualizer span {
+      height: 11px;
+      background: var(--accent);
+      animation: equalize 850ms ease-in-out infinite alternate;
+    }
+
+    .island.playing .visualizer span:nth-child(2) { height: 15px; animation-duration: 650ms; animation-delay: -430ms; }
+    .island.playing .visualizer span:nth-child(3) { height: 7px; animation-duration: 720ms; animation-delay: -220ms; }
+    .island.playing .visualizer span:nth-child(4) { height: 13px; animation-duration: 930ms; animation-delay: -570ms; }
+
+    @keyframes equalize {
+      from { transform: scaleY(.3); }
+      to { transform: scaleY(1); }
+    }
+
+    .controls {
+      left: 0;
+      width: 54px;
+      display: flex;
+      gap: 2px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .is-active .visualizer { opacity: 0; }
+    .is-active .controls { opacity: 1; pointer-events: auto; }
+
+    .controls button {
+      width: 26px;
+      height: 26px;
+      padding: 5px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 9px;
+      color: #f3f3f5;
+      background: transparent;
+      cursor: pointer;
+      transition: background 140ms ease-out, transform 140ms ease-out;
+    }
+
+    .controls button:hover,
+    .controls button:focus-visible { background: #ffffff14; }
+    .controls button:active { background: #ffffff0b; transform: scale(.92); }
+    .controls button:focus-visible { outline: 1px solid var(--accent); }
+    .controls svg { width: 14px; height: 14px; fill: currentColor; }
+    .controls [hidden] { display: none; }
+
+    .timeline {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 2px;
+      overflow: hidden;
+      background: #6c6c758c;
+      pointer-events: none;
+    }
+
+    .timeline-fill {
+      width: 0;
+      height: 100%;
+      background: var(--accent);
+      transition: width 1s linear, background 700ms ease-in-out;
+    }
+
+    .hint {
+      margin: 0;
+      color: #525763;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="player">
+    <div class="island playing" role="group" aria-label="Compact media player" tabindex="0">
+      <div class="artwork" aria-hidden="true"></div>
+      <span class="title" aria-live="polite">Northern Lights</span>
+      <div class="transport">
+        <div class="visualizer" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <div class="controls">
+          <button type="button" class="play-pause" aria-label="Pause" title="Pause">
+            <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>
+            <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h3a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM6 3h3a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/></svg>
+          </button>
+          <button type="button" class="skip" aria-label="Next track" title="Next track">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4v16h-2V4zM6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="timeline" role="progressbar" aria-label="Playback progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="timeline-fill"></div>
+      </div>
+    </div>
+    </div>
+    <p class="hint">Hover over the island to reveal playback controls. Click to try them.</p>
+  </main>
+  <script>
+    const island = document.querySelector('.island');
+    const player = document.querySelector('.player');
+    const playPause = document.querySelector('.play-pause');
+    const title = document.querySelector('.title');
+    const timeline = document.querySelector('.timeline');
+    const timelineFill = document.querySelector('.timeline-fill');
+    const tracks = [
+      { title: 'Northern Lights', accent: '#a5a4ff', artLight: '#918dff', artDark: '#45149c', duration: 210 },
+      { title: 'Afterglow', accent: '#ffb899', artLight: '#ffc192', artDark: '#ae4c69', duration: 184 },
+      { title: 'Blue Hour', accent: '#8ccce9', artLight: '#84d5ef', artDark: '#285a9b', duration: 236 }
+    ];
+    let trackIndex = 0;
+    let playing = true;
+    let position = 72;
+
+    function updateTimeline() {
+      const progress = Math.min(position / tracks[trackIndex].duration, 1);
+      timelineFill.style.width = `${progress * 100}%`;
+      timeline.setAttribute('aria-valuenow', String(Math.round(progress * 100)));
+    }
+
+    function showControls(show) {
+      island.classList.toggle('is-active', show);
+      for (const button of island.querySelectorAll('button')) button.tabIndex = show ? 0 : -1;
+    }
+
+    island.addEventListener('pointerenter', event => {
+      if (event.pointerType === 'mouse' || event.pointerType === 'pen') showControls(true);
+    });
+    island.addEventListener('pointerleave', () => showControls(false));
+    island.addEventListener('focusin', () => showControls(true));
+    island.addEventListener('focusout', event => {
+      if (!island.contains(event.relatedTarget)) showControls(false);
+    });
+    island.addEventListener('click', event => {
+      if (event.target === island && event.detail !== 0) showControls(!island.classList.contains('is-active'));
+    });
+
+    playPause.addEventListener('click', () => {
+      playing = !playing;
+      island.classList.toggle('playing', playing);
+      playPause.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+      playPause.title = playing ? 'Pause' : 'Play';
+      playPause.querySelector('.play-icon').toggleAttribute('hidden', playing);
+      playPause.querySelector('.pause-icon').toggleAttribute('hidden', !playing);
+    });
+
+    document.querySelector('.skip').addEventListener('click', () => {
+      trackIndex = (trackIndex + 1) % tracks.length;
+      title.textContent = tracks[trackIndex].title;
+      player.style.setProperty('--accent', tracks[trackIndex].accent);
+      player.style.setProperty('--art-light', tracks[trackIndex].artLight);
+      player.style.setProperty('--art-dark', tracks[trackIndex].artDark);
+      position = 0;
+      updateTimeline();
+      playing = true;
+      island.classList.add('playing');
+      playPause.setAttribute('aria-label', 'Pause');
+      playPause.title = 'Pause';
+      playPause.querySelector('.play-icon').toggleAttribute('hidden', true);
+      playPause.querySelector('.pause-icon').toggleAttribute('hidden', false);
+    });
+
+    setInterval(() => {
+      if (playing && position < tracks[trackIndex].duration) {
+        position += 1;
+        updateTimeline();
+      }
+    }, 1000);
+
+    updateTimeline();
+    showControls(false);
+  </script>
+</body>
+</html>

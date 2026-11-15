@@ -30,6 +30,8 @@ mod ui {
     slint::include_modules!();
 }
 
+mod updates;
+
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
