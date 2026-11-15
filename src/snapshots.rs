@@ -53,6 +53,7 @@ impl Harness {
         let clock = Rc::new(Cell::new(Duration::ZERO));
         slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), clock: clock.clone() }))
             .expect("one platform per test thread");
+        crate::fonts::register();
         window.dispatch_event(slint::platform::WindowEvent::ScaleFactorChanged { scale_factor: scale });
         let island = Island::new().expect("create island");
         let state = island.global::<AppState>();
@@ -355,6 +356,7 @@ fn settings_sections_render() {
     let clock = Rc::new(Cell::new(Duration::ZERO));
     slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), clock: clock.clone() }))
         .expect("one platform per test thread");
+    crate::fonts::register();
     let settings = SettingsWindow::new().expect("create settings window");
     settings.set_version("0.1.0".into());
     settings.set_data_folder("%APPDATA%/Lilt".into());
@@ -376,6 +378,7 @@ fn appearance_and_position_share_a_page() {
     let clock = Rc::new(Cell::new(Duration::ZERO));
     slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), clock: clock.clone() }))
         .expect("one platform per test thread");
+    crate::fonts::register();
     let settings = SettingsWindow::new().expect("create settings window");
     settings.set_data(settings_data());
     let reset = Rc::new(Cell::new(false));
@@ -408,6 +411,7 @@ fn settings_follow_the_appearance() {
     let clock = Rc::new(Cell::new(Duration::ZERO));
     slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), clock: clock.clone() }))
         .expect("one platform per test thread");
+    crate::fonts::register();
     let settings = SettingsWindow::new().expect("create settings window");
     settings.set_data(settings_data());
     settings.show().expect("show settings");
@@ -762,10 +766,42 @@ fn set_appearance(h: &Harness, appearance: Appearance) {
 }
 
 fn tasks_harness(appearance: Appearance) -> Harness {
-    let h = Harness::new(1.0);
+    tasks_harness_at(1.0, appearance)
+}
+
+fn tasks_harness_at(scale: f32, appearance: Appearance) -> Harness {
+    let h = Harness::new(scale);
     set_appearance(&h, appearance);
     fill_tasks(&h);
     h
+}
+
+#[test]
+fn display_faces_keep_the_layout_at_125_percent() {
+    display_faces_keep_the_layout_at(1.25, "125");
+}
+
+#[test]
+fn display_faces_keep_the_layout_at_150_percent() {
+    display_faces_keep_the_layout_at(1.5, "150");
+}
+
+/// The bundled fonts are drawn as outlines, so headings follow display scaling and the
+/// window grows by exactly the scale factor in every appearance.
+fn display_faces_keep_the_layout_at(scale: f32, label: &str) {
+    let h = tasks_harness_at(scale, Appearance::Midnight);
+    for (appearance, name) in
+        [(Appearance::Midnight, "midnight"), (Appearance::SmokedGlass, "glass"), (Appearance::LiquidGlass, "liquid")]
+    {
+        set_appearance(&h, appearance);
+        let image = h.render_on(wallpaper);
+        save(&image, &format!("tasks-{name}-{label}"));
+        assert_eq!(
+            (image.width(), image.height()),
+            ((890.0 * scale).round() as u32, (340.0 * scale).round() as u32),
+            "{name} at {label} %"
+        );
+    }
 }
 
 fn fill_tasks(h: &Harness) {
@@ -1226,6 +1262,7 @@ fn playing_bars_move_with_partial_repaints() {
     let clock = Rc::new(Cell::new(Duration::ZERO));
     slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), clock: clock.clone() }))
         .expect("one platform per test thread");
+    crate::fonts::register();
     window.dispatch_event(slint::platform::WindowEvent::ScaleFactorChanged { scale_factor: 1.0 });
     let island = Island::new().unwrap();
     island.show().unwrap();

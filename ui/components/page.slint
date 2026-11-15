@@ -1,6 +1,7 @@
 import { Theme } from "../theme.slint";
 import { Icons } from "icon.slint";
 import { IconButton } from "controls.slint";
+import { Heading } from "heading.slint";
 
 // Title row of a detail page, with a back button. Extra controls go on the right.
 export component PageHeader inherits HorizontalLayout {
@@ -17,13 +18,11 @@ export component PageHeader inherits HorizontalLayout {
         }
     }
 
-    Text {
+    Heading {
         horizontal-stretch: 1;
-        vertical-alignment: center;
         text: root.title;
         color: Theme.text;
-        font-size: Theme.font-lg;
-        font-weight: 600;
+        size: Theme.font-lg;
     }
 
     @children

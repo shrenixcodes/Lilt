@@ -68,6 +68,7 @@ media thread.
 | `src/app/tasks.rs` | The tasks box's controller: list and archive rows, quick entry, completion and undo |
 | `src/settings/` | Versioned settings document, validation, migration and atomic saving |
 | `src/clock.rs`, `src/hotkey.rs`, `src/startup.rs`, `src/actions.rs`, `src/dialogs.rs` | Clock text, global shortcut, start-with-Windows, quick actions, file dialog |
+| `src/fonts.rs` | Registers the bundled fonts with Slint at start-up |
 | `src/snapshots.rs` | Headless UI tests |
 | `ui/` | Slint markup: design tokens, island, views, settings window, tray |
 | `benchmarks/` | Process-tree resource measurement |
@@ -152,6 +153,23 @@ radii, motion and the settings window's colours). Each appearance is one value o
 selects one, and every
 other token is derived from the selection, so components never know which appearance
 is active. Adding an appearance means one more enum variant and one more token value.
+
+### Typography
+
+Body and interface text is DM Sans in every appearance. Headings use the appearance's
+display face through two tokens: `display-*` for short, prominent headings (the
+`Heading` component in `ui/components/heading.slint`) and `title-*` for longer ones
+such as empty-state titles (`Title`). Midnight uses Space Grotesk, Smoked Glass
+Instrument Serif, and Liquid Glass Allura for short headings only, with DM Sans for
+titles. Each face carries a scale so that it looks as large as DM Sans at the same
+nominal size (Allura's lowercase is small, so it is drawn 1.6 times larger). JetBrains
+Mono (`Theme.code-font`) is for code and commands.
+
+The five fonts are compiled into the executable with `include_bytes!` and registered
+with Slint's font collection when the platform is set (`src/fonts.rs`), so the software
+renderer draws them as outlines at any size and display scale. They are deliberately
+not imported in `.slint` files: for the software renderer that pre-renders bitmaps at
+the sizes written in the markup, which cannot follow computed sizes or display scaling.
 
 Switching is a property change: Slint re-renders what changed, the island's surface
 cross-fades over the ambient duration (instant with reduced motion), and no window is

@@ -13,7 +13,7 @@ image = { version = "0.25", default-features = false, features = ["bmp", "jpeg",
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-software", "software-renderer-systemfonts", "system-tray"] }
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-software", "software-renderer-systemfonts", "system-tray", "unstable-fontique-011"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
 # Vector types for Windows.UI.Composition; already part of the `windows` crate's tree.

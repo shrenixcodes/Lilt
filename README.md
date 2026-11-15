@@ -93,6 +93,12 @@ dashboard tiles, track banners and the settings window change at once.
 - **Liquid Glass** is clear glass with light along its upper and lower edges. Over dark
   content the tint is light and the desktop's colours show through.
 
+Each appearance has its own heading face; everything else is set in DM Sans:
+Space Grotesk in Midnight, Instrument Serif in Smoked Glass and the script Allura in
+Liquid Glass, used only for short headings such as "Tasks" (longer titles stay in DM
+Sans). Code and commands use JetBrains Mono. The fonts are bundled with Lilt under the
+SIL Open Font License, so nothing is downloaded and the look is the same on every PC.
+
 Behind both glass appearances Lilt shows the desktop. **Glass transparency** (0–100 %,
 default 50 %) sets how: a heavy blur at 0 %, a frosted blur at 50 % and clear glass at
 100 %, where the desktop shows through sharply and Liquid Glass bends it along its edges

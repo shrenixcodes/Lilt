@@ -6,6 +6,14 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Typography for each appearance.** Interface text is now DM Sans everywhere; headings
+  use Space Grotesk in Midnight, Instrument Serif in Smoked Glass and the script Allura
+  in Liquid Glass (short headings only; longer titles stay in DM Sans). Code uses
+  JetBrains Mono. The fonts are bundled under the SIL Open Font License; nothing is
+  downloaded. Each appearance card in Settings shows its name in its own face.
+
 ### Fixed
 
 - The "now playing" bars could stay still while music played, for example after a

@@ -1,0 +1,54 @@
+import { Theme } from "../theme.slint";
+
+// A short, prominent heading in the appearance's display face, such as "Tasks" or
+// "Settings". `size` is the size in the body face; each display face is scaled so it
+// looks as large as DM Sans would.
+//
+// Layouts see DM Sans's line height for `size`, so every appearance lays out exactly
+// alike; a display face with taller ascenders or swashes, such as Allura, draws past
+// that line instead of being squeezed and cut off.
+export component Heading {
+    in property <string> text;
+    in property <brush> color: Theme.text;
+    in property <length> size: Theme.font-lg;
+    in property <TextHorizontalAlignment> horizontal-alignment: left;
+    in property <TextOverflow> overflow: clip;
+    // Other tokens, e.g. an appearance card previewing its own face.
+    in property <string> face: Theme.display-font;
+    in property <float> scale: Theme.display-scale;
+    in property <int> weight: Theme.display-weight;
+
+    preferred-width: label.preferred-width;
+    preferred-height: root.size * 1.3;
+    min-height: root.size * 1.3;
+    accessible-role: AccessibleRole.text;
+    accessible-label: root.text;
+
+    label := Text {
+        x: 0;
+        y: (parent.height - self.height) / 2;
+        // Slanted faces overhang their last letter's width (Allura's final "d"); left-
+        // aligned headings get room for it.
+        width: parent.width + (root.horizontal-alignment == TextHorizontalAlignment.left && root.overflow == TextOverflow.clip ? root.size * root.scale * 0.4 : 0px);
+        // Room above and below the font's declared line: some script letters, such as
+        // Allura's "d", rise past it and would otherwise be cut off.
+        height: self.preferred-height * 1.6;
+        text: root.text;
+        color: root.color;
+        font-family: root.face;
+        font-size: root.size * root.scale;
+        font-weight: root.weight;
+        horizontal-alignment: root.horizontal-alignment;
+        vertical-alignment: center;
+        overflow: root.overflow;
+        accessible-role: none;
+    }
+}
+
+// A longer heading, such as an empty-state title, in the appearance's title face.
+export component Title inherits Text {
+    in property <length> size: Theme.font-md;
+    font-family: Theme.title-font;
+    font-size: root.size * Theme.title-scale;
+    font-weight: Theme.title-weight;
+}

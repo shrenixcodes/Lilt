@@ -210,7 +210,9 @@ pub fn install() -> Result<(), PlatformError> {
         CONTROL.store(control.0 as isize, Ordering::Release);
     }
     slint::platform::set_platform(Box::new(Win32Platform { start: Instant::now() }))
-        .map_err(|e| PlatformError::Other(e.to_string()))
+        .map_err(|e| PlatformError::Other(e.to_string()))?;
+    crate::fonts::register();
+    Ok(())
 }
 
 unsafe extern "system" fn control_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {

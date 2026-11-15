@@ -1,4 +1,6 @@
 // Design tokens.
+
+// The fonts named here are bundled with Lilt and registered at start-up (src/fonts.rs).
 //
 // Every colour, radius, size and duration used by Lilt comes from here. The values that
 // differ between appearances are grouped in `AppearanceTokens`; each appearance is one
@@ -69,6 +71,16 @@ export struct AppearanceTokens {
     card: color,
     card-hover: color,
     card-border: color,
+    // Typography. Body text is DM Sans in every appearance; only headings change.
+    // `display-*` is for short, prominent headings ("Tasks", "Settings"); `title-*` for
+    // longer headings such as empty-state titles, where a script face would be hard to
+    // read. `*-scale` matches each face's apparent size to DM Sans at the same size.
+    display-font: string,
+    display-weight: int,
+    display-scale: float,
+    title-font: string,
+    title-weight: int,
+    title-scale: float,
 }
 
 export global Theme {
@@ -120,6 +132,13 @@ export global Theme {
         card: #ffffff07,
         card-hover: #ffffff0d,
         card-border: #ffffff14,
+        // Midnight: Space Grotesk, precise and technical.
+        display-font: "Space Grotesk",
+        display-weight: 600,
+        display-scale: 1.0,
+        title-font: "Space Grotesk",
+        title-weight: 600,
+        title-scale: 1.0,
     };
 
     out property <AppearanceTokens> smoked-glass: {
@@ -168,6 +187,13 @@ export global Theme {
         card: #ffffff0a,
         card-hover: #ffffff12,
         card-border: #ffffff1a,
+        // Smoked Glass: Instrument Serif, editorial and understated.
+        display-font: "Instrument Serif",
+        display-weight: 400,
+        display-scale: 1.3,
+        title-font: "Instrument Serif",
+        title-weight: 400,
+        title-scale: 1.25,
     };
 
     // How opaque the glass tints are over the live blur, 0..1. The application sets them
@@ -222,6 +248,14 @@ export global Theme {
         card: #ffffff0d,
         card-hover: #ffffff17,
         card-border: #ffffff21,
+        // Liquid Glass: Allura, a script, for short headings only; longer titles stay
+        // in DM Sans so they remain easy to read.
+        display-font: "Allura",
+        display-weight: 400,
+        display-scale: 1.6,
+        title-font: "DM Sans",
+        title-weight: 600,
+        title-scale: 1.0,
     };
 
     out property <AppearanceTokens> tokens: appearance == Appearance.liquid-glass ? liquid-glass
@@ -292,7 +326,16 @@ export global Theme {
     out property <length> margin: 10px;
 
     // Typography
-    out property <string> font: "Segoe UI Variable Text";
+    // Body and interface text in every appearance.
+    out property <string> font: "DM Sans";
+    // Code, terminal commands and technical identifiers only.
+    out property <string> code-font: "JetBrains Mono";
+    out property <string> display-font: tokens.display-font;
+    out property <int> display-weight: tokens.display-weight;
+    out property <float> display-scale: tokens.display-scale;
+    out property <string> title-font: tokens.title-font;
+    out property <int> title-weight: tokens.title-weight;
+    out property <float> title-scale: tokens.title-scale;
     out property <length> font-xs: 10.5px;
     out property <length> font-sm: 12px;
     out property <length> font-md: 13px;

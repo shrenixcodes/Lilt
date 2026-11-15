@@ -71,8 +71,11 @@ export component MediaPlayer inherits Rectangle {
                         ? (AppState.media.availability == MediaAvailability.idle ? "Nothing playing" : "Media controls unavailable")
                         : AppState.media.title == "" ? "Unknown title" : AppState.media.title;
                     color: Theme.text;
-                    font-size: Theme.font-lg;
-                    font-weight: 600;
+                    // A track title is content, in the body face; "Nothing playing" is
+                    // a heading.
+                    font-family: root.active ? Theme.font : Theme.title-font;
+                    font-size: root.active ? Theme.font-lg : Theme.font-lg * Theme.title-scale;
+                    font-weight: root.active ? 600 : Theme.title-weight;
                     overflow: elide;
                 }
 

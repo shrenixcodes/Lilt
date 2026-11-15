@@ -10,6 +10,7 @@ mod artwork;
 mod calendar;
 mod clock;
 mod dialogs;
+mod fonts;
 mod hotkey;
 mod instance;
 mod logging;

@@ -4,6 +4,7 @@ import { AppState, TasksState, TasksActions } from "state.slint";
 import { ArchiveRow, ArchiveRowKind, SyncStatus, TaskForm, TaskRow, TaskRowKind, TaskView, TasksLayout } from "types.slint";
 import { Icon, Icons } from "components/icon.slint";
 import { IconButton, TextButton } from "components/controls.slint";
+import { Heading, Title } from "components/heading.slint";
 
 // The tasks box: a prioritised list, quick entry, an editor and the archive. All data
 // and every change go through TasksState and TasksActions; nothing here is stored.
@@ -585,13 +586,11 @@ component TaskEditor inherits Rectangle {
                     clicked => { TasksState.editing = false; }
                 }
 
-                Text {
+                Heading {
                     horizontal-stretch: 1;
                     text: TasksState.form.id == 0 ? "New task" : "Edit task";
-                    font-size: Theme.font-lg;
-                    font-weight: 600;
+                    size: Theme.font-lg;
                     color: Theme.text;
-                    vertical-alignment: center;
                 }
 
                 if TasksState.form.id != 0 : IconButton {
@@ -930,10 +929,9 @@ export component TasksView inherits Rectangle {
                 horizontal-stretch: 1;
                 alignment: center;
 
-                Text {
+                Heading {
                     text: "Tasks";
-                    font-size: Theme.font-lg;
-                    font-weight: 600;
+                    size: Theme.font-lg;
                     color: Theme.text;
                 }
 
@@ -1068,12 +1066,12 @@ export component TasksView inherits Rectangle {
             alignment: center;
             spacing: 3px;
 
-            Text {
+            Title {
                 horizontal-alignment: center;
                 text: !TasksState.ready ? (TasksState.error != "" ? "Tasks are unavailable" : "Loading…") : TasksState.empty-title;
-                font-size: Theme.font-md;
-                font-weight: 600;
+                size: Theme.font-md;
                 color: Theme.text;
+                wrap: word-wrap;
             }
 
             Text {

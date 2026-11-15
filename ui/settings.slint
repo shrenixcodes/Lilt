@@ -2,6 +2,7 @@ import { Switch, Slider, ComboBox, Button, ScrollView, AboutSlint, Palette } fro
 import { Theme, AppearanceTokens } from "theme.slint";
 import { Icon, Icons } from "components/icon.slint";
 import { GlassSheen, GlassRim } from "components/glass.slint";
+import { Heading } from "components/heading.slint";
 
 // Settings as edited in the window. Converted to and from the Rust settings model.
 
@@ -48,13 +49,11 @@ component Section inherits VerticalLayout {
     spacing: 2px;
     padding-bottom: 18px;
 
-    Text {
+    Heading {
         text: root.title;
-        font-size: 13px;
-        font-weight: 600;
+        size: 15px;
         color: Palette.foreground;
-        height: 28px;
-        vertical-alignment: center;
+        height: 32px;
     }
 
     Rectangle {
@@ -312,7 +311,7 @@ component AppearanceCard inherits Rectangle {
 
     min-width: 150px;
     horizontal-stretch: 1;
-    height: 206px;
+    height: 228px;
     border-radius: 12px;
     background: touch.has-hover ? Theme.card-hover : Theme.card;
     border-width: root.selected ? 2px : 1px;
@@ -346,30 +345,17 @@ component AppearanceCard inherits Rectangle {
             spacing: 8px;
             height: 20px;
 
-            Text {
-                text: root.name;
-                font-size: 13px;
-                font-weight: 600;
-                color: Theme.window-text;
-                vertical-alignment: center;
-            }
-
-            if root.badge != "" : Rectangle {
-                width: badge-text.preferred-width + 12px;
-                height: 18px;
-                y: 1px;
-                border-radius: 9px;
-                background: Theme.card-border;
-
-                badge-text := Text {
-                    text: root.badge;
-                    font-size: 10.5px;
-                    color: Theme.window-text-secondary;
-                }
-            }
-
-            Rectangle {
+            // Each card names its appearance in that appearance's display face.
+            Heading {
                 horizontal-stretch: 1;
+                text: root.name;
+                size: 12.5px;
+                face: root.tokens.display-font;
+                scale: root.tokens.display-scale;
+                weight: root.tokens.display-weight;
+                color: Theme.window-text;
+                overflow: elide;
+                min-width: 0;
             }
 
             // Selection indicator
@@ -386,6 +372,25 @@ component AppearanceCard inherits Rectangle {
                     data: Icons.check;
                     size: 12px;
                     color: Theme.text-on-light;
+                }
+            }
+        }
+
+        // A row of its own, kept on every card so the descriptions line up: the name row
+        // needs its width for display faces that run wide, such as Allura.
+        HorizontalLayout {
+            height: 18px;
+            alignment: start;
+
+            if root.badge != "" : Rectangle {
+                width: badge-text.preferred-width + 12px;
+                border-radius: 9px;
+                background: Theme.card-border;
+
+                badge-text := Text {
+                    text: root.badge;
+                    font-size: 10.5px;
+                    color: Theme.window-text-secondary;
                 }
             }
         }
@@ -427,7 +432,7 @@ export component SettingsWindow inherits Window {
     min-width: 620px;
     min-height: 420px;
     background: Theme.window-background;
-    default-font-family: "Segoe UI Variable Text";
+    default-font-family: Theme.font;
 
     in-out property <SettingsData> data;
     in property <[string]> monitors: ["Primary display"];
@@ -465,13 +470,11 @@ export component SettingsWindow inherits Window {
                 spacing: 2px;
                 alignment: start;
 
-                Text {
+                Heading {
                     text: "Lilt";
-                    font-size: 18px;
-                    font-weight: 700;
+                    size: 20px;
                     color: Theme.window-text;
                     height: 40px;
-                    vertical-alignment: center;
                 }
 
                 for name[i] in root.sections : NavItem {
