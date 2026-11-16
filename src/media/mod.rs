@@ -133,8 +133,10 @@ fn work(receiver: &Receiver<Message>, events: Sender<Message>, publish: &impl Fn
     };
     let mut artwork = ArtworkCache::default();
     let mut last_state: Option<MediaState> = None;
-    // Track whose artwork was last published, and whether it had any.
-    let mut last_artwork: Option<(session::ArtworkKey, bool)> = None;
+    // Track whose artwork was last published, and the fingerprint of the bytes that
+    // produced it (0 when no artwork was published). The fingerprint lets a late-arriving
+    // thumbnail replace the first (stale) one Windows returned for the new track.
+    let mut last_artwork: Option<(session::ArtworkKey, u64)> = None;
     let mut idle_published = false;
 
     let mut pending = Pending { sessions: true, ..Pending::default() };
@@ -168,16 +170,24 @@ fn work(receiver: &Receiver<Message>, events: Sender<Message>, publish: &impl Fn
                 idle_published = false;
                 let key = session::ArtworkKey::of(&state);
                 let new_track = last_artwork.as_ref().is_none_or(|(k, _)| *k != key);
-                // Some players attach artwork a moment after the title, so a track without
-                // artwork is retried when its properties change again.
-                let retry = !new_track && pending.properties && last_artwork.as_ref().is_some_and(|(_, found)| !found);
-                if new_track || retry {
-                    let image = tracker.read_thumbnail().and_then(|bytes| artwork.process(&bytes));
-                    let found = image.is_some();
-                    if new_track || found {
-                        publish(MediaUpdate::Artwork(image));
+                // Re-read the thumbnail on every properties refresh so a late-arriving
+                // artwork (Spotify and some browsers update the title first) replaces
+                // the stale image from the previous track.
+                if new_track || pending.properties {
+                    let bytes = tracker.read_thumbnail();
+                    let hash = bytes.as_ref().map(|b| crate::artwork::fingerprint(b)).unwrap_or(0);
+                    let prev_hash = last_artwork.as_ref().map(|(_, h)| *h).unwrap_or(0);
+                    if new_track || hash != prev_hash {
+                        let image = bytes.and_then(|b| artwork.process(&b));
+                        // On a new track, publish whatever we have (including None so
+                        // the old image clears). On the same track, publish only when
+                        // the image actually changed.
+                        if new_track || image.is_some() || prev_hash != 0 {
+                            publish(MediaUpdate::Artwork(image.clone()));
+                        }
+                        let stored_hash = if image.is_some() { hash } else { 0 };
+                        last_artwork = Some((key, stored_hash));
                     }
-                    last_artwork = Some((key, found));
                 }
                 if last_state.as_ref() != Some(&state) {
                     last_state = Some(state.clone());

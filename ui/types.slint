@@ -78,6 +78,15 @@ export struct NetworkRow {
     joinable: bool,
 }
 
+// One application in the volume mixer. `id` is Windows' session instance identifier.
+export struct SessionRow {
+    id: string,
+    name: string,
+    volume: float,
+    muted: bool,
+    is-system: bool,
+}
+
 // A paired Bluetooth device in the Bluetooth pop-up.
 export struct DeviceRow {
     name: string,
