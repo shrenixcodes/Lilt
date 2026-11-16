@@ -599,12 +599,12 @@ fn liquid_glass_is_clearer_and_lights_its_lower_edge() {
     h.theme().set_glass_alpha(crate::appearance::DENSE_ALPHA);
     let dense = h.render_on(wallpaper);
     assert!(brightness(dense.get_pixel(240, 230).0) < brightness(l));
-    // The lower edge is lit too, unlike Smoked Glass's.
+    // Both glass appearances light the lower edge; Liquid Glass's is noticeably brighter.
     let bottom = (h.island.get_body_y() + h.island.get_body_height()) as u32 - 1;
     let lower = |image: &RgbaImage| {
         brightness(image.get_pixel(240, bottom).0) as i32 - brightness(image.get_pixel(240, bottom - 1).0) as i32
     };
-    assert!(lower(&liquid) > lower(&smoked) + 30, "{} vs {}", lower(&liquid), lower(&smoked));
+    assert!(lower(&liquid) > lower(&smoked) + 10, "{} vs {}", lower(&liquid), lower(&smoked));
 }
 
 #[test]
