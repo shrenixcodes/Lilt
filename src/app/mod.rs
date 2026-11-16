@@ -251,6 +251,10 @@ impl App {
         actions.on_quick_action(move |index| {
             let Some(action) = QuickAction::from_index(index) else { return };
             if let Some(app) = weak_action.upgrade() {
+                if action == QuickAction::Settings {
+                    App::open_settings(&app);
+                    return;
+                }
                 // Collapse first so the opened window is not covered and gets the focus.
                 App::set_expanded(&app, false);
             }

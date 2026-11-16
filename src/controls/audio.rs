@@ -9,6 +9,10 @@
 
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::CloseHandle;
+use windows::Win32::Graphics::Gdi::{
+    BI_RGB, BITMAPINFO, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, HGDIOBJ,
+    SelectObject,
+};
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{
     AudioSessionStateExpired, DEVICE_STATE, DEVICE_STATEMASK_ALL, IAudioSessionControl, IAudioSessionControl2,
@@ -23,7 +27,9 @@ use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree, S
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
-use windows::core::{GUID, Interface, PWSTR};
+use windows::Win32::UI::Shell::ExtractIconExW;
+use windows::Win32::UI::WindowsAndMessaging::{DI_NORMAL, DestroyIcon, DrawIconEx, HICON, PrivateExtractIconsW};
+use windows::core::{GUID, HSTRING, Interface, PWSTR};
 
 use super::bluetooth;
 
@@ -84,6 +90,8 @@ pub struct Session {
     pub id: String,
     /// Human-friendly label (application display name, or the executable's base name).
     pub name: String,
+    /// RGBA pixels of the process icon, if Windows can provide one.
+    pub icon: Option<Vec<u8>>,
     pub process_id: u32,
     /// 0.0 to 1.0.
     pub volume: f32,
@@ -148,12 +156,20 @@ fn describe(control: &IAudioSessionControl) -> Option<Session> {
     };
     let level = unsafe { volume.GetMasterVolume() }.ok()?.clamp(0.0, 1.0);
     let muted = unsafe { volume.GetMute() }.ok()?.as_bool();
-    Some(Session { id, name, process_id, volume: level, muted, is_system })
+    let icon = (!is_system).then(|| process_icon(process_id)).flatten();
+    Some(Session { id, name, icon, process_id, volume: level, muted, is_system })
 }
 
 /// Executable file name (without path and extension) for a running process, if the
 /// process allows a limited-information query.
 fn process_name(pid: u32) -> Option<String> {
+    let path = process_path(pid)?;
+    let base = path.rsplit(['\\', '/']).next().unwrap_or(&path);
+    let stem = base.rsplit_once('.').map(|(s, _)| s).unwrap_or(base);
+    Some(pretty_name(stem))
+}
+
+fn process_path(pid: u32) -> Option<String> {
     if pid == 0 {
         return None;
     }
@@ -164,10 +180,87 @@ fn process_name(pid: u32) -> Option<String> {
         unsafe { QueryFullProcessImageNameW(handle, PROCESS_NAME_FORMAT(0), PWSTR(buffer.as_mut_ptr()), &mut len) };
     unsafe { CloseHandle(handle) }.ok()?;
     result.ok()?;
-    let path = String::from_utf16_lossy(&buffer[..len as usize]);
-    let base = path.rsplit(['\\', '/']).next().unwrap_or(&path);
-    let stem = base.rsplit_once('.').map(|(s, _)| s).unwrap_or(base);
-    Some(pretty_name(stem))
+    Some(String::from_utf16_lossy(&buffer[..len as usize]))
+}
+
+pub const ICON_SIZE: u32 = 64;
+
+fn process_icon(pid: u32) -> Option<Vec<u8>> {
+    let path = process_path(pid)?;
+    let mut icon = HICON::default();
+    let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    if wide.len() <= 260 {
+        let mut filename = [0u16; 260];
+        filename[..wide.len()].copy_from_slice(&wide);
+        let _ = unsafe {
+            PrivateExtractIconsW(
+                &filename,
+                0,
+                ICON_SIZE as i32,
+                ICON_SIZE as i32,
+                Some(std::slice::from_mut(&mut icon)),
+                None,
+                0,
+            )
+        };
+    }
+    if icon.is_invalid() {
+        let path = HSTRING::from(path);
+        if unsafe { ExtractIconExW(&path, 0, Some(&mut icon), None, 1) } == 0 || icon.is_invalid() {
+            return None;
+        }
+    }
+    let pixels = draw_icon(icon);
+    let _ = unsafe { DestroyIcon(icon) };
+    pixels
+}
+
+fn draw_icon(icon: HICON) -> Option<Vec<u8>> {
+    const SIZE: usize = ICON_SIZE as usize;
+    let mut info = BITMAPINFO::default();
+    info.bmiHeader.biSize = std::mem::size_of_val(&info.bmiHeader) as u32;
+    info.bmiHeader.biWidth = SIZE as i32;
+    info.bmiHeader.biHeight = -(SIZE as i32);
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB.0;
+    let mut bits = std::ptr::null_mut();
+    let bitmap = unsafe { CreateDIBSection(None, &info, DIB_RGB_COLORS, &mut bits, None, 0) }.ok()?;
+    let dc = unsafe { CreateCompatibleDC(None) };
+    if dc.is_invalid() {
+        let _ = unsafe { DeleteObject(HGDIOBJ(bitmap.0)) };
+        return None;
+    }
+    let previous = unsafe { SelectObject(dc, HGDIOBJ(bitmap.0)) };
+    let drawn = unsafe { DrawIconEx(dc, 0, 0, icon, SIZE as i32, SIZE as i32, 0, None, DI_NORMAL) }.is_ok();
+    let pixels = if drawn && !bits.is_null() {
+        let bgra = unsafe { std::slice::from_raw_parts(bits.cast::<u8>(), SIZE * SIZE * 4) };
+        let mut rgba = Vec::with_capacity(bgra.len());
+        for pixel in bgra.as_chunks::<4>().0 {
+            rgba.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
+        }
+        Some(rgba)
+    } else {
+        None
+    };
+    unsafe {
+        SelectObject(dc, previous);
+        let _ = DeleteDC(dc);
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+    }
+    pixels
+}
+
+#[cfg(test)]
+#[test]
+fn extracts_a_high_resolution_process_icon() {
+    let pixels = process_icon(std::process::id()).expect("the test executable has an embedded icon");
+    assert_eq!(pixels.len(), ICON_SIZE as usize * ICON_SIZE as usize * 4);
+    assert!(pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[3] > 0));
+    let image = image::RgbaImage::from_raw(ICON_SIZE, ICON_SIZE, pixels).expect("RGBA dimensions match");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/ui-snapshots/process-icon.png");
+    std::fs::create_dir_all(path.parent().unwrap()).expect("create snapshot directory");
+    image.save(path).expect("save extracted icon for visual review");
 }
 
 /// Capitalises an executable stem without going out of its way.

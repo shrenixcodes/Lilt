@@ -237,7 +237,7 @@ impl App {
         }
     }
 
-    fn open_settings(app: &Rc<Self>) {
+    pub(super) fn open_settings(app: &Rc<Self>) {
         App::set_expanded(app, false);
         if let Some(existing) = app.settings_window.borrow().as_ref() {
             let _ = existing.show();
