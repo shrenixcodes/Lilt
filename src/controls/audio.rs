@@ -128,7 +128,10 @@ fn describe(control: &IAudioSessionControl) -> Option<Session> {
     }
     let control2: IAudioSessionControl2 = control.cast().ok()?;
     let volume: ISimpleAudioVolume = control.cast().ok()?;
-    let is_system = unsafe { control2.IsSystemSoundsSession() }.is_ok();
+    // `IsSystemSoundsSession` returns S_OK only for the system-sounds session and
+    // S_FALSE for every normal application. `HRESULT::is_ok` treats both as success,
+    // which previously labelled every mixer row "System sounds".
+    let is_system = unsafe { control2.IsSystemSoundsSession() }.0 == 0;
     let process_id = unsafe { control2.GetProcessId() }.unwrap_or(0);
     let id = unsafe { control2.GetSessionInstanceIdentifier() }
         .ok()
