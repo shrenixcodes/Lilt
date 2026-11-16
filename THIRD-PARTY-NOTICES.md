@@ -33,10 +33,10 @@ fonts come unmodified from the [Google Fonts repository](https://github.com/goog
   (https://github.com/googlefonts/dm-fonts)
 - **Space Grotesk**: Copyright 2020 The Space Grotesk Project Authors
   (https://github.com/floriankarsten/space-grotesk)
-- **Instrument Serif**: Copyright 2022 The Instrument Serif Project Authors
-  (https://github.com/Instrument/instrument-serif)
-- **Allura**: Copyright 2010 The Allura Project Authors
-  (https://github.com/googlefonts/allura)
+- **Newsreader**: Copyright 2020 The Newsreader Project Authors
+  (https://github.com/productiontype/Newsreader)
+- **Unbounded**: Copyright 2022 The Unbounded Project Authors
+  (https://github.com/googlefonts/unbounded)
 - **JetBrains Mono**: Copyright 2020 The JetBrains Mono Project Authors
   (https://github.com/JetBrains/JetBrainsMono)
 

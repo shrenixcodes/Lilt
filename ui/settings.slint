@@ -2,7 +2,7 @@ import { Switch, Slider, ComboBox, Button, LineEdit, ScrollView, AboutSlint, Pal
 import { Theme, AppearanceTokens } from "theme.slint";
 import { Icon, Icons } from "components/icon.slint";
 import { GlassSheen, GlassRim } from "components/glass.slint";
-import { Heading } from "components/heading.slint";
+import { Heading, SectionLabel } from "components/heading.slint";
 
 // Settings as edited in the window. Converted to and from the Rust settings model.
 
@@ -59,11 +59,12 @@ component Section inherits VerticalLayout {
     spacing: 2px;
     padding-bottom: 18px;
 
-    Heading {
+    SectionLabel {
         text: root.title;
-        size: 15px;
-        color: Palette.foreground;
+        size: 13px;
+        color: Theme.window-text;
         height: 32px;
+        vertical-alignment: center;
     }
 
     Rectangle {
