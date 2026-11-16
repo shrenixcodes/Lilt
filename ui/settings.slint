@@ -478,9 +478,12 @@ component AppearanceCard inherits Rectangle {
 export component SettingsWindow inherits Window {
     title: "Lilt Settings";
     icon: @image-url("../assets/icons/lilt.png");
-    preferred-width: 760px;
+    preferred-width: 780px;
     preferred-height: 540px;
-    min-width: 620px;
+    // Wide enough that the three Appearance cards (min 150px each, plus the sidebar,
+    // padding and scrollbar) always fit. A narrower window forced a resize when that
+    // page opened and let the cards overflow, which read as the window jumping.
+    min-width: 760px;
     min-height: 420px;
     background: Theme.window-background;
     default-font-family: Theme.font;
