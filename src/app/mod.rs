@@ -427,6 +427,7 @@ impl App {
 
     fn pointer_moved(app: &Rc<Self>, inside: bool) {
         app.pointer_inside.set(inside);
+        app.island.global::<AppState>().set_pointer_inside(inside);
         if inside {
             app.collapse_timer.stop();
         } else if app.expanded() {

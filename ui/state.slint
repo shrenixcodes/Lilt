@@ -45,6 +45,8 @@ export global AppState {
 
     // Set by Rust; the island only requests changes through AppActions.
     in property <bool> expanded;
+    // Tracked by the native island window, including when the pointer is over child controls.
+    in property <bool> pointer-inside;
     // The island is shown (not hidden by the user or for a full-screen application).
     in property <bool> on-screen: true;
     in property <bool> update-checking;
