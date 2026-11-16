@@ -51,8 +51,9 @@ const WM_APP_APPBAR: u32 = window::WM_APP_USER;
 const PEEK_POLL: Duration = Duration::from_millis(90);
 /// Delay before a revealed island tucks itself away again after the pointer leaves it.
 const PEEK_HIDE_DELAY: Duration = Duration::from_millis(600);
-/// Logical depth, below the island's top edge, of the band that reveals the island.
-const PEEK_BAND_HEIGHT: f32 = 52.0;
+/// Logical depth, from the very top edge of the screen, of the band that reveals the
+/// island. Kept shallow so a tucked island only returns when the cursor hits the top.
+const PEEK_BAND_HEIGHT: f32 = 3.0;
 /// Logical padding on each side of the compact island within the reveal band.
 const PEEK_BAND_PAD: f32 = 40.0;
 
@@ -620,13 +621,13 @@ impl App {
         let pad = (PEEK_BAND_PAD * scale).round() as i32;
         let centre =
             monitor.work.left + monitor.work.width() / 2 + (settings.position.offset_x as f32 * scale).round() as i32;
-        let island_top = monitor.work.top + (settings.position.top_margin as f32 * scale).round() as i32;
         Some(placement::Rect {
             left: centre - half_width - pad,
             right: centre + half_width + pad,
-            // From the very top edge of the screen down past the compact island.
+            // Only a thin strip at the very top edge, so the island stays tucked until the
+            // cursor reaches the top of the screen.
             top: monitor.bounds.top,
-            bottom: island_top + (PEEK_BAND_HEIGHT * scale).round() as i32,
+            bottom: monitor.bounds.top + (PEEK_BAND_HEIGHT * scale).round() as i32,
         })
     }
 
