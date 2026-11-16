@@ -73,12 +73,14 @@ component Section inherits VerticalLayout {
         border-width: Theme.group-radius > 0 ? 1px : 0px;
         border-color: Theme.group-border;
 
+        // Dimensions stay the same for every appearance so switching material never
+        // moves a control; only the background, border and corners change.
         VerticalLayout {
             spacing: 2px;
-            padding-left: Theme.group-padding;
-            padding-right: Theme.group-padding;
-            padding-top: Theme.group-padding / 3;
-            padding-bottom: Theme.group-padding / 3;
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 5px;
+            padding-bottom: 5px;
 
             @children
         }
@@ -88,6 +90,8 @@ component Section inherits VerticalLayout {
 component Row inherits HorizontalLayout {
     in property <string> label;
     in property <string> description;
+    // When false the row reads as inactive: the label dims and any control is disabled.
+    in property <bool> enabled: true;
     spacing: 16px;
     padding-top: 6px;
     padding-bottom: 6px;
@@ -100,7 +104,7 @@ component Row inherits HorizontalLayout {
 
         Text {
             text: root.label;
-            color: Palette.foreground;
+            color: root.enabled ? Palette.foreground : Theme.window-text-secondary;
             font-size: 13px;
             wrap: word-wrap;
         }
@@ -125,6 +129,7 @@ component SliderRow inherits Row {
 
     Slider {
         width: 180px;
+        enabled: root.enabled;
         minimum: root.minimum;
         maximum: root.maximum;
         value: root.value;
@@ -138,6 +143,7 @@ component SliderRow inherits Row {
         text: root.value + root.unit;
         color: Theme.window-text-secondary;
         font-size: 12px;
+        opacity: root.enabled ? 1.0 : 0.5;
     }
 }
 
@@ -658,17 +664,22 @@ export component SettingsWindow inherits Window {
                         font-size: 11.5px;
                         wrap: word-wrap;
                     }
-                    if root.data.appearance >= 1 : Row {
+                    // The glass controls stay in place for every appearance and only turn
+                    // inactive under Midnight, so selecting an appearance never shifts the page.
+                    Row {
                         label: "Reduce transparency";
                         description: "Use frosted surfaces instead of blurring the desktop behind Lilt.";
+                        enabled: root.data.appearance >= 1;
                         Switch {
+                            enabled: root.data.appearance >= 1;
                             checked: root.data.reduce-transparency;
                             toggled => { root.data.reduce-transparency = self.checked; root.edited(); }
                         }
                     }
-                    if root.data.appearance >= 1 && !root.data.reduce-transparency : SliderRow {
+                    SliderRow {
                         label: "Glass transparency";
                         description: "From a heavy blur at 0 % to clear glass at 100 %.";
+                        enabled: root.data.appearance >= 1 && !root.data.reduce-transparency;
                         value: root.data.glass-transparency;
                         minimum: 0;
                         maximum: 100;
