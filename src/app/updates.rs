@@ -80,7 +80,7 @@ impl App {
                         );
                         LATEST.with(|slot| slot.replace(Some(release)));
                         if available && install_on_found {
-                            App::install_update(&app);
+                            App::install_update(app);
                         }
                     }
                     Err(error) => {
