@@ -102,6 +102,10 @@ component ClipItem inherits Rectangle {
         }
 
         actions := HorizontalLayout {
+            // Without an explicit width the layout fills the row and its buttons are
+            // centred off the right edge, where the clip hides them; size it to its
+            // content so Pin and Delete sit at the right of each entry.
+            width: self.preferred-width;
             x: parent.width - self.preferred-width - 4px;
             height: parent.height;
             alignment: center;
