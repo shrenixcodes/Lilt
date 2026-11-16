@@ -47,12 +47,16 @@ megabytes of memory and no measurable CPU or GPU time.
   text is optional and off until you turn it on; it skips likely passwords and keys and
   copies from password managers, and everything stays on this PC.
 - **Quick controls.** Volume, brightness, Bluetooth and Wi-Fi open small pop-ups in the
-  island: change the volume or mute, set the screen's brightness, turn Bluetooth or
-  Wi-Fi on and off, connect to a network (typing its password if it is new), and connect
-  or disconnect Bluetooth headphones and speakers. The other buttons open Windows
-  Settings, the Snipping Tool, Task Manager and File Explorer.
+  island: change the volume or mute, adjust each open app's volume, set the screen's
+  brightness, turn Bluetooth or Wi-Fi on and off, connect to a network (typing its
+  password if it is new), and connect or disconnect Bluetooth headphones and speakers.
+  The other buttons open Windows Settings, the Snipping Tool, Task Manager and File
+  Explorer.
 - **Settings.** Appearance, widgets, sizes, display and position, ambient colour,
   motion, a low-power mode, start with Windows and a global shortcut.
+- **Updates.** Lilt checks stable GitHub releases at startup. When a newer release is
+  available, it downloads, verifies and installs it; the updated app starts the next
+  time you open Lilt.
 
 ## Installation
 
@@ -67,6 +71,14 @@ signed, so Windows SmartScreen may ask you to confirm the first time ("More info
 "Run anyway").
 
 To uninstall, use *Settings → Apps → Installed apps → Lilt*.
+
+### Updates
+
+Lilt checks for a newer stable release when it starts. If one is available, it downloads
+the installer in the background, verifies its SHA-256 checksum from GitHub's release
+asset metadata, and runs it. The installer replaces the app for your user account; the
+new version is used the next time Lilt starts. Manual and periodic checks only tell you
+that an update is available, so they never interrupt your work.
 
 ### System requirements
 
@@ -225,14 +237,13 @@ you copy secrets from.
 
 ## Privacy
 
-Lilt has no telemetry or accounts. It checks the public GitHub `main` commit on startup,
-every 30 minutes, and when you press the refresh icon in the expanded island. If the
-running build differs, the update button opens the commit history on GitHub; it does
-not download or install code. The request sends only the usual HTTPS request metadata
-to GitHub. Media and
-calendar information is only displayed, never stored or sent anywhere. Tasks and the
-clipboard shelf are stored on this PC only, and copied text is never logged. Details are
-in [SECURITY.md](SECURITY.md).
+Lilt has no telemetry or accounts. At startup it asks GitHub for the latest stable
+release. If a newer release exists, Lilt downloads the release installer, verifies its
+SHA-256 digest supplied by GitHub, and starts that installer; manual and periodic checks
+only report availability. These requests send only the usual HTTPS request metadata to
+GitHub. Media and calendar information is only displayed, never stored or sent anywhere.
+Tasks and the clipboard shelf are stored on this PC only, and copied text is never
+logged. Details are in [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
 
