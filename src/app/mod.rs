@@ -16,7 +16,7 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use slint::ComponentHandle;
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::Com::{
     COINIT_APARTMENTTHREADED, CoInitializeEx, CoInitializeSecurity, EOAC_NONE, RPC_C_AUTHN_LEVEL_DEFAULT,
     RPC_C_IMP_LEVEL_IMPERSONATE,
@@ -27,7 +27,7 @@ use windows::Win32::UI::Shell::{
     QUNS_RUNNING_D3D_FULL_SCREEN, SHAppBarMessage, SHQueryUserNotificationState,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    PBT_APMPOWERSTATUSCHANGE, PBT_APMRESUMEAUTOMATIC, SPI_SETCLIENTAREAANIMATION, SPI_SETDESKWALLPAPER,
+    GetCursorPos, PBT_APMPOWERSTATUSCHANGE, PBT_APMRESUMEAUTOMATIC, SPI_SETCLIENTAREAANIMATION, SPI_SETDESKWALLPAPER,
     SPI_SETWORKAREA, SetForegroundWindow, WM_CLOSE, WM_DISPLAYCHANGE, WM_HOTKEY, WM_POWERBROADCAST, WM_SETTINGCHANGE,
     WM_TIMECHANGE,
 };
@@ -47,6 +47,15 @@ use crate::window::{self, Notice, WindowKind, placement};
 /// Shell notifications for the app bar registration (full-screen detection).
 const WM_APP_APPBAR: u32 = window::WM_APP_USER;
 
+/// Cursor poll interval while the island is tucked away for auto-hide.
+const PEEK_POLL: Duration = Duration::from_millis(90);
+/// Delay before a revealed island tucks itself away again after the pointer leaves it.
+const PEEK_HIDE_DELAY: Duration = Duration::from_millis(600);
+/// Logical depth, below the island's top edge, of the band that reveals the island.
+const PEEK_BAND_HEIGHT: f32 = 52.0;
+/// Logical padding on each side of the compact island within the reveal band.
+const PEEK_BAND_PAD: f32 = 40.0;
+
 pub struct App {
     island: Island,
     tray: Tray,
@@ -62,6 +71,12 @@ pub struct App {
     h24: Cell<bool>,
     collapse_timer: slint::Timer,
     pointer_inside: Cell<bool>,
+    /// Auto-hide: whether the island is revealed right now despite being tucked away.
+    auto_hide_revealed: Cell<bool>,
+    /// Polls the cursor while the island is tucked, to reveal it at the top centre.
+    peek_timer: slint::Timer,
+    /// Re-tucks the island a short while after the pointer leaves it.
+    peek_hide_timer: slint::Timer,
     /// Window that had the focus before the island was expanded, restored on collapse.
     previous_foreground: Cell<Option<HWND>>,
     media: RefCell<Option<MediaService>>,
@@ -177,6 +192,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
         h24: Cell::new(clock::uses_24_hour_clock()),
         collapse_timer: slint::Timer::default(),
         pointer_inside: Cell::new(false),
+        auto_hide_revealed: Cell::new(false),
+        peek_timer: slint::Timer::default(),
+        peek_hide_timer: slint::Timer::default(),
         previous_foreground: Cell::new(None),
         media: RefCell::new(None),
         media_state: RefCell::new(None),
@@ -422,6 +440,11 @@ impl App {
         state.set_expanded(expanded);
         state.set_activity(false);
         app.collapse_timer.stop();
+        // Expanding reveals an auto-hidden island; collapsing lets it tuck away again.
+        if expanded {
+            app.auto_hide_revealed.set(true);
+        }
+        App::apply_peek(app);
         App::update_progress_timer(app);
         App::update_sampling(app);
         App::update_glass_sampling(app);
@@ -439,12 +462,16 @@ impl App {
             if !app.pointer_inside.get() {
                 App::schedule_collapse(app);
             }
-        } else if let Some(previous) = app.previous_foreground.take()
-            && native.is_some_and(|n| n.is_foreground())
-        {
-            unsafe {
-                let _ = SetForegroundWindow(previous);
+        } else {
+            if let Some(previous) = app.previous_foreground.take()
+                && native.is_some_and(|n| n.is_foreground())
+            {
+                unsafe {
+                    let _ = SetForegroundWindow(previous);
+                }
             }
+            // After collapsing, tuck away again once the pointer has left.
+            App::schedule_peek_hide(app);
         }
     }
 
@@ -453,8 +480,14 @@ impl App {
         app.island.global::<AppState>().set_pointer_inside(inside);
         if inside {
             app.collapse_timer.stop();
-        } else if app.expanded() {
-            App::schedule_collapse(app);
+            // Keep a revealed island out while the pointer rests on it.
+            app.peek_hide_timer.stop();
+        } else {
+            if app.expanded() {
+                App::schedule_collapse(app);
+            }
+            // The pointer left the island: tuck it away again if auto-hide is on.
+            App::schedule_peek_hide(app);
         }
     }
 
@@ -492,9 +525,109 @@ impl App {
         if visible {
             app.place();
         }
+        // Under the cursor, auto-hide starts revealed rather than tucking out of reach.
+        if app.settings.borrow().general.auto_hide && app.pointer_inside.get() {
+            app.auto_hide_revealed.set(true);
+        }
+        App::apply_peek(app);
         App::update_progress_timer(app);
         App::update_sampling(app);
         App::update_glass_sampling(app);
+    }
+
+    /// Re-evaluates whether the island should be tucked away for auto-hide, and starts or
+    /// stops the cursor poll accordingly.
+    fn apply_peek(app: &Rc<Self>) {
+        let governed = app.settings.borrow().general.auto_hide && app.island_visible();
+        let revealed = !governed || app.expanded() || app.auto_hide_revealed.get();
+        let tucked = governed && !revealed;
+        app.island.global::<AppState>().set_tucked(tucked);
+        if tucked {
+            if !app.peek_timer.running() {
+                let weak = Rc::downgrade(app);
+                app.peek_timer.start(slint::TimerMode::Repeated, PEEK_POLL, move || {
+                    if let Some(app) = weak.upgrade() {
+                        App::peek_tick(&app);
+                    }
+                });
+            }
+        } else {
+            app.peek_timer.stop();
+        }
+        if !governed {
+            app.peek_hide_timer.stop();
+            app.auto_hide_revealed.set(false);
+        }
+    }
+
+    /// Reveals the island when the cursor reaches the band at the top centre.
+    fn peek_tick(app: &Rc<Self>) {
+        let Some(zone) = app.peek_trigger_zone() else { return };
+        let mut point = POINT::default();
+        if unsafe { GetCursorPos(&mut point) }.is_err() {
+            return;
+        }
+        if zone.contains(point.x, point.y) {
+            App::reveal_peek(app);
+        }
+    }
+
+    /// Shows a tucked island and arms a fallback that re-tucks it if the pointer never
+    /// lands on it.
+    fn reveal_peek(app: &Rc<Self>) {
+        if app.auto_hide_revealed.replace(true) {
+            return;
+        }
+        app.peek_hide_timer.stop();
+        App::apply_peek(app);
+        App::schedule_peek_hide(app);
+    }
+
+    /// Tucks the island away again and resumes polling the cursor.
+    fn tuck_peek(app: &Rc<Self>) {
+        app.auto_hide_revealed.set(false);
+        App::apply_peek(app);
+    }
+
+    /// Re-tucks the island a short while after the pointer leaves it, unless it is
+    /// expanded or a field inside is being edited.
+    fn schedule_peek_hide(app: &Rc<Self>) {
+        if !(app.settings.borrow().general.auto_hide && app.island_visible())
+            || app.expanded()
+            || app.pointer_inside.get()
+            || app.tasks.busy.get()
+            || app.clipboard.busy.get()
+            || app.controls.busy.get()
+        {
+            return;
+        }
+        let weak = Rc::downgrade(app);
+        app.peek_hide_timer.start(slint::TimerMode::SingleShot, PEEK_HIDE_DELAY, move || {
+            if let Some(app) = weak.upgrade() {
+                App::tuck_peek(&app);
+            }
+        });
+    }
+
+    /// The band, in physical pixels, that reveals a tucked island: the top centre of the
+    /// chosen monitor, around where the compact island sits.
+    fn peek_trigger_zone(&self) -> Option<placement::Rect> {
+        let monitors = placement::monitors();
+        let settings = self.settings.borrow();
+        let monitor = placement::choose(&monitors, settings.position.monitor.as_deref())?;
+        let scale = monitor.scale;
+        let half_width = (settings.appearance.compact_width as f32 * scale / 2.0).round() as i32;
+        let pad = (PEEK_BAND_PAD * scale).round() as i32;
+        let centre =
+            monitor.work.left + monitor.work.width() / 2 + (settings.position.offset_x as f32 * scale).round() as i32;
+        let island_top = monitor.work.top + (settings.position.top_margin as f32 * scale).round() as i32;
+        Some(placement::Rect {
+            left: centre - half_width - pad,
+            right: centre + half_width + pad,
+            // From the very top edge of the screen down past the compact island.
+            top: monitor.bounds.top,
+            bottom: island_top + (PEEK_BAND_HEIGHT * scale).round() as i32,
+        })
     }
 
     /// Updates the clock text and schedules the next update for the start of the next

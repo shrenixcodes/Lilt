@@ -42,6 +42,9 @@ pub struct General {
     pub collapse_on_outside_click: bool,
     /// Briefly show track changes in the compact island.
     pub activity_banners: bool,
+    /// Keep the island tucked away, revealing it only when the pointer reaches the top
+    /// centre of the screen.
+    pub auto_hide: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -279,7 +282,13 @@ impl Default for Settings {
 
 impl Default for General {
     fn default() -> Self {
-        Self { auto_collapse: true, auto_collapse_seconds: 8, collapse_on_outside_click: true, activity_banners: true }
+        Self {
+            auto_collapse: true,
+            auto_collapse_seconds: 8,
+            collapse_on_outside_click: true,
+            activity_banners: true,
+            auto_hide: false,
+        }
     }
 }
 

@@ -16,6 +16,7 @@ export struct SettingsData {
     auto-collapse-seconds: int,
     collapse-on-outside-click: bool,
     activity-banners: bool,
+    auto-hide: bool,
     compact-width: int,
     expanded-width: int,
     // 0 = follow Windows, 1 = reduced, 2 = full
@@ -592,6 +593,14 @@ export component SettingsWindow inherits Window {
                         Switch {
                             checked: root.data.activity-banners;
                             toggled => { root.data.activity-banners = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Hide until pointed at";
+                        description: "Tuck the island away and reveal it when the pointer reaches the top centre of the screen.";
+                        Switch {
+                            checked: root.data.auto-hide;
+                            toggled => { root.data.auto-hide = self.checked; root.edited(); }
                         }
                     }
                     Row {

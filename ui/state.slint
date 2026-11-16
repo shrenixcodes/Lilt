@@ -52,6 +52,9 @@ export global AppState {
     in property <bool> pointer-inside;
     // The island is shown (not hidden by the user or for a full-screen application).
     in property <bool> on-screen: true;
+    // Auto-hide: the island is tucked away above the top edge and reveals only when the
+    // pointer reaches the top centre of the screen.
+    in property <bool> tucked: false;
     in property <bool> update-checking;
     in property <bool> update-available;
     in property <string> update-message: "Check for updates";

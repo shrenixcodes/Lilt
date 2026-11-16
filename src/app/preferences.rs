@@ -542,6 +542,7 @@ fn to_data(s: &Settings, monitors: &[placement::Monitor]) -> SettingsData {
         auto_collapse_seconds: s.general.auto_collapse_seconds as i32,
         collapse_on_outside_click: s.general.collapse_on_outside_click,
         activity_banners: s.general.activity_banners,
+        auto_hide: s.general.auto_hide,
         compact_width: s.appearance.compact_width as i32,
         expanded_width: s.appearance.expanded_width as i32,
         motion: motion_index(s.appearance.motion),
@@ -591,6 +592,7 @@ fn from_data(d: &SettingsData, monitors: &[placement::Monitor], previous: &Setti
     s.general.auto_collapse_seconds = d.auto_collapse_seconds.max(0) as u32;
     s.general.collapse_on_outside_click = d.collapse_on_outside_click;
     s.general.activity_banners = d.activity_banners;
+    s.general.auto_hide = d.auto_hide;
     s.appearance.compact_width = d.compact_width.max(0) as u32;
     s.appearance.expanded_width = d.expanded_width.max(0) as u32;
     s.appearance.motion = match d.motion {
@@ -647,6 +649,7 @@ mod tests {
         }];
         let mut s = Settings::default();
         s.position.monitor = Some(r"\\.\DISPLAY2".into());
+        s.general.auto_hide = true;
         s.ambient.intensity = 35;
         s.appearance.motion = MotionPreference::Reduced;
         s.appearance.theme = AppearanceMode::LiquidGlass;
