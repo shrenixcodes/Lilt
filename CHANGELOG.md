@@ -6,6 +6,17 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-11-16
+
+### Changed
+
+- The compact media progress is a thin 1 px line with no gray track; the island's
+  lit lower edge now shows on either side of the accent fill.
+- Smoked Glass gains a subtle lower rim so its lit perimeter matches the upper
+  edge. Liquid Glass's lower rim remains noticeably brighter.
+- Clipboard pin and delete buttons stay clearly visible on every entry; pinned
+  entries show their pin in the accent colour.
+
 ## [0.4.5] - 2026-11-16
 
 ### Added
