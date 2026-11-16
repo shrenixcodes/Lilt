@@ -6,6 +6,19 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-11-16
+
+### Added
+
+- The Sound panel shows application icons, vertical volume sliders, editable percentage
+  fields and mute buttons for active audio sessions.
+- Volume percentages can be entered directly for the main output and each application.
+
+### Changed
+
+- The quick action gear opens Lilt Settings. The Sound panel has more room for the
+  application mixer and keeps its controls stable while session values refresh.
+
 ## [0.4.6] - 2026-11-16
 
 ### Changed

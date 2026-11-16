@@ -46,7 +46,7 @@ impl QuickAction {
             Self::Display => "ms-settings:display",
             Self::Bluetooth => "ms-settings:bluetooth",
             Self::Wifi => "ms-settings:network-wifi",
-            Self::Settings => "ms-settings:",
+            Self::Settings => return None,
             Self::Snip => "ms-screenclip:",
             Self::Explorer => "explorer.exe",
             // The shelf is opened inside the island.
@@ -82,7 +82,7 @@ mod tests {
                 Some(t) => {
                     assert!(t.ends_with(':') || t.starts_with("ms-settings:") || t.ends_with(".exe"), "{t}")
                 }
-                None => assert_eq!(action, QuickAction::Shelf),
+                None => assert!(matches!(action, QuickAction::Shelf | QuickAction::Settings)),
             }
         }
     }

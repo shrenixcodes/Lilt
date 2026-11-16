@@ -1569,7 +1569,7 @@ fn fill_controls(h: &Harness) {
 
 #[test]
 fn quick_control_popups_render() {
-    use crate::ui::{ControlsState, Page};
+    use crate::ui::{ControlsState, Page, SessionRow};
     let h = Harness::new(1.0);
     h.state().set_expanded(true);
     fill_controls(&h);
@@ -1592,6 +1592,31 @@ fn quick_control_popups_render() {
     }
     set_appearance(&h, Appearance::Midnight);
     let c = h.island.global::<ControlsState>();
+    h.state().set_page(Page::Sound);
+    c.set_sessions(slint::ModelRc::new(slint::VecModel::from(
+        ["Spotify", "Steam", "Discord", "Browser", "System sounds"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, name)| SessionRow {
+                id: name.into(),
+                name: name.into(),
+                icon: slint::Image::default(),
+                volume: (index as f32 + 1.0) / 6.0,
+                muted: false,
+                is_system: index == 4,
+            })
+            .collect::<Vec<_>>(),
+    )));
+    let mixer = h.render_on(wallpaper);
+    save(&mixer, "controls-sound-mixer");
+    assert_ne!(mixer, dashboard);
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerMoved {
+        position: LogicalPosition::new(h.island.get_body_x() + 45.0, 180.0),
+    });
+    let hovered = h.render_on(wallpaper);
+    save(&hovered, "controls-sound-icon-hover");
+    assert_eq!(hovered, mixer, "app icon hover does not open a label");
+    c.set_sessions(slint::ModelRc::default());
     // A password field opens under a new secured network.
     h.state().set_page(Page::Wifi);
     let list = h.render_on(wallpaper);
