@@ -26,23 +26,20 @@ export component GlassSheen inherits Rectangle {
         root.sheen 0%, root.sheen 60%, root.sheen.transparentize(0.6) 78%, transparent 100%);
 }
 
-// Place after the rounded surface, with the same position, size and radius. With
-// `lower`, it lights the lower edge instead: place it at the surface's bottom, that is at
-// `surface.y + surface.height - self.height`.
+// Place after the rounded surface, with the same position and size. The software
+// renderer's 1 px rounded border aliases visibly over a live backdrop, so this is an
+// inset straight-edge highlight instead of a second rounded perimeter.
 export component GlassRim inherits Rectangle {
     in property <length> radius;
     in property <color> rim: Theme.rim;
-    in property <bool> lower;
-
-    height: min(root.radius, root.full-height / 2);
-    clip: true;
     in property <length> full-height;
+    height: 1px;
 
     Rectangle {
-        y: root.lower ? root.height - root.full-height : 0;
-        height: root.full-height;
-        border-radius: root.radius;
-        border-width: 1px;
-        border-color: root.rim;
+        // Start after the rounded corner so no anti-aliased rim is drawn around it.
+        x: min(root.radius, parent.width / 2);
+        width: max(0px, parent.width - 2 * self.x);
+        height: parent.height;
+        background: root.rim;
     }
 }

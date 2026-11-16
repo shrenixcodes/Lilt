@@ -21,7 +21,7 @@ impl App {
         let weak = Rc::downgrade(app);
         app.island.global::<AppActions>().on_check_for_updates(move || {
             if let Some(app) = weak.upgrade() {
-                App::check_updates(&app);
+                App::check_updates(&app, false);
             }
         });
         let weak = Rc::downgrade(app);
@@ -47,13 +47,13 @@ impl App {
         let weak = Rc::downgrade(app);
         app.update_timer.start(slint::TimerMode::Repeated, Duration::from_secs(30 * 60), move || {
             if let Some(app) = weak.upgrade() {
-                App::check_updates(&app);
+                App::check_updates(&app, false);
             }
         });
-        App::check_updates(app);
+        App::check_updates(app, true);
     }
 
-    fn check_updates(app: &Rc<Self>) {
+    fn check_updates(app: &Rc<Self>, install_on_found: bool) {
         let state = app.island.global::<AppState>();
         if app.update_checking.replace(true) {
             return;
@@ -79,6 +79,9 @@ impl App {
                             .into(),
                         );
                         LATEST.with(|slot| slot.replace(Some(release)));
+                        if available && install_on_found {
+                            App::install_update(&app);
+                        }
                     }
                     Err(error) => {
                         tracing::warn!(%error, "GitHub update check failed");
@@ -103,12 +106,13 @@ impl App {
             return;
         };
         let sha_url = release.sha256_url.clone();
+        let asset_sha256 = release.installer_sha256.clone();
         let target = updates::installer_target(&release.version);
         let state = app.island.global::<AppState>();
         state.set_update_checking(true);
         state.set_update_message(format!("Downloading {}…", release.version).into());
         std::thread::spawn(move || {
-            let outcome = install_in_background(&url, sha_url.as_deref(), &target);
+            let outcome = install_in_background(&url, sha_url.as_deref(), asset_sha256.as_deref(), &target);
             super::post(move |app| {
                 let state = app.island.global::<AppState>();
                 app.update_checking.set(false);
@@ -136,8 +140,17 @@ impl App {
     }
 }
 
-fn install_in_background(url: &str, sha_url: Option<&str>, target: &std::path::Path) -> Result<(), String> {
+fn install_in_background(
+    url: &str,
+    sha_url: Option<&str>,
+    asset_sha256: Option<&str>,
+    target: &std::path::Path,
+) -> Result<(), String> {
     updates::download(url, target)?;
+    if sha_url.is_none() && asset_sha256.is_none() {
+        let _ = std::fs::remove_file(target);
+        return Err("This release has no SHA-256 checksum; install cancelled.".into());
+    }
     if let Some(sha_url) = sha_url {
         let sha_target = target.with_extension("exe.sha256");
         // Failing to fetch the checksum is non-fatal; without it we still trust the
@@ -152,6 +165,13 @@ fn install_in_background(url: &str, sha_url: Option<&str>, target: &std::path::P
                 }
             }
             let _ = std::fs::remove_file(&sha_target);
+        }
+    }
+    if let Some(expected) = asset_sha256 {
+        let actual = updates::sha256_of(target)?;
+        if !actual.eq_ignore_ascii_case(expected) {
+            let _ = std::fs::remove_file(target);
+            return Err("checksum mismatch - install cancelled.".into());
         }
     }
     Ok(())
