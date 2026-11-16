@@ -6,6 +6,18 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-11-16
+
+### Added
+
+- Lilt now downloads, verifies and installs a newer stable GitHub release at startup.
+  Manual and periodic checks remain informational.
+
+### Fixed
+
+- Glass appearances no longer draw a pixelated bright border around the rounded island
+  perimeter; their highlight is now inset from the curved corners.
+
 ## [0.4.1] - 2026-11-16
 
 ### Added

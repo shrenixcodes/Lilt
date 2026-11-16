@@ -31,6 +31,8 @@ pub struct Release {
     pub installer_url: Option<String>,
     /// Full URL to the matching `.sha256` sidecar.
     pub sha256_url: Option<String>,
+    /// SHA-256 published by GitHub for the installer asset itself.
+    pub installer_sha256: Option<String>,
     /// Asset byte length when GitHub reported it, for a rough progress indicator.
     pub installer_size: u64,
 }
@@ -54,6 +56,8 @@ struct AssetJson {
     browser_download_url: String,
     #[serde(default)]
     size: u64,
+    #[serde(default)]
+    digest: Option<String>,
 }
 
 fn clean_version(raw: &str) -> String {
@@ -108,7 +112,13 @@ pub fn latest_release() -> Result<Release, String> {
         installer_url: installer.map(|a| a.browser_download_url.clone()),
         installer_size: installer.map(|a| a.size).unwrap_or(0),
         sha256_url: sha.map(|a| a.browser_download_url.clone()),
+        installer_sha256: installer.and_then(|a| a.digest.as_deref()).and_then(sha256_from_digest),
     })
+}
+
+fn sha256_from_digest(digest: &str) -> Option<String> {
+    let hash = digest.trim().strip_prefix("sha256:")?;
+    (hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit())).then(|| hash.to_ascii_lowercase())
 }
 
 fn absolute_url(url: &str) -> Result<(), String> {
@@ -349,6 +359,15 @@ mod tests {
         );
         assert_eq!(sha256_from_text("# comment\n"), None);
         assert_eq!(sha256_from_text(""), None);
+    }
+
+    #[test]
+    fn github_asset_digest_is_accepted_only_when_it_is_sha256() {
+        assert_eq!(
+            sha256_from_digest("sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"),
+            Some("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".into())
+        );
+        assert_eq!(sha256_from_digest("sha1:abcdef"), None);
     }
 
     #[test]
