@@ -127,14 +127,14 @@ component ClipItem inherits Rectangle {
                 clicked => { ClipboardActions.copy(root.entry.id, false); }
             }
 
-            // Pin and Delete stay visible on every entry.
+            // Pin and Delete stay visible on every entry, bright enough to notice at rest.
             if !root.confirming : IconButton {
                 width: 26px;
                 height: 26px;
                 icon: Icons.pin;
                 icon-size: 13px;
                 filled: root.entry.pinned;
-                tint: root.entry.pinned ? Theme.text : (root.active ? Theme.text-secondary : Theme.text-tertiary);
+                tint: root.entry.pinned ? Theme.accent : Theme.text-secondary;
                 tooltip: root.entry.pinned ? "Unpin" : "Pin";
                 clicked => { ClipboardActions.toggle-pin(root.entry.id); }
             }
@@ -144,7 +144,7 @@ component ClipItem inherits Rectangle {
                 height: 26px;
                 icon: Icons.trash;
                 icon-size: 13px;
-                tint: root.active ? Theme.text-secondary : Theme.text-tertiary;
+                tint: Theme.text-secondary;
                 tooltip: "Delete";
                 // Captured text is deleted at once; pinned entries and snippets ask first.
                 clicked => {
