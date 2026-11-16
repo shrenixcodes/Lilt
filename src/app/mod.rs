@@ -284,12 +284,18 @@ impl App {
         actions.on_toggle_expanded(with(&weak, |app| App::set_expanded(app, !app.expanded())));
         actions.on_collapse(with(&weak, |app| App::set_expanded(app, false)));
 
-        // The Tasks + Clipboard quick action opens the side box even when both are
-        // turned off in Settings. The force is cleared when the island collapses.
+        // The Tasks + Clipboard quick action toggles the side box, even when both are
+        // turned off in Settings. The force is also cleared when the island collapses.
         let weak_shelf = weak.clone();
         actions.on_open_shelf(move || {
             let Some(app) = weak_shelf.upgrade() else { return };
             let state = app.island.global::<AppState>();
+            // A second tap hides the box it opened, so the island goes back to its
+            // dashboard instead of only ever opening.
+            if state.get_force_side_panel() {
+                state.set_force_side_panel(false);
+                return;
+            }
             state.set_force_side_panel(true);
             // If neither side is on in Settings, bias the first view towards Tasks;
             // honour the user's last pick when it is available.
