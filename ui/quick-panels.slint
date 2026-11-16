@@ -1,7 +1,7 @@
 import { ListView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState, ControlsState, ControlsActions } from "state.slint";
-import { DeviceRow, NetworkRow, Page } from "types.slint";
+import { DeviceRow, NetworkRow, Page, SessionRow } from "types.slint";
 import { Icon, Icons } from "components/icon.slint";
 import { IconButton, TextButton } from "components/controls.slint";
 import { Heading } from "components/heading.slint";
@@ -197,6 +197,8 @@ component Centered inherits VerticalLayout {
     in property <string> text;
     vertical-stretch: 1;
     alignment: center;
+    accessible-role: AccessibleRole.text;
+    accessible-label: root.text;
 
     Text {
         horizontal-alignment: center;
@@ -245,6 +247,49 @@ component LevelRow inherits HorizontalLayout {
     }
 }
 
+component SessionRowItem inherits HorizontalLayout {
+    in property <SessionRow> session;
+    spacing: 10px;
+    height: 32px;
+    accessible-role: groupbox;
+    accessible-label: root.session.name + " volume";
+
+    IconButton {
+        icon: root.session.muted ? Icons.volume-off : Icons.volume;
+        tooltip: root.session.muted ? ("Unmute " + root.session.name) : ("Mute " + root.session.name);
+        tint: root.session.muted ? Theme.text-tertiary : Theme.text;
+        clicked => { ControlsActions.set-session-muted(root.session.id, !root.session.muted); }
+    }
+
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        spacing: 2px;
+
+        Text {
+            text: root.session.name;
+            font-size: 11.5px;
+            color: Theme.text;
+            overflow: elide;
+        }
+
+        Level {
+            value: root.session.volume;
+            label: root.session.name + " volume";
+            changed(v) => { ControlsActions.set-session-volume(root.session.id, v); }
+        }
+    }
+
+    Text {
+        width: 40px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        text: round(root.session.volume * 100) + " %";
+        font-size: Theme.font-sm;
+        color: Theme.text-secondary;
+    }
+}
+
 export component SoundPanel inherits Panel {
     title: "Sound";
     settings-label: "Sound settings";
@@ -258,7 +303,6 @@ export component SoundPanel inherits Panel {
 
     if ControlsState.sound-available : VerticalLayout {
         vertical-stretch: 1;
-        alignment: center;
         spacing: 6px;
 
         Text {
@@ -275,6 +319,34 @@ export component SoundPanel inherits Panel {
             dimmed: ControlsState.muted;
             icon-clicked => { ControlsActions.set-muted(!ControlsState.muted); }
             changed(v) => { ControlsActions.set-volume(v); }
+        }
+
+        if ControlsState.sessions.length > 0 : Rectangle {
+            height: 1px;
+            background: Theme.border;
+        }
+
+        if ControlsState.sessions.length > 0 : Text {
+            text: "App mixer";
+            font-size: 10.5px;
+            color: Theme.text-tertiary;
+            font-weight: 600;
+        }
+
+        if ControlsState.sessions.length > 0 : ListView {
+            vertical-stretch: 1;
+            for session in ControlsState.sessions : SessionRowItem {
+                session: session;
+            }
+        }
+
+        if ControlsState.sessions.length == 0 : Text {
+            vertical-stretch: 1;
+            text: "Play audio in any app and it appears here with its own volume.";
+            font-size: 10.5px;
+            color: Theme.text-tertiary;
+            wrap: word-wrap;
+            vertical-alignment: center;
         }
     }
 }
@@ -309,6 +381,8 @@ component Bars inherits HorizontalLayout {
     alignment: end;
     width: 18px;
     height: 14px;
+    accessible-role: image;
+    accessible-label: "Signal " + root.bars + " of 4";
 
     for level in [1, 2, 3, 4] : Rectangle {
         y: parent.height - self.height;
@@ -328,8 +402,11 @@ component NetworkItem inherits Rectangle {
     background: touch.has-hover || root.asking ? Theme.tile : transparent;
     accessible-role: list-item;
     accessible-label: root.network.ssid;
-    accessible-description: (root.network.connected ? "Connected, " : "") + (root.network.secured ? "secured" : "open")
-        + ", signal " + root.network.bars + " of 4";
+    accessible-description: (root.network.connected ? "Connected, " : root.connecting ? "Connecting, " : "")
+        + (root.network.secured ? "secured" : "open")
+        + ", signal " + root.network.bars + " of 4"
+        + (root.network.saved ? ", saved" : "");
+    accessible-action-default => { root.join(); }
 
     function join() {
         if root.network.connected || root.connecting {
@@ -392,6 +469,8 @@ component NetworkItem inherits Rectangle {
                 data: Icons.lock;
                 size: 11px;
                 color: Theme.text-tertiary;
+                accessible-role: image;
+                accessible-label: "Secured";
             }
         }
 
@@ -511,7 +590,13 @@ component DeviceItem inherits Rectangle {
     background: touch.has-hover ? Theme.tile : transparent;
     accessible-role: list-item;
     accessible-label: root.device.name;
-    accessible-description: root.device.connected ? "Connected" : "Paired";
+    accessible-description: (root.device.connected ? "Connected" : "Paired")
+        + (root.device.can-connect ? (root.device.connected ? ". Press to disconnect." : ". Press to connect.") : "");
+    accessible-action-default => {
+        if root.device.can-connect {
+            ControlsActions.connect-device(root.device.address, root.device.name, !root.device.connected);
+        }
+    }
 
     touch := TouchArea { }
 

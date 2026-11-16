@@ -1,5 +1,5 @@
 import {
-    AgendaEntry, ArchiveRow, CalendarState, ClipFilter, ClipRow, DeviceRow, MediaInfo, NetworkRow, Page, SidePanel, SnippetForm, SyncStatus, SystemInfo,
+    AgendaEntry, ArchiveRow, CalendarState, ClipFilter, ClipRow, DeviceRow, MediaInfo, NetworkRow, Page, SessionRow, SidePanel, SnippetForm, SyncStatus, SystemInfo,
     TaskForm, TaskRow, TaskView, TasksLayout,
 } from "types.slint";
 
@@ -17,6 +17,9 @@ export global AppState {
     in property <bool> show-actions: true;
     in property <bool> show-artwork: true;
     in property <bool> show-progress: true;
+    // When off the compact island keeps the now-playing visualizer on hover instead
+    // of swapping it for the play/next buttons.
+    in property <bool> hover-controls: true;
 
     // Clock
     in property <string> time;
@@ -63,6 +66,12 @@ export global AppState {
     // The clipboard shelf is enabled in Settings, and which panel the box shows.
     in property <bool> show-clipboard: false;
     in-out property <SidePanel> side-panel: SidePanel.tasks;
+    // The side box is forced open by the Tasks+Clipboard quick-action, even when both
+    // are off in Settings. Reset when the island collapses.
+    in-out property <bool> force-side-panel: false;
+    // What the island should actually show, factoring in the force.
+    out property <bool> effective-tasks: show-tasks || force-side-panel;
+    out property <bool> effective-clipboard: show-clipboard || force-side-panel;
 }
 
 // The clipboard shelf, published by the Rust side.
@@ -225,6 +234,8 @@ export global ControlsState {
     in property <float> volume;
     in property <bool> muted;
     in property <string> output-name;
+    // The per-app mixer. Empty when nothing is playing on the default output.
+    in property <[SessionRow]> sessions;
 
     in property <bool> brightness-available;
     in property <float> brightness;
@@ -239,6 +250,8 @@ export global ControlsActions {
     callback connect-device(string, string, bool);
     callback set-volume(float);
     callback set-muted(bool);
+    callback set-session-volume(string, float);
+    callback set-session-muted(string, bool);
     callback set-brightness(float);
     // Opens the matching Windows Settings page.
     callback more-settings(int);
@@ -250,6 +263,8 @@ export global ControlsActions {
 export global AppActions {
     callback check-for-updates();
     callback open-update();
+    /// Downloads and runs the latest installer.
+    callback install-update();
     callback start-drag();
     callback toggle-expanded();
     callback collapse();
@@ -262,4 +277,6 @@ export global AppActions {
     // Index into the actions listed in ui/quick-actions.slint.
     callback quick-action(int);
     callback open-settings();
+    // Opens the side box with Tasks and Clipboard, even if both are off in Settings.
+    callback open-shelf();
 }

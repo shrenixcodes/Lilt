@@ -41,10 +41,13 @@ export component ExpandedView inherits Rectangle {
 
             if AppState.show-actions: QuickActions {
                 width: 144px;
-                // The first four open a pop-up with the controls; the rest launch apps.
+                // The first four open a pop-up with the controls; index 5 opens the
+                // Tasks + Clipboard shelf, the rest launch apps.
                 activate(index) => {
                     if index < 4 {
                         AppState.page = [Page.sound, Page.brightness, Page.bluetooth, Page.wifi][index];
+                    } else if index == 5 {
+                        AppActions.open-shelf();
                     } else {
                         AppActions.quick-action(index);
                     }

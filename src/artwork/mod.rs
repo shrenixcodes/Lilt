@@ -64,7 +64,7 @@ impl ArtworkCache {
     }
 }
 
-fn fingerprint(bytes: &[u8]) -> u64 {
+pub fn fingerprint(bytes: &[u8]) -> u64 {
     let mut hasher = DefaultHasher::new();
     bytes.len().hash(&mut hasher);
     bytes.hash(&mut hasher);

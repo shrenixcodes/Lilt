@@ -8,12 +8,13 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use super::{App, post};
 use crate::actions::QuickAction;
+use crate::controls::audio;
 use crate::controls::{BluetoothView, Command, ControlsService, Panel, Update, WifiView, wifi};
-use crate::ui::{AppState, ControlsActions, ControlsState, DeviceRow, NetworkRow, Page};
+use crate::ui::{AppState, ControlsActions, ControlsState, DeviceRow, NetworkRow, Page, SessionRow};
 
 const MESSAGE_TIME: Duration = Duration::from_secs(6);
 
@@ -81,6 +82,19 @@ pub fn network_rows(view: &WifiView) -> Vec<NetworkRow> {
         .collect()
 }
 
+pub fn session_rows(sessions: &[audio::Session]) -> Vec<SessionRow> {
+    sessions
+        .iter()
+        .map(|s| SessionRow {
+            id: s.id.as_str().into(),
+            name: s.name.as_str().into(),
+            volume: s.volume,
+            muted: s.muted,
+            is_system: s.is_system,
+        })
+        .collect()
+}
+
 pub fn device_rows(view: &BluetoothView) -> Vec<DeviceRow> {
     view.devices
         .iter()
@@ -137,6 +151,29 @@ impl App {
             let Some(app) = w.upgrade() else { return };
             app.island.global::<ControlsState>().set_muted(muted);
             app.send_control(Command::SetMuted(muted));
+        });
+        let w = weak.clone();
+        actions.on_set_session_volume(move |id, level| {
+            let Some(app) = w.upgrade() else { return };
+            // Update the row at once so the slider feels direct.
+            let state = app.island.global::<ControlsState>();
+            let mut rows: Vec<SessionRow> = state.get_sessions().iter().collect();
+            if let Some(row) = rows.iter_mut().find(|r| r.id == id) {
+                row.volume = level;
+            }
+            state.set_sessions(ModelRc::new(VecModel::from(rows)));
+            app.send_control(Command::SetSessionVolume(id.to_string(), level));
+        });
+        let w = weak.clone();
+        actions.on_set_session_muted(move |id, muted| {
+            let Some(app) = w.upgrade() else { return };
+            let state = app.island.global::<ControlsState>();
+            let mut rows: Vec<SessionRow> = state.get_sessions().iter().collect();
+            if let Some(row) = rows.iter_mut().find(|r| r.id == id) {
+                row.muted = muted;
+            }
+            state.set_sessions(ModelRc::new(VecModel::from(rows)));
+            app.send_control(Command::SetSessionMuted(id.to_string(), muted));
         });
         let w = weak.clone();
         actions.on_set_brightness(move |level| {
@@ -218,13 +255,14 @@ impl App {
                     state.set_loading(false);
                 }
             }
-            Update::Sound(output) => {
+            Update::Sound(output, sessions) => {
                 state.set_sound_available(output.is_some());
                 if let Some(output) = output {
                     state.set_volume(output.volume);
                     state.set_muted(output.muted);
                     state.set_output_name(output.name.into());
                 }
+                state.set_sessions(ModelRc::new(VecModel::from(session_rows(&sessions))));
                 if open == Some(Panel::Sound) {
                     state.set_loading(false);
                 }

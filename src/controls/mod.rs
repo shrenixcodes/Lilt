@@ -44,6 +44,9 @@ pub enum Command {
     },
     SetVolume(f32),
     SetMuted(bool),
+    /// Per-application volume in the mixer, 0.0..=1.0.
+    SetSessionVolume(String, f32),
+    SetSessionMuted(String, bool),
     SetBrightness(u32),
 }
 
@@ -68,7 +71,7 @@ pub struct BluetoothView {
 pub enum Update {
     Wifi(WifiView),
     Bluetooth(BluetoothView),
-    Sound(Option<audio::Output>),
+    Sound(Option<audio::Output>, Vec<audio::Session>),
     Display(Option<u32>),
     /// A short message for a pop-up, such as a failed connection.
     Message(Panel, String),
@@ -252,6 +255,16 @@ impl<'a> Worker<'a> {
                 audio::set_muted(muted);
                 refresh.push(Panel::Sound);
             }
+            Command::SetSessionVolume(id, level) => {
+                if !audio::set_session_volume(&id, level) {
+                    self.message(Panel::Sound, "That app's volume could not be changed.");
+                }
+                refresh.push(Panel::Sound);
+            }
+            Command::SetSessionMuted(id, muted) => {
+                audio::set_session_muted(&id, muted);
+                refresh.push(Panel::Sound);
+            }
             Command::SetBrightness(level) => {
                 if !display::set_brightness(level) {
                     self.message(Panel::Display, "Windows did not change the brightness.");
@@ -319,7 +332,7 @@ impl<'a> Worker<'a> {
                     .collect();
                 Update::Bluetooth(BluetoothView { radio, devices })
             }
-            Panel::Sound => Update::Sound(audio::output()),
+            Panel::Sound => Update::Sound(audio::output(), audio::sessions()),
             Panel::Display => Update::Display(display::brightness()),
         };
         (self.publish)(update);

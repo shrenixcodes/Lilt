@@ -15,7 +15,7 @@ import { PanelTabs } from "panel-tabs.slint";
 // Row heights, mirrored in src/app/clipboard.rs to keep the keyboard selection in view.
 export global ClipMetrics {
     out property <length> header: 26px;
-    out property <length> entry: 56px;
+    out property <length> entry: 64px;
 }
 
 component ClipHeader inherits HorizontalLayout {
@@ -45,12 +45,16 @@ component ClipItem inherits Rectangle {
     property <bool> active: touch.has-hover || root.selected;
     property <bool> copied: ClipboardState.copied-id == root.entry.id;
     property <bool> confirming;
+    // Pin and delete are always visible; hover adds edit and copy.
+    property <length> idle-actions-width: 56px;
+    property <length> active-actions-width: 112px;
 
     border-radius: Theme.control-radius + 2px;
     background: root.active ? Theme.tile : transparent;
     border-width: root.selected ? 1px : 0px;
     border-color: Theme.text.with-alpha(0.3);
     animate background { duration: Theme.hover-duration; }
+    clip: true;
     accessible-role: list-item;
     accessible-label: root.entry.title != "" ? root.entry.title : root.entry.preview;
     accessible-description: root.entry.meta + (root.entry.pinned ? ", pinned" : "");
@@ -62,12 +66,14 @@ component ClipItem inherits Rectangle {
 
         VerticalLayout {
             x: 10px;
-            width: parent.width - 20px - (root.active ? actions.preferred-width : root.entry.pinned ? 18px : 0px);
+            width: parent.width - 20px - (root.confirming ? actions.preferred-width
+                : root.active ? root.active-actions-width : root.idle-actions-width);
             height: parent.height;
             alignment: center;
-            spacing: 2px;
+            spacing: 3px;
 
             if root.entry.title != "" : Text {
+                height: 16px;
                 text: root.entry.title;
                 font-size: 12px;
                 font-weight: 600;
@@ -76,7 +82,7 @@ component ClipItem inherits Rectangle {
             }
 
             Text {
-                max-height: root.entry.title != "" ? 15px : 30px;
+                height: root.entry.title != "" ? 16px : 32px;
                 text: root.entry.preview;
                 font-family: root.entry.technical ? Theme.code-font : Theme.font;
                 font-size: root.entry.technical ? 11px : 12px;
@@ -87,6 +93,7 @@ component ClipItem inherits Rectangle {
             }
 
             Text {
+                height: 13px;
                 text: root.confirming ? "Delete this entry?" : root.copied ? "Copied" : root.entry.meta;
                 font-size: 10px;
                 color: root.copied ? Theme.accent : Theme.text-tertiary;
@@ -94,30 +101,12 @@ component ClipItem inherits Rectangle {
             }
         }
 
-        if !root.active && root.entry.pinned : Icon {
-            x: parent.width - 22px;
-            y: 10px;
-            data: Icons.pin;
-            size: 11px;
-            color: Theme.text-tertiary;
-        }
-
         actions := HorizontalLayout {
             x: parent.width - self.preferred-width - 4px;
             height: parent.height;
             alignment: center;
 
-            if root.active && !root.confirming : IconButton {
-                width: 26px;
-                height: 26px;
-                icon: Icons.pin;
-                icon-size: 13px;
-                filled: root.entry.pinned;
-                tint: root.entry.pinned ? Theme.text : Theme.text-secondary;
-                tooltip: root.entry.pinned ? "Unpin" : "Pin";
-                clicked => { ClipboardActions.toggle-pin(root.entry.id); }
-            }
-
+            // Edit and Copy fade in on hover or keyboard selection.
             if root.active && !root.confirming : IconButton {
                 width: 26px;
                 height: 26px;
@@ -129,6 +118,28 @@ component ClipItem inherits Rectangle {
             }
 
             if root.active && !root.confirming : IconButton {
+                width: 26px;
+                height: 26px;
+                icon: Icons.copy;
+                icon-size: 13px;
+                tint: Theme.text;
+                tooltip: "Copy";
+                clicked => { ClipboardActions.copy(root.entry.id, false); }
+            }
+
+            // Pin and Delete stay visible on every entry, bright enough to notice at rest.
+            if !root.confirming : IconButton {
+                width: 26px;
+                height: 26px;
+                icon: Icons.pin;
+                icon-size: 13px;
+                filled: root.entry.pinned;
+                tint: root.entry.pinned ? Theme.accent : Theme.text-secondary;
+                tooltip: root.entry.pinned ? "Unpin" : "Pin";
+                clicked => { ClipboardActions.toggle-pin(root.entry.id); }
+            }
+
+            if !root.confirming : IconButton {
                 width: 26px;
                 height: 26px;
                 icon: Icons.trash;
@@ -143,16 +154,6 @@ component ClipItem inherits Rectangle {
                         ClipboardActions.delete(root.entry.id);
                     }
                 }
-            }
-
-            if root.active && !root.confirming : IconButton {
-                width: 26px;
-                height: 26px;
-                icon: Icons.copy;
-                icon-size: 13px;
-                tint: Theme.text;
-                tooltip: "Copy";
-                clicked => { ClipboardActions.copy(root.entry.id, false); }
             }
 
             if root.confirming : TextButton {

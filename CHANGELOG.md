@@ -6,6 +6,48 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-11-16
+
+### Changed
+
+- The compact media progress is a thin 1 px line with no gray track; the island's
+  lit lower edge now shows on either side of the accent fill.
+- Smoked Glass gains a subtle lower rim so its lit perimeter matches the upper
+  edge. Liquid Glass's lower rim remains noticeably brighter.
+- Clipboard pin and delete buttons stay clearly visible on every entry; pinned
+  entries show their pin in the accent colour.
+
+## [0.4.5] - 2026-11-16
+
+### Added
+
+- Lilt now downloads, verifies and installs a newer stable GitHub release at startup.
+  Manual and periodic checks remain informational.
+
+### Fixed
+
+- Glass appearances no longer draw a pixelated bright border around the rounded island
+  perimeter; their highlight is now inset from the curved corners.
+
+## [0.4.1] - 2026-11-16
+
+### Added
+
+- Per-application volume controls in the Sound quick panel, including mute.
+- A Tasks + Clipboard quick action, which opens the side panel without changing the
+  corresponding Settings switches.
+- Release-aware in-app updates: Lilt can download, verify and install the latest
+  signed GitHub release installer.
+
+### Fixed
+
+- The compact media progress line could extend outside the rounded island. It now stays
+  within the pill's curved ends.
+- Liquid Glass no longer shows stepped corners while the island animates.
+- The side Tasks/Clipboard box aligns with the expanded island, and long clipboard
+  previews no longer overlap their metadata.
+- Late-arriving media artwork now refreshes instead of remaining from the prior track.
+
 ## [0.4.0] - 2026-11-16
 
 ### Added

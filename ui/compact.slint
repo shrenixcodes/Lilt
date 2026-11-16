@@ -41,6 +41,22 @@ component PlayingGlyph inherits Rectangle {
 export component CompactView inherits Rectangle {
     in property <bool> media-mode;
     in property <bool> hovered;
+    // The controls receive pointer input themselves, so retain hover while moving over
+    // either button or the small gap between them.
+    in-out property <bool> strip-hovered: false;
+    in-out property <bool> play-hovered: false;
+    in-out property <bool> next-hovered: false;
+    // With hover controls off the visualizer stays visible and the play/next buttons
+    // are hidden; the island's own click still expands it as before.
+    property <bool> show-controls: AppState.hover-controls
+        && (root.hovered || root.strip-hovered || root.play-hovered || root.next-hovered);
+    changed media-mode => {
+        if !root.media-mode {
+            root.strip-hovered = false;
+            root.play-hovered = false;
+            root.next-hovered = false;
+        }
+    }
 
     Rectangle {
         opacity: root.media-mode ? 0 : 1;
@@ -93,16 +109,21 @@ export component CompactView inherits Rectangle {
         }
 
         Rectangle {
-            width: root.hovered ? 54px : 17px;
+            width: root.show-controls ? 54px : 17px;
             height: parent.height;
             animate width { duration: Theme.hover-duration; easing: ease-out; }
+
+            // Sits behind the buttons and covers the 2 px gap between them.
+            controls-hover := TouchArea {
+                changed has-hover => { root.strip-hovered = self.has-hover; }
+            }
 
             PlayingGlyph {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 playing: AppState.media.playing;
                 live: AppState.on-screen && !AppState.expanded && !AppState.activity;
-                opacity: root.hovered ? 0 : 1;
+                opacity: root.show-controls ? 0 : 1;
                 animate opacity { duration: Theme.fade-duration; }
             }
 
@@ -111,28 +132,30 @@ export component CompactView inherits Rectangle {
                 width: 54px;
                 height: 26px;
                 spacing: 2px;
-                opacity: root.hovered ? 1 : 0;
+                opacity: root.show-controls ? 1 : 0;
                 animate opacity { duration: Theme.fade-duration; }
 
-                IconButton {
+                play := IconButton {
                     width: 26px;
                     height: 26px;
                     icon: AppState.media.playing ? Icons.pause : Icons.play;
                     icon-size: 13px;
                     filled: true;
-                    enabled: root.hovered && AppState.media.can-play-pause;
+                    enabled: root.show-controls && AppState.media.can-play-pause;
                     tooltip: AppState.media.playing ? "Pause" : "Play";
+                    hover-changed(hovered) => { root.play-hovered = hovered; }
                     clicked => { AppActions.toggle-play(); }
                 }
 
-                IconButton {
+                next := IconButton {
                     width: 26px;
                     height: 26px;
                     icon: Icons.next;
                     icon-size: 14px;
                     filled: true;
-                    enabled: root.hovered && AppState.media.can-next;
+                    enabled: root.show-controls && AppState.media.can-next;
                     tooltip: "Next track";
+                    hover-changed(hovered) => { root.next-hovered = hovered; }
                     clicked => { AppActions.next-track(); }
                 }
             }
