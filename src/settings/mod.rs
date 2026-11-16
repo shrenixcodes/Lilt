@@ -144,6 +144,9 @@ pub struct Widgets {
 pub struct Music {
     pub show_artwork: bool,
     pub show_progress: bool,
+    /// Hovering the compact island fades the now-playing visualizer out and the
+    /// play/next buttons in. Off keeps the visualizer visible at all times.
+    pub hover_controls: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -307,7 +310,7 @@ impl Default for Widgets {
 
 impl Default for Music {
     fn default() -> Self {
-        Self { show_artwork: true, show_progress: true }
+        Self { show_artwork: true, show_progress: true, hover_controls: true }
     }
 }
 

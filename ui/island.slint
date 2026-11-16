@@ -39,14 +39,18 @@ export component Island inherits Window {
     default-font-family: Theme.font;
 
     // With Tasks or the clipboard shelf enabled, the expanded island is two boxes: the
-    // dashboard and the side box, side by side or one below the other.
-    property <bool> tasks-box: AppState.show-tasks || AppState.show-clipboard;
+    // dashboard and the side box, side by side or one below the other. The Tasks +
+    // Clipboard quick action forces both on without changing Settings.
+    property <bool> tasks-box: AppState.effective-tasks || AppState.effective-clipboard;
     // Which panel the side box shows.
-    property <bool> clipboard-panel: AppState.show-clipboard && (AppState.side-panel == SidePanel.clipboard || !AppState.show-tasks);
+    property <bool> clipboard-panel: AppState.effective-clipboard && (AppState.side-panel == SidePanel.clipboard || !AppState.effective-tasks);
     property <bool> beside: AppState.tasks-layout == TasksLayout.beside;
     property <length> gap: 10px;
     property <length> tasks-width: root.beside ? 400px : AppState.expanded-width;
-    property <length> tasks-height: 320px;
+    // Beside the island the side box matches the island's height so the pair aligns at
+    // the bottom and there is more room for the list; below, it keeps a comfortable
+    // preset so the window doesn't become too tall.
+    property <length> tasks-height: root.beside ? max(360px, root.expanded-height) : 320px;
     property <length> pair-width: AppState.expanded-width + (root.tasks-box && root.beside ? root.gap + root.tasks-width : 0px);
 
     // The window covers the largest state plus room for the shadow. Transparent pixels
@@ -189,7 +193,9 @@ export component Island inherits Window {
             // show outside the rounded corners; a solid tint keeps the shape exact.
             background: self.washed ? self.base.mix(self.wash, 1 - 0.16 * Theme.ambient) : self.base;
             animate background { duration: Theme.ambient-duration; easing: ease-in-out; }
-            border-width: 1px;
+            // On glass appearances GlassRim draws the lit rounded edge; a second 1 px
+            // border stacked on top produced stepped corners during animation.
+            border-width: Theme.reflections ? 0px : 1px;
             border-color: Theme.border;
             clip: true;
             animate x, width, height, border-radius { duration: Theme.resize-duration; easing: cubic-bezier(0.32, 0.72, 0, 1); }
@@ -281,12 +287,11 @@ export component Island inherits Window {
 
         if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
             x: island.x;
-            y: island.y + island.height - self.height;
+            y: island.y + island.height - 1px;
             width: island.width;
             full-height: island.height;
             radius: island.border-radius;
             rim: Theme.lower-rim;
-            lower: true;
         }
 
         // The tasks box, created only while expanded. It fades in beside or below the
@@ -311,7 +316,8 @@ export component Island inherits Window {
             Rectangle {
                 border-radius: Theme.expanded-radius;
                 background: Theme.surface;
-                border-width: 1px;
+                // See the island surface: GlassRim draws the visible edge on glass.
+                border-width: Theme.reflections ? 0px : 1px;
                 border-color: Theme.border;
                 clip: true;
 
@@ -342,12 +348,11 @@ export component Island inherits Window {
 
             if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
                 x: 0;
-                y: parent.height - self.height;
+                y: parent.height - 1px;
                 width: parent.width;
                 full-height: parent.height;
                 radius: Theme.expanded-radius;
                 rim: Theme.lower-rim;
-                lower: true;
             }
         }
     }

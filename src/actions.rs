@@ -13,7 +13,8 @@ pub enum QuickAction {
     Bluetooth,
     Wifi,
     Settings,
-    TaskManager,
+    /// Opens the Tasks + Clipboard shelf; handled in the application, not launched.
+    Shelf,
     Snip,
     Explorer,
 }
@@ -26,7 +27,7 @@ impl QuickAction {
         Self::Bluetooth,
         Self::Wifi,
         Self::Snip,
-        Self::TaskManager,
+        Self::Shelf,
         Self::Explorer,
         Self::Settings,
     ];
@@ -35,24 +36,27 @@ impl QuickAction {
         usize::try_from(index).ok().and_then(|i| Self::ALL.get(i).copied())
     }
 
-    /// URI or executable launched by the action.
+    /// URI or executable launched by the action, or `None` when the application handles
+    /// it in place (the shelf).
     /// Settings URIs: <https://learn.microsoft.com/windows/apps/develop/launch/launch-settings-app>
-    pub fn target(self) -> &'static str {
-        match self {
+    pub fn target(self) -> Option<&'static str> {
+        Some(match self {
             Self::Sound => "ms-settings:sound",
             // Brightness lives on the display page on devices that support it.
             Self::Display => "ms-settings:display",
             Self::Bluetooth => "ms-settings:bluetooth",
             Self::Wifi => "ms-settings:network-wifi",
             Self::Settings => "ms-settings:",
-            Self::TaskManager => "taskmgr.exe",
             Self::Snip => "ms-screenclip:",
             Self::Explorer => "explorer.exe",
-        }
+            // The shelf is opened inside the island.
+            Self::Shelf => return None,
+        })
     }
 
     pub fn launch(self) -> windows::core::Result<()> {
-        let target = HSTRING::from(self.target());
+        let Some(target) = self.target() else { return Ok(()) };
+        let target = HSTRING::from(target);
         let result = unsafe { ShellExecuteW(None, w!("open"), &target, PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
         // ShellExecuteW reports success with a value greater than 32.
         if result.0 as isize > 32 { Ok(()) } else { Err(windows::core::Error::from_thread()) }
@@ -72,10 +76,14 @@ mod tests {
     }
 
     #[test]
-    fn targets_are_settings_uris_or_system_tools() {
+    fn targets_are_settings_uris_or_system_tools_or_absent() {
         for action in QuickAction::ALL {
-            let t = action.target();
-            assert!(t.ends_with(':') || t.starts_with("ms-settings:") || t.ends_with(".exe"), "{t}");
+            match action.target() {
+                Some(t) => {
+                    assert!(t.ends_with(':') || t.starts_with("ms-settings:") || t.ends_with(".exe"), "{t}")
+                }
+                None => assert_eq!(action, QuickAction::Shelf),
+            }
         }
     }
 }

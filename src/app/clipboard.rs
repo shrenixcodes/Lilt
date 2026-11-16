@@ -21,7 +21,7 @@ use crate::window;
 
 /// Row heights of the list, as in ui/clipboard.slint (`ClipMetrics`).
 const HEADER_HEIGHT: f32 = 26.0;
-const ENTRY_HEIGHT: f32 = 56.0;
+const ENTRY_HEIGHT: f32 = 64.0;
 const COPIED_TIME: Duration = Duration::from_millis(1600);
 const NOTICE_TIME: Duration = Duration::from_secs(4);
 

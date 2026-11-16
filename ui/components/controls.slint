@@ -9,7 +9,12 @@ export component IconButton inherits Rectangle {
     in property <bool> enabled: true;
     in property <color> tint: Theme.text;
     in property <string> tooltip;
+    // Exposed so a containing control strip can remain open while its buttons own
+    // pointer input.
+    out property <bool> hovered: touch.has-hover;
     callback clicked();
+    callback hover-changed(bool);
+    changed hovered => { root.hover-changed(root.hovered); }
 
     width: 30px;
     height: 30px;
