@@ -322,6 +322,7 @@ fn settings_data() -> SettingsData {
         show_actions: true,
         show_artwork: true,
         show_progress: true,
+        hover_controls: true,
         ambient_enabled: true,
         ambient_intensity: 60,
         hide_in_fullscreen: true,
@@ -808,7 +809,7 @@ fn display_faces_keep_the_layout_at(scale: f32, label: &str) {
         save(&image, &format!("tasks-{name}-{label}"));
         assert_eq!(
             (image.width(), image.height()),
-            ((890.0 * scale).round() as u32, (340.0 * scale).round() as u32),
+            ((890.0 * scale).round() as u32, (380.0 * scale).round() as u32),
             "{name} at {label} %"
         );
     }
@@ -849,7 +850,8 @@ fn tasks_box_sits_beside_or_below_in_both_appearances() {
     let midnight = h.render_on(wallpaper);
     save(&midnight, "tasks-midnight");
     // Beside: the dashboard (460) and the tasks box (400) with a 10 px gap, plus margins.
-    assert_eq!((midnight.width(), midnight.height()), (890, 340));
+    // The box stretches to at least 360 px so the pair reaches a comfortable minimum height.
+    assert_eq!((midnight.width(), midnight.height()), (890, 380));
     set_appearance(&h, Appearance::LiquidGlass);
     save(&h.render_on(wallpaper), "tasks-liquid");
     set_appearance(&h, Appearance::SmokedGlass);
@@ -1378,7 +1380,7 @@ fn clipboard_shelf_renders_in_every_appearance() {
     let midnight = h.render_on(wallpaper);
     save(&midnight, "clipboard-midnight");
     // The shelf takes the tasks box's place: same window, same box.
-    assert_eq!((midnight.width(), midnight.height()), (890, 340));
+    assert_eq!((midnight.width(), midnight.height()), (890, 380));
     for (appearance, name) in [(Appearance::SmokedGlass, "glass"), (Appearance::LiquidGlass, "liquid")] {
         set_appearance(&h, appearance);
         let image = h.render_on(wallpaper);
@@ -1391,7 +1393,7 @@ fn clipboard_shelf_renders_in_every_appearance() {
     let clip = h.island.global::<ClipboardState>();
     // Row 5: the first recent entry, after three headers and two entries, below the
     // visible part of the list: the list scrolls to it.
-    clip.set_selected_top(26.0 * 3.0 + 56.0 * 2.0);
+    clip.set_selected_top(26.0 * 3.0 + 64.0 * 2.0);
     clip.set_selected(5);
     let selected = h.render_on(wallpaper);
     save(&selected, "clipboard-selected");
@@ -1409,7 +1411,7 @@ fn clipboard_shelf_renders_in_every_appearance() {
     h.state().set_show_tasks(false);
     let alone = h.render_on(wallpaper);
     save(&alone, "clipboard-alone");
-    assert_eq!((alone.width(), alone.height()), (890, 340));
+    assert_eq!((alone.width(), alone.height()), (890, 380));
     // Without either, the island is exactly the original.
     h.state().set_show_clipboard(false);
     let plain = h.render();
@@ -1469,7 +1471,7 @@ fn clipboard_rows_scale_with_the_display() {
     fill_clipboard(&h);
     let image = h.render_on(wallpaper);
     save(&image, "clipboard-glass-150");
-    assert_eq!((image.width(), image.height()), (1335, 510));
+    assert_eq!((image.width(), image.height()), (1335, 570));
 }
 
 // --- Quick-control pop-ups -----------------------------------------------------------

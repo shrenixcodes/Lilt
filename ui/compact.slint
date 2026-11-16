@@ -41,6 +41,9 @@ component PlayingGlyph inherits Rectangle {
 export component CompactView inherits Rectangle {
     in property <bool> media-mode;
     in property <bool> hovered;
+    // With hover controls off the visualizer stays visible and the play/next buttons
+    // are hidden; the island's own click still expands it as before.
+    property <bool> show-controls: root.hovered && AppState.hover-controls;
 
     Rectangle {
         opacity: root.media-mode ? 0 : 1;
@@ -93,7 +96,7 @@ export component CompactView inherits Rectangle {
         }
 
         Rectangle {
-            width: root.hovered ? 54px : 17px;
+            width: root.show-controls ? 54px : 17px;
             height: parent.height;
             animate width { duration: Theme.hover-duration; easing: ease-out; }
 
@@ -102,7 +105,7 @@ export component CompactView inherits Rectangle {
                 y: (parent.height - self.height) / 2;
                 playing: AppState.media.playing;
                 live: AppState.on-screen && !AppState.expanded && !AppState.activity;
-                opacity: root.hovered ? 0 : 1;
+                opacity: root.show-controls ? 0 : 1;
                 animate opacity { duration: Theme.fade-duration; }
             }
 
@@ -111,7 +114,7 @@ export component CompactView inherits Rectangle {
                 width: 54px;
                 height: 26px;
                 spacing: 2px;
-                opacity: root.hovered ? 1 : 0;
+                opacity: root.show-controls ? 1 : 0;
                 animate opacity { duration: Theme.fade-duration; }
 
                 IconButton {
@@ -120,7 +123,7 @@ export component CompactView inherits Rectangle {
                     icon: AppState.media.playing ? Icons.pause : Icons.play;
                     icon-size: 13px;
                     filled: true;
-                    enabled: root.hovered && AppState.media.can-play-pause;
+                    enabled: root.show-controls && AppState.media.can-play-pause;
                     tooltip: AppState.media.playing ? "Pause" : "Play";
                     clicked => { AppActions.toggle-play(); }
                 }
@@ -131,7 +134,7 @@ export component CompactView inherits Rectangle {
                     icon: Icons.next;
                     icon-size: 14px;
                     filled: true;
-                    enabled: root.hovered && AppState.media.can-next;
+                    enabled: root.show-controls && AppState.media.can-next;
                     tooltip: "Next track";
                     clicked => { AppActions.next-track(); }
                 }
