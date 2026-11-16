@@ -60,7 +60,7 @@ impl App {
         }
         state.set_update_checking(true);
         state.set_update_message("Checking GitHub…".into());
-        std::thread::spawn(|| {
+        std::thread::spawn(move || {
             let result = updates::latest_release();
             super::post(move |app| {
                 app.update_checking.set(false);
