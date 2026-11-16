@@ -618,16 +618,16 @@ fn glass_renders_every_state() {
                 "{name}: corner at {x},{y}"
             );
         }
-        // The rim lights the top edge: compared with the row just inside it, the edge is
-        // far brighter than Midnight's plain border.
+        // The rim lights the top edge and fades inward: across the lit band the top edge is
+        // clearly brighter than the surface deeper in, far more so than Midnight's border.
         let edge = |image: &RgbaImage| {
-            brightness(image.get_pixel(240, 0).0) as i32 - brightness(image.get_pixel(240, 1).0) as i32
+            brightness(image.get_pixel(240, 0).0) as i32 - brightness(image.get_pixel(240, 9).0) as i32
         };
         h.theme().set_appearance(appearance);
         let glass_edge = edge(&h.render());
         h.theme().set_appearance(Appearance::Midnight);
         let midnight_edge = edge(&h.render());
-        assert!(glass_edge > midnight_edge + 60, "{name}: rim {glass_edge} vs border {midnight_edge}");
+        assert!(glass_edge > midnight_edge + 30, "{name}: rim {glass_edge} vs border {midnight_edge}");
 
         for page in [Page::System, Page::Calendar] {
             h.theme().set_appearance(appearance);
@@ -660,7 +660,7 @@ fn liquid_glass_is_clearer_and_lights_its_lower_edge() {
     // Both glass appearances light the lower edge; Liquid Glass's is noticeably brighter.
     let bottom = (h.island.get_body_y() + h.island.get_body_height()) as u32 - 1;
     let lower = |image: &RgbaImage| {
-        brightness(image.get_pixel(240, bottom).0) as i32 - brightness(image.get_pixel(240, bottom - 1).0) as i32
+        brightness(image.get_pixel(240, bottom).0) as i32 - brightness(image.get_pixel(240, bottom - 9).0) as i32
     };
     assert!(lower(&liquid) > lower(&smoked) + 10, "{} vs {}", lower(&liquid), lower(&smoked));
 }

@@ -250,6 +250,7 @@ component AppearancePreview inherits Rectangle {
         background: root.panel;
         border-width: 1px;
         border-color: root.tokens.border;
+        clip: true;
 
         if root.tokens.reflections : GlassSheen {
             width: parent.width;
@@ -264,15 +265,15 @@ component AppearancePreview inherits Rectangle {
             font-size: 9px;
             font-weight: 600;
         }
-    }
 
-    if root.tokens.reflections : GlassRim {
-        x: pill.x;
-        y: pill.y;
-        width: pill.width;
-        full-height: pill.height;
-        radius: pill.border-radius;
-        rim: root.tokens.rim;
+        if root.tokens.reflections : GlassRim {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            radius: parent.border-radius;
+            reach: 4px;
+            rim: root.tokens.rim;
+        }
     }
 
     panel-rect := Rectangle {
@@ -284,6 +285,7 @@ component AppearancePreview inherits Rectangle {
         background: root.panel;
         border-width: 1px;
         border-color: root.tokens.border;
+        clip: true;
 
         if root.tokens.reflections : GlassSheen {
             width: parent.width;
@@ -344,15 +346,15 @@ component AppearancePreview inherits Rectangle {
             border-radius: 9px;
             background: root.tokens.tile;
         }
-    }
 
-    if root.tokens.reflections : GlassRim {
-        x: panel-rect.x;
-        y: panel-rect.y;
-        width: panel-rect.width;
-        full-height: panel-rect.height;
-        radius: panel-rect.border-radius;
-        rim: root.tokens.rim;
+        if root.tokens.reflections : GlassRim {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            radius: parent.border-radius;
+            reach: 7px;
+            rim: root.tokens.rim;
+        }
     }
 }
 

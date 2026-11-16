@@ -5,7 +5,7 @@ import { CompactView, ActivityView } from "compact.slint";
 import { ExpandedView } from "expanded.slint";
 import { TasksView } from "tasks.slint";
 import { ClipboardView } from "clipboard.slint";
-import { GlassSheen, GlassRim } from "components/glass.slint";
+import { GlassSheen, GlassRim, GlassEdge } from "components/glass.slint";
 
 // Two translucent layers that approximate a soft drop shadow, which the software
 // renderer does not draw. Place it before the surface it belongs to.
@@ -285,23 +285,33 @@ export component Island inherits Window {
                     self.opacity = 1;
                 }
             }
+
+            // The lit edges fade gently inward from the top and bottom of the surface.
+            if Theme.reflections : GlassRim {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                radius: parent.border-radius;
+            }
+
+            if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
+                x: 0;
+                y: parent.height - self.height;
+                width: parent.width;
+                radius: parent.border-radius;
+                lower: true;
+                rim: Theme.lower-rim;
+            }
         }
 
-        if Theme.reflections : GlassRim {
+        // The lit outline that curves the edge light into the rounded corners. Drawn over
+        // the surface as a sibling so the surface's own clip never cuts the rounded edge.
+        if Theme.reflections : GlassEdge {
             x: island.x;
             y: island.y;
             width: island.width;
-            full-height: island.height;
+            height: island.height;
             radius: island.border-radius;
-        }
-
-        if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
-            x: island.x;
-            y: island.y + island.height - 1px;
-            width: island.width;
-            full-height: island.height;
-            radius: island.border-radius;
-            rim: Theme.lower-rim;
         }
 
         // The tasks box, created only while expanded. It fades in beside or below the
@@ -346,23 +356,30 @@ export component Island inherits Window {
                     width: parent.width;
                     height: parent.height;
                 }
+
+                if Theme.reflections : GlassRim {
+                    x: 0;
+                    y: 0;
+                    width: parent.width;
+                    radius: parent.border-radius;
+                }
+
+                if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
+                    x: 0;
+                    y: parent.height - self.height;
+                    width: parent.width;
+                    radius: parent.border-radius;
+                    lower: true;
+                    rim: Theme.lower-rim;
+                }
             }
 
-            if Theme.reflections : GlassRim {
+            if Theme.reflections : GlassEdge {
                 x: 0;
                 y: 0;
                 width: parent.width;
-                full-height: parent.height;
+                height: parent.height;
                 radius: Theme.expanded-radius;
-            }
-
-            if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
-                x: 0;
-                y: parent.height - 1px;
-                width: parent.width;
-                full-height: parent.height;
-                radius: Theme.expanded-radius;
-                rim: Theme.lower-rim;
             }
         }
     }

@@ -1,13 +1,14 @@
 import { Theme } from "../theme.slint";
 
-// Light on glass: a soft sheen falling from above and a lit rim along the upper edge.
+// Light on glass: a soft sheen falling from above, a thin lit outline that follows the
+// rounded corners, and a soft glow along the upper and lower edges that fades inward.
 //
 // The software renderer draws gradients as plain rectangles, ignoring corner radii, and
-// draws a clipping rectangle's border over its children. So the sheen is a circle
-// centred above the shape that fades out before it can reach the rounded corners, placed
-// inside the surface beneath its content; the rim is the shape's own rounded outline,
-// antialiased exactly like the surface's border, drawn over the surface as a sibling and
-// clipped to the band above where the straight sides begin.
+// clips children only to the bounding box, not the radius. So the sheen is a circle
+// centred above the shape that fades out before it reaches the rounded corners; the edge
+// glow is a gradient band inset past the corners so it never spills outside the shape; and
+// the continuity around the corners comes from GlassEdge, a real rounded outline that is
+// antialiased exactly like the surface's own border.
 
 // Place inside a rounded surface, before its content, filling it.
 export component GlassSheen inherits Rectangle {
@@ -26,20 +27,73 @@ export component GlassSheen inherits Rectangle {
         root.sheen 0%, root.sheen 60%, root.sheen.transparentize(0.6) 78%, transparent 100%);
 }
 
-// Place after the rounded surface, with the same position and size. The software
-// renderer's 1 px rounded border aliases visibly over a live backdrop, so this is an
-// inset straight-edge highlight instead of a second rounded perimeter.
+// A soft lit edge for glass: brightest right at the edge and losing its light gradually
+// inward, instead of the old hard one-pixel line. Pin it to the top of a surface, or the
+// bottom with `lower`, at the surface's full width and corner radius.
 export component GlassRim inherits Rectangle {
-    in property <length> radius;
     in property <color> rim: Theme.rim;
-    in property <length> full-height;
-    height: 1px;
+    in property <length> radius;
+    // The lower edge, lit more faintly from below, rather than the upper edge.
+    in property <bool> lower: false;
+    // How far the light reaches inward before it fades to nothing.
+    in property <length> reach: 10px;
+    height: root.reach;
 
     Rectangle {
-        // Start after the rounded corner so no anti-aliased rim is drawn around it.
+        // Inset past the rounded corners: the software renderer clips children only to the
+        // bounding box, so a full-width glow would spill outside the rounded shape.
         x: min(root.radius, parent.width / 2);
         width: max(0px, parent.width - 2 * self.x);
         height: parent.height;
-        background: root.rim;
+        background: root.lower
+            ? @linear-gradient(0deg, root.rim, root.rim.transparentize(0.5) 34%, transparent)
+            : @linear-gradient(180deg, root.rim, root.rim.transparentize(0.5) 34%, transparent);
+    }
+}
+
+// The lit edge that follows the surface's rounded corners. A faint continuous outline
+// keeps the light curving through the corners, and the straight sides catch the most light
+// near the top and bottom and fade out toward the middle, so the glow pools at the top and
+// bottom edges and thins along the sides. Place it over the surface, filling it.
+export component GlassEdge inherits Rectangle {
+    in property <length> radius;
+    in property <color> rim: Theme.rim;
+
+    // A faint continuous outline so the mid-sides keep a trace of the edge.
+    Rectangle {
+        border-radius: root.radius;
+        border-width: 1px;
+        border-color: root.rim.transparentize(0.72);
+    }
+
+    // The straight left and right sides, brightest where they meet the top and bottom and
+    // fading to almost nothing at the middle.
+    for side in [0, 1]: Rectangle {
+        x: side == 0 ? 0px : parent.width - self.width;
+        y: root.radius;
+        width: 2px;
+        height: max(0px, parent.height - 2 * root.radius);
+        background: @linear-gradient(0deg,
+            root.rim, root.rim.transparentize(0.5) 16%, root.rim.transparentize(0.9) 50%,
+            root.rim.transparentize(0.5) 84%, root.rim);
+    }
+
+    // The top and bottom edges and their corners, where the light pools. The full outline
+    // is clipped to each end so the curve stays lit without brightening the mid-sides.
+    for band in [0, 1]: Rectangle {
+        x: 0;
+        y: band == 0 ? 0px : parent.height - root.radius;
+        width: parent.width;
+        height: root.radius;
+        clip: true;
+        Rectangle {
+            x: 0;
+            y: band == 0 ? 0px : root.radius - root.height;
+            width: root.width;
+            height: root.height;
+            border-radius: root.radius;
+            border-width: 1px;
+            border-color: root.rim;
+        }
     }
 }
