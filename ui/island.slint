@@ -95,9 +95,10 @@ export component Island inherits Window {
     property <bool> dragging: false;
 
     // The outlines of the island and the tasks box, read by the application after each
-    // frame to shape the live blur beneath them.
+    // frame to shape the live blur beneath them. The body follows the auto-hide slide so
+    // the blur lifts away with the island instead of being left behind at the top edge.
     out property <length> body-x: island.x;
-    out property <length> body-y: island.y;
+    out property <length> body-y: keys.y + island.y;
     out property <length> body-width: island.width;
     out property <length> body-height: island.height;
     out property <length> body-radius: island.border-radius;
