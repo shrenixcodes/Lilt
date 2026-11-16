@@ -33,6 +33,7 @@ export struct SettingsData {
     tasks-below: bool,
     show-artwork: bool,
     show-progress: bool,
+    hover-controls: bool,
     ambient-enabled: bool,
     ambient-intensity: int,
     low-power: bool,
@@ -964,6 +965,14 @@ export component SettingsWindow inherits Window {
                         Switch {
                             checked: root.data.show-progress;
                             toggled => { root.data.show-progress = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Hover shows play and next buttons";
+                        description: "On hover the compact island swaps the now-playing visualizer for the play and next buttons. Off keeps the visualizer visible at all times, so the island never changes under the pointer.";
+                        Switch {
+                            checked: root.data.hover-controls;
+                            toggled => { root.data.hover-controls = self.checked; root.edited(); }
                         }
                     }
                 }

@@ -104,6 +104,7 @@ impl App {
         });
         state.set_show_artwork(settings.music.show_artwork);
         state.set_show_progress(settings.music.show_progress);
+        state.set_hover_controls(settings.music.hover_controls);
 
         let theme = app.island.global::<Theme>();
         let ambient = settings.ambient.enabled && !settings.performance.low_power;
@@ -555,6 +556,7 @@ fn to_data(s: &Settings, monitors: &[placement::Monitor]) -> SettingsData {
         tasks_below: s.tasks.layout == settings::TaskLayout::Below,
         show_artwork: s.music.show_artwork,
         show_progress: s.music.show_progress,
+        hover_controls: s.music.hover_controls,
         ambient_enabled: s.ambient.enabled,
         ambient_intensity: s.ambient.intensity as i32,
         low_power: s.performance.low_power,
@@ -606,6 +608,7 @@ fn from_data(d: &SettingsData, monitors: &[placement::Monitor], previous: &Setti
     s.tasks.layout = if d.tasks_below { settings::TaskLayout::Below } else { settings::TaskLayout::Beside };
     s.music.show_artwork = d.show_artwork;
     s.music.show_progress = d.show_progress;
+    s.music.hover_controls = d.hover_controls;
     s.ambient.enabled = d.ambient_enabled;
     s.ambient.intensity = d.ambient_intensity.max(0) as u32;
     s.performance.low_power = d.low_power;

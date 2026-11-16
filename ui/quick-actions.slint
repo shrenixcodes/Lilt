@@ -20,7 +20,8 @@ export component QuickActions inherits Tile {
     ];
     property <[Action]> second-row: [
         { icon: Icons.scissors, tooltip: "Snipping Tool" },
-        { icon: Icons.activity, tooltip: "Task Manager" },
+        // Opens the Tasks + Clipboard shelf, even when both are off in Settings.
+        { icon: Icons.tasks, tooltip: "Tasks and Clipboard" },
         { icon: Icons.folder, tooltip: "File Explorer" },
         { icon: Icons.settings, tooltip: "Windows Settings" },
     ];

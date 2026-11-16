@@ -7,7 +7,7 @@ import { Heading } from "components/heading.slint";
 // both on, the other panel's name follows in a quieter colour and switches to it.
 export component PanelTabs inherits HorizontalLayout {
     in property <SidePanel> current;
-    property <bool> both: AppState.show-tasks && AppState.show-clipboard;
+    property <bool> both: AppState.effective-tasks && AppState.effective-clipboard;
     property <string> other-name: root.current == SidePanel.tasks ? "Clipboard" : "Tasks";
 
     spacing: 12px;

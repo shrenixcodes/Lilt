@@ -261,6 +261,23 @@ impl App {
         actions.on_toggle_expanded(with(&weak, |app| App::set_expanded(app, !app.expanded())));
         actions.on_collapse(with(&weak, |app| App::set_expanded(app, false)));
 
+        // The Tasks + Clipboard quick action opens the side box even when both are
+        // turned off in Settings. The force is cleared when the island collapses.
+        let weak_shelf = weak.clone();
+        actions.on_open_shelf(move || {
+            let Some(app) = weak_shelf.upgrade() else { return };
+            let state = app.island.global::<AppState>();
+            state.set_force_side_panel(true);
+            // If neither side is on in Settings, bias the first view towards Tasks;
+            // honour the user's last pick when it is available.
+            if !state.get_show_tasks() && state.get_show_clipboard() {
+                state.set_side_panel(crate::ui::SidePanel::Clipboard);
+            } else if !state.get_show_clipboard() && state.get_show_tasks() {
+                state.set_side_panel(crate::ui::SidePanel::Tasks);
+            }
+            App::set_expanded(&app, true);
+        });
+
         let island_window = app.island.as_weak();
         actions.on_start_drag(move || {
             let island_window = island_window.clone();
@@ -407,6 +424,8 @@ impl App {
         app.refresh_agenda();
         if !expanded {
             app.reset_clipboard_ui();
+            // The quick-action force only applies while expanded.
+            state.set_force_side_panel(false);
         }
         let native = window::find(app.island.window());
         if expanded {
