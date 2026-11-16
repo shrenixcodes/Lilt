@@ -486,6 +486,9 @@ export component SettingsWindow inherits Window {
     in property <[string]> monitors: ["Primary display"];
     in property <string> version;
     in property <string> data-folder;
+    in property <bool> update-checking;
+    in property <bool> update-available;
+    in property <string> update-message;
     in property <bool> recording-shortcut;
     // Which shortcut is being recorded: 0 = expand the island, 1 = open the clipboard shelf.
     in property <int> recording-target;
@@ -514,6 +517,8 @@ export component SettingsWindow inherits Window {
     callback clear-clipboard(bool);
     callback shortcut-key(string, bool, bool, bool, bool);
     callback open-data-folder();
+    callback check-for-updates();
+    callback open-update();
     callback reset-position();
     // Restores the defaults of the Appearance & position page only.
     callback reset-appearance();
@@ -1055,6 +1060,19 @@ export component SettingsWindow inherits Window {
                         font-size: 12px;
                     }
                     Row {
+                        label: "Updates";
+                        description: root.update-message;
+                        Button {
+                            text: root.update-checking ? "Checking…" : "Check for updates";
+                            enabled: !root.update-checking;
+                            clicked => { root.check-for-updates(); }
+                        }
+                        if root.update-available : Button {
+                            text: "Open update";
+                            clicked => { root.open-update(); }
+                        }
+                    }
+                    Row {
                         label: "Settings and logs";
                         description: root.data-folder;
                         Button {
@@ -1063,7 +1081,7 @@ export component SettingsWindow inherits Window {
                         }
                     }
                     Text {
-                        text: "Lilt runs entirely on this PC. It sends no telemetry and makes no network requests.";
+                        text: "Lilt keeps your settings on this PC. It checks GitHub for updates and sends no telemetry.";
                         color: Theme.window-text-secondary;
                         font-size: 12px;
                         wrap: word-wrap;

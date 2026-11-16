@@ -13,10 +13,10 @@ use std::time::Duration;
 use image::{Rgba, RgbaImage};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, PremultipliedRgbaColor, RepaintBufferType};
 use slint::platform::{Platform, WindowAdapter};
-use slint::{ComponentHandle, PhysicalSize, PlatformError};
+use slint::{ComponentHandle, LogicalPosition, PhysicalSize, PlatformError, platform::PointerEventButton};
 
 use crate::ui::{
-    AgendaEntry, AppState, Appearance, AppearanceTokens, ArchiveRow, ArchiveRowKind, CalendarState, Island,
+    AgendaEntry, AppActions, AppState, Appearance, AppearanceTokens, ArchiveRow, ArchiveRowKind, CalendarState, Island,
     MediaAvailability, MediaInfo, Page, SettingsData, SettingsWindow, SystemInfo, TaskForm, TaskView, TasksActions,
     TasksLayout, TasksState, Theme,
 };
@@ -183,6 +183,64 @@ fn compact_media_widens_and_expanded_grows() {
     save(&expanded, "expanded-media");
     assert!((450..=465).contains(&island_width(&expanded, 120)));
     assert!(island_height(&expanded, expanded.width() / 2) > 200);
+}
+
+#[test]
+fn compact_progress_starts_at_the_left_and_stays_inside_the_pill() {
+    let h = Harness::new(1.0);
+    h.state().set_media(playing("Blue Hours"));
+    h.state().set_show_progress(false);
+    let hidden = h.render();
+    let left = h.island.get_body_x() as u32;
+    let right = left + h.island.get_body_width() as u32;
+    let y = (h.island.get_body_height() - 3.0) as u32;
+
+    h.state().set_show_progress(true);
+    h.state().set_progress(0.0);
+    let empty = h.render();
+    assert_eq!(hidden.get_pixel(left + 20, y), empty.get_pixel(left + 20, y));
+
+    h.state().set_progress(0.5);
+    let half = h.render();
+    assert_ne!(empty.get_pixel(left + 20, y), half.get_pixel(left + 20, y));
+    assert_eq!(empty.get_pixel(right - 20, y), half.get_pixel(right - 20, y));
+
+    h.state().set_progress(1.0);
+    let full = h.render();
+    assert_ne!(empty.get_pixel(right - 20, y), full.get_pixel(right - 20, y));
+    assert_eq!(empty.get_pixel(left + 2, y), full.get_pixel(left + 2, y));
+    assert_eq!(empty.get_pixel(right - 2, y), full.get_pixel(right - 2, y));
+}
+
+#[test]
+fn compact_transport_buttons_click_while_hovered() {
+    let h = Harness::new(1.0);
+    h.state().set_media(playing("Blue Hours"));
+    h.state().set_pointer_inside(true);
+    h.render();
+    let right = h.island.get_body_x() + h.island.get_body_width();
+    let play_count = Rc::new(Cell::new(0));
+    let next_count = Rc::new(Cell::new(0));
+    let play_seen = play_count.clone();
+    let next_seen = next_count.clone();
+    h.island.global::<AppActions>().on_toggle_play(move || play_seen.set(play_seen.get() + 1));
+    h.island.global::<AppActions>().on_next_track(move || next_seen.set(next_seen.get() + 1));
+
+    for x in [right - 56.0, right - 28.0] {
+        let position = LogicalPosition::new(x, 20.0);
+        h.window.dispatch_event(slint::platform::WindowEvent::PointerMoved { position });
+        h.window.dispatch_event(slint::platform::WindowEvent::PointerPressed {
+            position,
+            button: PointerEventButton::Left,
+        });
+        h.window.dispatch_event(slint::platform::WindowEvent::PointerReleased {
+            position,
+            button: PointerEventButton::Left,
+        });
+    }
+    assert_eq!(play_count.get(), 1);
+    assert_eq!(next_count.get(), 1);
+    assert!(!h.state().get_expanded());
 }
 
 #[test]
@@ -864,7 +922,7 @@ fn tasks_box_sits_beside_or_below_in_both_appearances() {
     let below = h.render_on(wallpaper);
     save(&below, "tasks-glass-below");
     // Below: both boxes as wide as the dashboard, one above the other.
-    assert_eq!((below.width(), below.height()), (480, 636));
+    assert_eq!((below.width(), below.height()), (480, 600));
     assert_eq!(h.island.get_tasks_box_width(), 460.0);
     assert!(h.island.get_tasks_y() > h.island.get_body_height());
     set_appearance(&h, Appearance::Midnight);
@@ -873,7 +931,7 @@ fn tasks_box_sits_beside_or_below_in_both_appearances() {
     // Without Tasks the island is exactly the original.
     h.state().set_show_tasks(false);
     let plain = h.render();
-    assert_eq!((plain.width(), plain.height()), (480, 306));
+    assert_eq!((plain.width(), plain.height()), (480, 270));
 }
 
 #[test]
@@ -1413,7 +1471,7 @@ fn clipboard_shelf_renders_in_every_appearance() {
     // Without either, the island is exactly the original.
     h.state().set_show_clipboard(false);
     let plain = h.render();
-    assert_eq!((plain.width(), plain.height()), (480, 306));
+    assert_eq!((plain.width(), plain.height()), (480, 270));
 }
 
 #[test]

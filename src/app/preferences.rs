@@ -256,6 +256,7 @@ impl App {
         settings_window.set_version(env!("CARGO_PKG_VERSION").into());
         settings_window.set_data_folder(paths::roaming_data_dir().display().to_string().into());
         App::connect_settings_window(app, &settings_window);
+        App::connect_settings_updates(app, &settings_window);
         app.settings_window.replace(Some(settings_window));
         app.apply_window_appearance();
         app.refresh_settings_window();
