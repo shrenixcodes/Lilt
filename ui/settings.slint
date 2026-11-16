@@ -658,11 +658,20 @@ export component SettingsWindow inherits Window {
                             select => { root.data.appearance = 2; root.edited(); }
                         }
                     }
-                    if root.data.appearance >= 1 && root.appearance-note != "" : Text {
-                        text: root.appearance-note;
-                        color: Theme.window-text-secondary;
-                        font-size: 11.5px;
-                        wrap: word-wrap;
+                    // The note's space is always reserved (every explanation fits two lines)
+                    // so showing or hiding it never shifts the controls below.
+                    Rectangle {
+                        height: 34px;
+                        Text {
+                            x: 0;
+                            width: parent.width;
+                            y: 0;
+                            text: root.data.appearance >= 1 ? root.appearance-note : "";
+                            color: Theme.window-text-secondary;
+                            font-size: 11.5px;
+                            wrap: word-wrap;
+                            vertical-alignment: top;
+                        }
                     }
                     // The glass controls stay in place for every appearance and only turn
                     // inactive under Midnight, so selecting an appearance never shifts the page.
