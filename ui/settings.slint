@@ -267,12 +267,11 @@ component AppearancePreview inherits Rectangle {
         }
 
         if root.tokens.reflections : GlassRim {
-            x: 0;
-            y: 0;
             width: parent.width;
+            height: parent.height;
             radius: parent.border-radius;
-            reach: 4px;
             rim: root.tokens.rim;
+            strength: Theme.rim-strength;
         }
     }
 
@@ -348,12 +347,11 @@ component AppearancePreview inherits Rectangle {
         }
 
         if root.tokens.reflections : GlassRim {
-            x: 0;
-            y: 0;
             width: parent.width;
+            height: parent.height;
             radius: parent.border-radius;
-            reach: 7px;
             rim: root.tokens.rim;
+            strength: Theme.rim-strength;
         }
     }
 }

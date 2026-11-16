@@ -5,7 +5,7 @@ import { CompactView, ActivityView } from "compact.slint";
 import { ExpandedView } from "expanded.slint";
 import { TasksView } from "tasks.slint";
 import { ClipboardView } from "clipboard.slint";
-import { GlassSheen, GlassRim, GlassEdge } from "components/glass.slint";
+import { GlassSheen, GlassRim } from "components/glass.slint";
 
 // Two translucent layers that approximate a soft drop shadow, which the software
 // renderer does not draw. Place it before the surface it belongs to.
@@ -216,6 +216,24 @@ export component Island inherits Window {
                 radius: island.border-radius;
             }
 
+            // The lit edges: soft light gathering along the top and bottom and easing off
+            // inward and around the corners. Drawn beneath the content so text stays crisp.
+            if Theme.reflections : GlassRim {
+                width: parent.width;
+                height: parent.height;
+                radius: island.border-radius;
+                strength: Theme.rim-strength;
+            }
+
+            if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
+                width: parent.width;
+                height: parent.height;
+                radius: island.border-radius;
+                lower: true;
+                rim: Theme.lower-rim;
+                strength: Theme.rim-strength;
+            }
+
             touch := TouchArea {
                 pointer-event(event) => {
                     if event.kind == PointerEventKind.down {
@@ -286,32 +304,6 @@ export component Island inherits Window {
                 }
             }
 
-            // The lit edges fade gently inward from the top and bottom of the surface.
-            if Theme.reflections : GlassRim {
-                x: 0;
-                y: 0;
-                width: parent.width;
-                radius: parent.border-radius;
-            }
-
-            if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
-                x: 0;
-                y: parent.height - self.height;
-                width: parent.width;
-                radius: parent.border-radius;
-                lower: true;
-                rim: Theme.lower-rim;
-            }
-        }
-
-        // The lit outline that curves the edge light into the rounded corners. Drawn over
-        // the surface as a sibling so the surface's own clip never cuts the rounded edge.
-        if Theme.reflections : GlassEdge {
-            x: island.x;
-            y: island.y;
-            width: island.width;
-            height: island.height;
-            radius: island.border-radius;
         }
 
         // The tasks box, created only while expanded. It fades in beside or below the
@@ -347,6 +339,22 @@ export component Island inherits Window {
                     radius: Theme.expanded-radius;
                 }
 
+                if Theme.reflections : GlassRim {
+                    width: parent.width;
+                    height: parent.height;
+                    radius: Theme.expanded-radius;
+                    strength: Theme.rim-strength;
+                }
+
+                if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
+                    width: parent.width;
+                    height: parent.height;
+                    radius: Theme.expanded-radius;
+                    lower: true;
+                    rim: Theme.lower-rim;
+                    strength: Theme.rim-strength;
+                }
+
                 if !root.clipboard-panel : TasksView {
                     width: parent.width;
                     height: parent.height;
@@ -356,30 +364,6 @@ export component Island inherits Window {
                     width: parent.width;
                     height: parent.height;
                 }
-
-                if Theme.reflections : GlassRim {
-                    x: 0;
-                    y: 0;
-                    width: parent.width;
-                    radius: parent.border-radius;
-                }
-
-                if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
-                    x: 0;
-                    y: parent.height - self.height;
-                    width: parent.width;
-                    radius: parent.border-radius;
-                    lower: true;
-                    rim: Theme.lower-rim;
-                }
-            }
-
-            if Theme.reflections : GlassEdge {
-                x: 0;
-                y: 0;
-                width: parent.width;
-                height: parent.height;
-                radius: Theme.expanded-radius;
             }
         }
     }

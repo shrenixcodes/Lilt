@@ -203,6 +203,12 @@ export global Theme {
     in-out property <float> glass-alpha: 0.5;
     in-out property <float> smoked-alpha: 0.84;
 
+    // The transparency slider, 0 (heaviest blur) .. 1 (clearest), set by the application.
+    // The lit edge tracks it: brighter and more defined as the glass clears, softer as it
+    // frosts, centred on the as-designed look at 0.5.
+    in-out property <float> glass-transparency: 0.5;
+    out property <float> rim-strength: clamp(0.4 + glass-transparency * 1.2, 0.4, 1.4);
+
     out property <AppearanceTokens> liquid-glass: {
         // Without a blur, sharp content would show through, so the frosted surface stays
         // dense; it is cooler and lighter than Smoked Glass.

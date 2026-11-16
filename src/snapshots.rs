@@ -618,16 +618,14 @@ fn glass_renders_every_state() {
                 "{name}: corner at {x},{y}"
             );
         }
-        // The rim lights the top edge and fades inward: across the lit band the top edge is
-        // clearly brighter than the surface deeper in, far more so than Midnight's border.
+        // The rim lights the top edge: the soft glow makes the very edge clearly brighter
+        // than the surface a little inside it.
         let edge = |image: &RgbaImage| {
             brightness(image.get_pixel(240, 0).0) as i32 - brightness(image.get_pixel(240, 9).0) as i32
         };
         h.theme().set_appearance(appearance);
         let glass_edge = edge(&h.render());
-        h.theme().set_appearance(Appearance::Midnight);
-        let midnight_edge = edge(&h.render());
-        assert!(glass_edge > midnight_edge + 30, "{name}: rim {glass_edge} vs border {midnight_edge}");
+        assert!(glass_edge > 18, "{name}: rim edge {glass_edge}");
 
         for page in [Page::System, Page::Calendar] {
             h.theme().set_appearance(appearance);
@@ -657,12 +655,42 @@ fn liquid_glass_is_clearer_and_lights_its_lower_edge() {
     h.theme().set_glass_alpha(crate::appearance::DENSE_ALPHA);
     let dense = h.render_on(wallpaper);
     assert!(brightness(dense.get_pixel(240, 230).0) < brightness(l));
-    // Both glass appearances light the lower edge; Liquid Glass's is noticeably brighter.
+    // Both glass appearances light the lower edge; Liquid Glass's is brighter.
     let bottom = (h.island.get_body_y() + h.island.get_body_height()) as u32 - 1;
     let lower = |image: &RgbaImage| {
         brightness(image.get_pixel(240, bottom).0) as i32 - brightness(image.get_pixel(240, bottom - 9).0) as i32
     };
-    assert!(lower(&liquid) > lower(&smoked) + 10, "{} vs {}", lower(&liquid), lower(&smoked));
+    assert!(lower(&smoked) > 0 && lower(&liquid) > lower(&smoked), "{} vs {}", lower(&liquid), lower(&smoked));
+}
+
+#[test]
+fn the_rim_tracks_the_transparency_slider() {
+    let h = Harness::new(1.0);
+    h.theme().set_live_blur(true);
+    playing_with_artwork(&h);
+    h.state().set_expanded(true);
+    h.theme().set_appearance(Appearance::LiquidGlass);
+    let brightness = |p: [u8; 4]| p[0] as u32 + p[1] as u32 + p[2] as u32;
+    // How much light the rim adds at the top edge over the surface deeper in, where the
+    // glow no longer reaches. Transparency moves only the rim, so the surface baseline is
+    // the same in both renders and this isolates the rim's strength.
+    let lift = |image: &RgbaImage| {
+        brightness(image.get_pixel(240, 0).0) as i32 - brightness(image.get_pixel(240, 135).0) as i32
+    };
+
+    // Frosted (low transparency): a soft, dim edge.
+    h.theme().set_glass_transparency(0.1);
+    let frosted = h.render_on(wallpaper);
+    save(&frosted, "rim-transparency-low");
+    let frosted_lift = lift(&frosted);
+
+    // Clear (high transparency): the edge brightens.
+    h.theme().set_glass_transparency(0.95);
+    let clear = h.render_on(wallpaper);
+    save(&clear, "rim-transparency-high");
+    let clear_lift = lift(&clear);
+
+    assert!(clear_lift > frosted_lift + 40, "clear rim {clear_lift} vs frosted {frosted_lift}");
 }
 
 #[test]

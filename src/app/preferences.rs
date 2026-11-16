@@ -144,6 +144,7 @@ impl App {
         let theme = app.island.global::<Theme>();
         theme.set_appearance(ui_appearance(settings.appearance.theme));
         theme.set_live_blur(live);
+        theme.set_glass_transparency(settings.appearance.glass_transparency as f32 / 100.0);
         app.glass_fallback.set(fallback);
         app.window_blur.set(live && appearance::window_backdrop_supported(&env));
         if material != Material::Solid {
@@ -167,6 +168,7 @@ impl App {
         let transparency = self.settings.borrow().appearance.glass_transparency;
         theme.set_smoked_alpha(appearance::preferred_alpha(AppearanceMode::SmokedGlass, transparency));
         theme.set_glass_alpha(appearance::preferred_alpha(AppearanceMode::LiquidGlass, transparency));
+        theme.set_glass_transparency(transparency as f32 / 100.0);
         let blur =
             window::find(window.window()).is_some_and(|native| native.set_system_backdrop(self.window_blur.get()));
         theme.set_live_blur(blur);
