@@ -6,6 +6,25 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-16
+
+### Added
+
+- Per-application volume controls in the Sound quick panel, including mute.
+- A Tasks + Clipboard quick action, which opens the side panel without changing the
+  corresponding Settings switches.
+- Release-aware in-app updates: Lilt can download, verify and install the latest
+  signed GitHub release installer.
+
+### Fixed
+
+- The compact media progress line could extend outside the rounded island. It now stays
+  within the pill's curved ends.
+- Liquid Glass no longer shows stepped corners while the island animates.
+- The side Tasks/Clipboard box aligns with the expanded island, and long clipboard
+  previews no longer overlap their metadata.
+- Late-arriving media artwork now refreshes instead of remaining from the prior track.
+
 ## [0.4.0] - 2026-11-16
 
 ### Added

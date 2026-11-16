@@ -241,10 +241,15 @@ export component Island inherits Window {
             }
 
             Rectangle {
-                x: 0;
-                y: parent.height - 2px;
-                width: parent.width;
+                // Keep the compact timeline clear of the pill's curved ends.  A full-width
+                // rectangle at the bottom can extend past the rounded silhouette on the
+                // Windows compositor, even though the island itself is clipped.
+                x: parent.height / 3;
+                y: parent.height - 3px;
+                width: parent.width - 2 * self.x;
                 height: 2px;
+                border-radius: self.height / 2;
+                clip: true;
                 background: Theme.text-tertiary.with-alpha(0.55);
                 opacity: root.compact-progress ? 1 : 0;
                 animate opacity { duration: Theme.fade-duration; }

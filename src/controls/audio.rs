@@ -12,8 +12,8 @@ use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{
     AudioSessionStateExpired, DEVICE_STATE, DEVICE_STATEMASK_ALL, IAudioSessionControl, IAudioSessionControl2,
-    IAudioSessionManager2, IConnector, IDeviceTopology, IMMDevice, IMMDeviceEnumerator, IPart,
-    ISimpleAudioVolume, MMDeviceEnumerator, eConsole, eRender,
+    IAudioSessionManager2, IConnector, IDeviceTopology, IMMDevice, IMMDeviceEnumerator, IPart, ISimpleAudioVolume,
+    MMDeviceEnumerator, eConsole, eRender,
 };
 use windows::Win32::Media::KernelStreaming::{
     IKsControl, KSIDENTIFIER, KSIDENTIFIER_0, KSIDENTIFIER_0_0, KSPROPERTY_ONESHOT_DISCONNECT,
@@ -115,7 +115,9 @@ pub fn sessions() -> Vec<Session> {
     let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
     out.retain(|s| seen.insert(s.process_id.max(1) + if s.is_system { 1 << 30 } else { 0 }));
     // System sounds last; otherwise alphabetical.
-    out.sort_by(|a, b| a.is_system.cmp(&b.is_system).then_with(|| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase())));
+    out.sort_by(|a, b| {
+        a.is_system.cmp(&b.is_system).then_with(|| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()))
+    });
     out
 }
 
@@ -132,8 +134,8 @@ fn describe(control: &IAudioSessionControl) -> Option<Session> {
         .ok()
         .and_then(|p| unsafe { p.to_string().ok() })
         .unwrap_or_default();
-    let display = unsafe { control2.GetDisplayName() }.ok().and_then(|p| unsafe { p.to_string().ok() })
-        .unwrap_or_default();
+    let display =
+        unsafe { control2.GetDisplayName() }.ok().and_then(|p| unsafe { p.to_string().ok() }).unwrap_or_default();
     let name = if is_system {
         "System sounds".to_string()
     } else if !display.is_empty() {
@@ -155,9 +157,8 @@ fn process_name(pid: u32) -> Option<String> {
     let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
     let mut buffer = [0u16; 512];
     let mut len = buffer.len() as u32;
-    let result = unsafe {
-        QueryFullProcessImageNameW(handle, PROCESS_NAME_FORMAT(0), PWSTR(buffer.as_mut_ptr()), &mut len)
-    };
+    let result =
+        unsafe { QueryFullProcessImageNameW(handle, PROCESS_NAME_FORMAT(0), PWSTR(buffer.as_mut_ptr()), &mut len) };
     unsafe { CloseHandle(handle) }.ok()?;
     result.ok()?;
     let path = String::from_utf16_lossy(&buffer[..len as usize]);

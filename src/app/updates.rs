@@ -97,9 +97,9 @@ impl App {
             return;
         };
         let Some(url) = release.installer_url.clone() else {
-            app.island.global::<AppState>().set_update_message(
-                "This release has no Windows installer; open GitHub to download it.".into(),
-            );
+            app.island
+                .global::<AppState>()
+                .set_update_message("This release has no Windows installer; open GitHub to download it.".into());
             return;
         };
         let sha_url = release.sha256_url.clone();

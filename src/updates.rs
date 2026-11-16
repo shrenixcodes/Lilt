@@ -202,21 +202,9 @@ pub fn run_installer(path: &Path) -> Result<(), String> {
     let target = HSTRING::from(path.as_os_str());
     // `/S` is NSIS's silent-install switch.
     let args = HSTRING::from("/S");
-    let result = unsafe {
-        ShellExecuteW(
-            None,
-            w!("runas"),
-            &target,
-            PCWSTR(args.as_ptr()),
-            PCWSTR::null(),
-            SW_SHOWNORMAL,
-        )
-    };
-    if result.0 as isize > 32 {
-        Ok(())
-    } else {
-        Err(format!("ShellExecuteW returned {}", result.0 as isize))
-    }
+    let result =
+        unsafe { ShellExecuteW(None, w!("runas"), &target, PCWSTR(args.as_ptr()), PCWSTR::null(), SW_SHOWNORMAL) };
+    if result.0 as isize > 32 { Ok(()) } else { Err(format!("ShellExecuteW returned {}", result.0 as isize)) }
 }
 
 /// Tiny streaming SHA-256 that keeps `windows` as the only runtime dependency growth.
@@ -231,9 +219,7 @@ struct Sha256 {
 impl Sha256 {
     fn new() -> Self {
         Self {
-            state: [
-                0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
-            ],
+            state: [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19],
             buffer: [0u8; 64],
             buffer_len: 0,
             bytes: 0,
@@ -279,12 +265,7 @@ impl Sha256 {
         ];
         let mut w = [0u32; 64];
         for i in 0..16 {
-            w[i] = u32::from_be_bytes([
-                block[i * 4],
-                block[i * 4 + 1],
-                block[i * 4 + 2],
-                block[i * 4 + 3],
-            ]);
+            w[i] = u32::from_be_bytes([block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]]);
         }
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
