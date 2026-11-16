@@ -6,6 +6,25 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-11-17
+
+### Added
+
+- An auto-hide option that tucks the island away above the top edge and reveals it when
+  the pointer reaches the top centre of the screen, with a smooth slide and fade.
+
+### Changed
+
+- Each appearance keeps its own heading face, chosen to stay legible: Midnight uses Space
+  Grotesk, Smoked Glass uses Newsreader italic and Liquid Glass uses Unbounded. Settings
+  section headers use a clean tracked label so the display face is reserved for prominent
+  titles.
+
+### Fixed
+
+- The settings window no longer resizes or overlaps its content when the Appearance page
+  opens; it stays wide enough for the appearance cards.
+
 ## [0.4.7] - 2026-11-16
 
 ### Added
