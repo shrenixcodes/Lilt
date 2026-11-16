@@ -257,16 +257,38 @@ component LevelRow inherits HorizontalLayout {
     in property <float> value;
     in property <bool> dimmed;
     in property <bool> editable-percent;
+    // An optional raster icon that spins with the level (the sun for brightness). When set
+    // it replaces the vector icon, since the software renderer cannot rotate a path.
+    in property <image> icon-source;
+    in property <angle> icon-spin: 0deg;
     callback icon-clicked();
     callback changed(float);
     spacing: 10px;
     height: 36px;
 
-    IconButton {
-        icon: root.icon;
-        tooltip: root.icon-label;
-        tint: root.dimmed ? Theme.text-tertiary : Theme.text;
-        clicked => { root.icon-clicked(); }
+    Rectangle {
+        width: 30px;
+        height: 30px;
+
+        if root.icon-source.width == 0 : IconButton {
+            width: parent.width;
+            height: parent.height;
+            icon: root.icon;
+            tooltip: root.icon-label;
+            tint: root.dimmed ? Theme.text-tertiary : Theme.text;
+            clicked => { root.icon-clicked(); }
+        }
+
+        if root.icon-source.width > 0 : Image {
+            width: 16px;
+            height: 16px;
+            source: root.icon-source;
+            image-fit: contain;
+            colorize: root.dimmed ? Theme.text-tertiary : Theme.text;
+            transform-rotation: root.icon-spin;
+            accessible-role: image;
+            accessible-label: root.icon-label;
+        }
     }
 
     VerticalLayout {
@@ -510,9 +532,11 @@ export component BrightnessPanel inherits Panel {
         alignment: center;
 
         LevelRow {
-            icon: Icons.sun;
             icon-label: "Brightness";
             value: ControlsState.brightness;
+            // The sun turns as the brightness is dragged.
+            icon-source: @image-url("../assets/icons/sun.png");
+            icon-spin: ControlsState.brightness * 180deg;
             changed(v) => { ControlsActions.set-brightness(v); }
         }
     }

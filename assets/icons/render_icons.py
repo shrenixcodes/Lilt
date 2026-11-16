@@ -48,6 +48,38 @@ def app_icon(size: int) -> Image.Image:
     return img.resize((size, size), Image.LANCZOS)
 
 
+def sun_icon(size: int) -> Image.Image:
+    """A white stroked sun (ring plus eight rays) on transparent, for colorizing and
+    rotating in the brightness control. Matches the Lucide sun used elsewhere."""
+    import math
+
+    s = size * SUPERSAMPLE
+    unit = s / 24
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    white = (255, 255, 255, 255)
+    c = s / 2
+    stroke = 2 * unit
+
+    def dot(x: float, y: float) -> None:
+        draw.ellipse([x - stroke / 2, y - stroke / 2, x + stroke / 2, y + stroke / 2], fill=white)
+
+    # The ring: a filled outer circle with the centre punched out.
+    draw.ellipse([c - 5 * unit, c - 5 * unit, c + 5 * unit, c + 5 * unit], fill=white)
+    draw.ellipse([c - 3 * unit, c - 3 * unit, c + 3 * unit, c + 3 * unit], fill=(0, 0, 0, 0))
+
+    # Eight rays, each a round-capped segment from radius 8 to 10.
+    for k in range(8):
+        a = math.radians(45 * k)
+        ix, iy = c + 8 * unit * math.cos(a), c + 8 * unit * math.sin(a)
+        ox, oy = c + 10 * unit * math.cos(a), c + 10 * unit * math.sin(a)
+        draw.line([ix, iy, ox, oy], fill=white, width=round(stroke))
+        dot(ix, iy)
+        dot(ox, oy)
+
+    return img.resize((size, size), Image.LANCZOS)
+
+
 def tray_icon(size: int, color: tuple) -> Image.Image:
     """A solid pill glyph with a cut-out dot, legible at 16 px."""
     s = size * SUPERSAMPLE
@@ -70,6 +102,7 @@ def main() -> None:
     images[-1].save(HERE / "lilt.ico", sizes=[(n, n) for n in sizes], append_images=images[:-1])
     tray_icon(32, (245, 245, 247, 255)).save(HERE / "tray-light.png")
     tray_icon(32, (20, 20, 22, 255)).save(HERE / "tray-dark.png")
+    sun_icon(128).save(HERE / "sun.png")
 
 
 if __name__ == "__main__":
