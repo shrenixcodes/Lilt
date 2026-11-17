@@ -553,8 +553,11 @@ export component SettingsWindow inherits Window {
     callback clear-shortcut(int);
     callback add-excluded-app(string);
     callback remove-excluded-app(int);
-    callback add-custom-app(string, string);
+    callback add-custom-app(string);
+    callback browse-custom-app();
     callback remove-custom-app(int);
+    callback clear-custom-apps();
+    callback reset-custom-apps();
     in property <[string]> launcher-custom-apps;
     // Clears copied text, or with `true` everything including pinned entries and snippets.
     callback clear-clipboard(bool);
@@ -943,7 +946,7 @@ export component SettingsWindow inherits Window {
                     }
                     Row {
                         label: "Collapsed island app launcher";
-                        description: "Scroll wheel or middle click on the collapsed island to quickly browse and launch apps.";
+                        description: "Scroll wheel over the collapsed island to cycle through apps and music, and click to launch.";
                         Switch {
                             checked: root.data.launcher-enabled;
                             toggled => { root.data.launcher-enabled = self.checked; root.edited(); }
@@ -975,6 +978,20 @@ export component SettingsWindow inherits Window {
 
                 if root.section == 2 && root.data.launcher-enabled : Section {
                     title: "Collapsed island shortcuts (" + root.launcher-custom-apps.length + " of 7)";
+
+                    Row {
+                        label: "Scroll to navigate apps & music";
+                        description: "Scroll mouse wheel over the compact island to browse apps and return to music in an infinite loop. Manage your shortcuts below.";
+                        if root.launcher-custom-apps.length > 0 : Button {
+                            text: "Delete current list";
+                            clicked => { root.clear-custom-apps(); }
+                        }
+                        if root.launcher-custom-apps.length == 0 : Button {
+                            text: "Detect installed apps";
+                            clicked => { root.reset-custom-apps(); }
+                        }
+                    }
+
                     for app[i] in root.launcher-custom-apps : Row {
                         label: app;
                         Button {
@@ -982,28 +999,35 @@ export component SettingsWindow inherits Window {
                             clicked => { root.remove-custom-app(i); }
                         }
                     }
+
                     if root.launcher-custom-apps.length < 7 : Row {
                         label: "Add shortcut";
-                        description: "Add an application or game shortcut (up to 7 max).";
-                        name-input := LineEdit {
-                            width: 120px;
-                            placeholder-text: "App name";
-                        }
+                        description: "Select an app (.exe) or shortcut (.lnk). Name and icon are fetched automatically.";
                         path-input := LineEdit {
                             width: 170px;
-                            placeholder-text: "Exe or link path";
+                            placeholder-text: "Exe or shortcut path";
+                            accepted => {
+                                if path-input.text != "" {
+                                    root.add-custom-app(path-input.text);
+                                    path-input.text = "";
+                                }
+                            }
+                        }
+                        Button {
+                            text: "Browse…";
+                            clicked => { root.browse-custom-app(); }
                         }
                         Button {
                             text: "Add";
                             clicked => {
-                                if name-input.text != "" && path-input.text != "" {
-                                    root.add-custom-app(name-input.text, path-input.text);
-                                    name-input.text = "";
+                                if path-input.text != "" {
+                                    root.add-custom-app(path-input.text);
                                     path-input.text = "";
                                 }
                             }
                         }
                     }
+
                     if root.launcher-custom-apps.length >= 7 : Row {
                         label: "Maximum reached";
                         description: "You have added the maximum of 7 shortcuts. Remove one to add another.";

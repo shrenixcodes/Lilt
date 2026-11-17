@@ -429,32 +429,89 @@ impl App {
             app.refresh_settings_window();
         });
         let weak_add_custom = weak.clone();
-        window.on_add_custom_app(move |name, path| {
+        window.on_add_custom_app(move |path| {
             let Some(app) = weak_add_custom.upgrade() else { return };
             if app.settings.borrow().launcher.custom_apps.len() >= 7 {
                 return;
             }
-            let name = name.trim().to_owned();
             let path = path.trim().trim_matches('"').to_owned();
-            if name.is_empty() || path.is_empty() {
+            if path.is_empty() {
                 return;
             }
-            app.settings.borrow_mut().launcher.custom_apps.push(crate::settings::CustomApp { name, path });
+            let name = super::launcher::resolve_app_name(&path);
+            {
+                let mut settings = app.settings.borrow_mut();
+                settings.launcher.initialized = true;
+                settings.launcher.custom_apps.push(crate::settings::CustomApp { name, path });
+            }
             app.launcher.detect_apps(&app.settings.borrow());
             app.launcher.publish(&app.island);
             App::apply_settings(&app);
             App::schedule_save(&app);
             app.refresh_settings_window();
         });
+        window.on_browse_custom_app(super::with(&weak, |app| {
+            let weak = Rc::downgrade(app);
+            slint::Timer::single_shot(Duration::ZERO, move || {
+                let Some(app) = weak.upgrade() else { return };
+                if app.settings.borrow().launcher.custom_apps.len() >= 7 {
+                    return;
+                }
+                if let Some(path_buf) = dialogs::pick_app_file() {
+                    let path = path_buf.to_string_lossy().into_owned();
+                    let name = super::launcher::resolve_app_name(&path);
+                    {
+                        let mut settings = app.settings.borrow_mut();
+                        settings.launcher.initialized = true;
+                        settings.launcher.custom_apps.push(crate::settings::CustomApp { name, path });
+                    }
+                    app.launcher.detect_apps(&app.settings.borrow());
+                    app.launcher.publish(&app.island);
+                    App::apply_settings(&app);
+                    app.save_now();
+                    app.refresh_settings_window();
+                }
+            });
+        }));
         let weak_remove_custom = weak.clone();
         window.on_remove_custom_app(move |index| {
             let Some(app) = weak_remove_custom.upgrade() else { return };
             {
                 let mut settings = app.settings.borrow_mut();
+                settings.launcher.initialized = true;
                 let apps = &mut settings.launcher.custom_apps;
                 if let Some(i) = usize::try_from(index).ok().filter(|&i| i < apps.len()) {
                     apps.remove(i);
                 }
+            }
+            app.launcher.detect_apps(&app.settings.borrow());
+            app.launcher.publish(&app.island);
+            App::apply_settings(&app);
+            App::schedule_save(&app);
+            app.refresh_settings_window();
+        });
+        let weak_clear_custom = weak.clone();
+        window.on_clear_custom_apps(move || {
+            let Some(app) = weak_clear_custom.upgrade() else { return };
+            {
+                let mut settings = app.settings.borrow_mut();
+                settings.launcher.initialized = true;
+                settings.launcher.custom_apps.clear();
+            }
+            app.launcher.detect_apps(&app.settings.borrow());
+            app.launcher.publish(&app.island);
+            App::apply_settings(&app);
+            App::schedule_save(&app);
+            app.refresh_settings_window();
+        });
+        let weak_reset_custom = weak.clone();
+        window.on_reset_custom_apps(move || {
+            let Some(app) = weak_reset_custom.upgrade() else { return };
+            let defaults = super::launcher::LauncherController::scan_default_apps();
+            {
+                let mut settings = app.settings.borrow_mut();
+                settings.launcher.initialized = true;
+                settings.launcher.custom_apps = defaults;
             }
             app.launcher.detect_apps(&app.settings.borrow());
             app.launcher.publish(&app.island);

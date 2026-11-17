@@ -305,12 +305,13 @@ pub struct Calendar {
 #[serde(default)]
 pub struct AppLauncher {
     pub enabled: bool,
+    pub initialized: bool,
     pub custom_apps: Vec<CustomApp>,
 }
 
 impl Default for AppLauncher {
     fn default() -> Self {
-        Self { enabled: true, custom_apps: Vec::new() }
+        Self { enabled: true, initialized: false, custom_apps: Vec::new() }
     }
 }
 

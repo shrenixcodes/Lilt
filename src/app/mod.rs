@@ -360,6 +360,14 @@ impl App {
                 App::apply_peek(&app);
             }
         });
+        if !app.settings.borrow().launcher.initialized && app.settings.borrow().launcher.custom_apps.is_empty() {
+            let defaults = launcher::LauncherController::scan_default_apps();
+            let mut settings = app.settings.borrow_mut();
+            settings.launcher.custom_apps = defaults;
+            settings.launcher.initialized = true;
+            drop(settings);
+            App::schedule_save(app);
+        }
         app.launcher.detect_apps(&app.settings.borrow());
         app.launcher.publish(&app.island);
 

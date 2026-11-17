@@ -12,7 +12,7 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Shell::{
-    ExtractIconExW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGetFileInfoW, ShellExecuteW,
+    ExtractIconExW, SHFILEINFOW, SHGFI_DISPLAYNAME, SHGFI_ICON, SHGFI_LARGEICON, SHGetFileInfoW, ShellExecuteW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     DI_NORMAL, DestroyIcon, DrawIconEx, HICON, PrivateExtractIconsW, SW_SHOWNORMAL,
@@ -44,11 +44,10 @@ impl LauncherController {
         Self { apps: RefCell::new(Vec::new()), revert_timer: slint::Timer::default() }
     }
 
-    /// Detects desktop shortcuts, popular installed applications, and user-configured custom apps.
+    /// Loads user-configured custom apps or initial defaults from settings.
     pub fn detect_apps(&self, settings: &Settings) {
         let mut detected = Vec::new();
 
-        // 1. User custom apps from settings come first
         for custom in &settings.launcher.custom_apps {
             if !custom.name.trim().is_empty() && !custom.path.trim().is_empty() {
                 detected.push(AppItem {
@@ -60,7 +59,20 @@ impl LauncherController {
             }
         }
 
-        // 2. Scan Desktop and Start Menu shortcuts (.lnk, .url)
+        detected.truncate(7);
+
+        // Fetch genuine application icons
+        for item in &mut detected {
+            item.icon = extract_file_icon(&item.path);
+        }
+
+        *self.apps.borrow_mut() = detected;
+    }
+
+    /// Scans desktop shortcuts and well-known applications to populate initial shortcuts.
+    pub fn scan_default_apps() -> Vec<crate::settings::CustomApp> {
+        let mut detected = Vec::new();
+
         let search_dirs = [
             std::env::var_os("USERPROFILE").map(|p| PathBuf::from(p).join("Desktop")),
             std::env::var_os("PUBLIC").map(|p| PathBuf::from(p).join("Desktop")),
@@ -72,21 +84,7 @@ impl LauncherController {
             scan_shortcuts(&dir, 0, &mut detected);
         }
 
-        // 3. Scan well-known daily developer, gaming, and creative tools
-        let common_apps: &[(&str, &str, &str)] = &[
-            ("VS Code", "code.cmd", "code"),
-            ("Terminal", "wt.exe", "terminal"),
-            ("Discord", "Discord.exe", "app"),
-            ("Spotify", "spotify.exe", "app"),
-            ("Steam", "steam.exe", "game"),
-            ("Google Chrome", "chrome.exe", "browser"),
-            ("Microsoft Edge", "msedge.exe", "browser"),
-            ("File Explorer", "explorer.exe", "app"),
-            ("Notepad", "notepad.exe", "app"),
-            ("Calculator", "calc.exe", "app"),
-        ];
-
-        for &(name, binary, kind) in common_apps {
+        for &(name, binary, kind) in COMMON_APPS {
             if !detected.iter().any(|a| a.name.eq_ignore_ascii_case(name)) && is_available(binary) {
                 detected.push(AppItem {
                     name: name.to_owned(),
@@ -97,7 +95,6 @@ impl LauncherController {
             }
         }
 
-        // Fallback default apps if empty
         if detected.is_empty() {
             detected.push(AppItem {
                 name: "File Explorer".into(),
@@ -119,23 +116,14 @@ impl LauncherController {
             });
         }
 
-        // Deduplicate by name
-        let mut unique: Vec<AppItem> = Vec::new();
+        let mut unique: Vec<crate::settings::CustomApp> = Vec::new();
         for item in detected {
             if !unique.iter().any(|u| u.name.eq_ignore_ascii_case(&item.name)) {
-                unique.push(item);
+                unique.push(crate::settings::CustomApp { name: item.name, path: item.path });
             }
         }
-
-        // Maximum of 7 shortcuts allowed
         unique.truncate(7);
-
-        // Fetch genuine application icons
-        for item in &mut unique {
-            item.icon = extract_file_icon(&item.path);
-        }
-
-        *self.apps.borrow_mut() = unique;
+        unique
     }
 
     /// Publishes detected apps to Slint AppState.
@@ -157,21 +145,44 @@ impl LauncherController {
     }
 
     /// Scrolls to next/previous app with directional animation and restarts the auto-revert timer.
+    /// Includes the initial music/idle view as a step in the infinite scroll loop.
     pub fn scroll(&self, delta: i32, island: &Island) {
-        let state = island.global::<AppState>();
-        if !state.get_launcher_active() {
-            state.set_launcher_active(true);
-        }
         let total = self.apps.borrow().len();
         if total == 0 {
             return;
         }
-        let current = state.get_launcher_index();
-        let next = (current + delta).rem_euclid(total as i32);
-        state.set_launcher_direction(delta);
-        state.set_launcher_anim_token(state.get_launcher_anim_token() + 1);
-        state.set_launcher_index(next);
-        self.restart_revert_timer(island);
+        let state = island.global::<AppState>();
+        let is_active = state.get_launcher_active();
+
+        if !is_active {
+            let start_idx = if delta > 0 { 0 } else { total as i32 - 1 };
+            state.set_launcher_direction(delta);
+            state.set_launcher_anim_token(state.get_launcher_anim_token() + 1);
+            state.set_launcher_index(start_idx);
+            state.set_launcher_active(true);
+            self.restart_revert_timer(island);
+        } else {
+            let current = state.get_launcher_index();
+            if delta > 0 {
+                if current + 1 < total as i32 {
+                    state.set_launcher_direction(delta);
+                    state.set_launcher_anim_token(state.get_launcher_anim_token() + 1);
+                    state.set_launcher_index(current + 1);
+                    self.restart_revert_timer(island);
+                } else {
+                    state.set_launcher_active(false);
+                    self.revert_timer.stop();
+                }
+            } else if current > 0 {
+                state.set_launcher_direction(delta);
+                state.set_launcher_anim_token(state.get_launcher_anim_token() + 1);
+                state.set_launcher_index(current - 1);
+                self.restart_revert_timer(island);
+            } else {
+                state.set_launcher_active(false);
+                self.revert_timer.stop();
+            }
+        }
     }
 
     /// Toggles the launcher on the compact island.
@@ -253,6 +264,87 @@ fn classify_icon(name: &str, path: &str) -> String {
     } else {
         "app".into()
     }
+}
+
+pub const COMMON_APPS: &[(&str, &str, &str)] = &[
+    ("VS Code", "code.cmd", "code"),
+    ("Terminal", "wt.exe", "terminal"),
+    ("Discord", "Discord.exe", "app"),
+    ("Spotify", "spotify.exe", "app"),
+    ("Steam", "steam.exe", "game"),
+    ("Google Chrome", "chrome.exe", "browser"),
+    ("Microsoft Edge", "msedge.exe", "browser"),
+    ("File Explorer", "explorer.exe", "app"),
+    ("Notepad", "notepad.exe", "app"),
+    ("Calculator", "calc.exe", "app"),
+];
+
+/// Resolves a friendly display name for an executable or shortcut target.
+pub fn resolve_app_name(target: &str) -> String {
+    let clean_target = target.trim().trim_matches('"');
+    let path = Path::new(clean_target);
+
+    // 1. If it's a shortcut (.lnk/.url), the filename stem is already the friendly name.
+    let is_shortcut = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk") || ext.eq_ignore_ascii_case("url"));
+    if is_shortcut {
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().trim();
+        if !stem.is_empty() {
+            return stem.to_owned();
+        }
+    }
+
+    // 2. Check well-known common app binary names
+    let filename = path.file_name().and_then(|f| f.to_str()).unwrap_or(clean_target);
+    for &(name, binary, _) in COMMON_APPS {
+        if filename.eq_ignore_ascii_case(binary) || clean_target.eq_ignore_ascii_case(binary) {
+            return name.to_owned();
+        }
+    }
+
+    // 3. Try SHGetFileInfoW for shell display name
+    if let Some(resolved) = resolve_executable_path(clean_target) {
+        let wide: Vec<u16> = resolved.to_string_lossy().encode_utf16().chain(Some(0)).collect();
+        let mut shinfo = SHFILEINFOW::default();
+        let result = unsafe {
+            SHGetFileInfoW(
+                PCWSTR(wide.as_ptr()),
+                FILE_FLAGS_AND_ATTRIBUTES(0),
+                Some(&mut shinfo),
+                std::mem::size_of::<SHFILEINFOW>() as u32,
+                SHGFI_DISPLAYNAME,
+            )
+        };
+        if result != 0 {
+            let len = shinfo.szDisplayName.iter().position(|&c| c == 0).unwrap_or(shinfo.szDisplayName.len());
+            let name = String::from_utf16_lossy(&shinfo.szDisplayName[..len]).trim().to_string();
+            if !name.is_empty() {
+                let stripped = name
+                    .strip_suffix(".exe")
+                    .or_else(|| name.strip_suffix(".lnk"))
+                    .or_else(|| name.strip_suffix(".url"))
+                    .unwrap_or(&name);
+                if !stripped.is_empty() {
+                    return stripped.to_owned();
+                }
+            }
+        }
+    }
+
+    // 4. Fallback: file stem capitalized
+    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+        let s = stem.trim();
+        if !s.is_empty() {
+            let mut chars = s.chars();
+            if let Some(first) = chars.next() {
+                return format!("{}{}", first.to_uppercase(), chars.as_str());
+            }
+        }
+    }
+
+    clean_target.to_owned()
 }
 
 /// Recursively scans for desktop and start menu shortcuts up to a limited depth.
@@ -500,5 +592,13 @@ mod tests {
 
         let apps = controller.apps.borrow();
         assert_eq!(apps.len(), 7);
+    }
+
+    #[test]
+    fn test_resolve_app_name() {
+        assert_eq!(resolve_app_name("wt.exe"), "Terminal");
+        assert_eq!(resolve_app_name("code.cmd"), "VS Code");
+        assert_eq!(resolve_app_name("notepad.exe"), "Notepad");
+        assert_eq!(resolve_app_name("C:\\Users\\test\\Desktop\\Discord.lnk"), "Discord");
     }
 }
