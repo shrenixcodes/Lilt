@@ -287,6 +287,15 @@ impl App {
         let excluded: Vec<SharedString> =
             self.settings.borrow().clipboard.excluded_apps.iter().map(|a| a.as_str().into()).collect();
         window.set_clipboard_excluded(ModelRc::new(VecModel::from(excluded)));
+        let custom_apps: Vec<SharedString> = self
+            .settings
+            .borrow()
+            .launcher
+            .custom_apps
+            .iter()
+            .map(|a| format!("{} ({})", a.name, a.path).into())
+            .collect();
+        window.set_launcher_custom_apps(ModelRc::new(VecModel::from(custom_apps)));
         if !window.get_recording_shortcut() {
             let problems = self.shortcut_problem.borrow();
             window.set_shortcut_message(problems[0].clone().unwrap_or_default().into());
@@ -412,6 +421,37 @@ impl App {
             app.settings.borrow_mut().clipboard.excluded_apps.push(name);
             let sanitized = app.settings.borrow().clone().sanitize();
             app.settings.replace(sanitized);
+            App::apply_settings(&app);
+            App::schedule_save(&app);
+            app.refresh_settings_window();
+        });
+        let weak_add_custom = weak.clone();
+        window.on_add_custom_app(move |name, path| {
+            let Some(app) = weak_add_custom.upgrade() else { return };
+            let name = name.trim().to_owned();
+            let path = path.trim().trim_matches('"').to_owned();
+            if name.is_empty() || path.is_empty() {
+                return;
+            }
+            app.settings.borrow_mut().launcher.custom_apps.push(crate::settings::CustomApp { name, path });
+            app.launcher.detect_apps(&app.settings.borrow());
+            app.launcher.publish(&app.island);
+            App::apply_settings(&app);
+            App::schedule_save(&app);
+            app.refresh_settings_window();
+        });
+        let weak_remove_custom = weak.clone();
+        window.on_remove_custom_app(move |index| {
+            let Some(app) = weak_remove_custom.upgrade() else { return };
+            {
+                let mut settings = app.settings.borrow_mut();
+                let apps = &mut settings.launcher.custom_apps;
+                if let Some(i) = usize::try_from(index).ok().filter(|&i| i < apps.len()) {
+                    apps.remove(i);
+                }
+            }
+            app.launcher.detect_apps(&app.settings.borrow());
+            app.launcher.publish(&app.island);
             App::apply_settings(&app);
             App::schedule_save(&app);
             app.refresh_settings_window();
@@ -606,6 +646,7 @@ fn to_data(s: &Settings, monitors: &[placement::Monitor]) -> SettingsData {
         shortcut: s.shortcuts.toggle.clone().unwrap_or_default().into(),
         calendar_path: s.calendar.ics_path.as_ref().map(|p| p.display().to_string()).unwrap_or_default().into(),
         show_clipboard: s.clipboard.show,
+        launcher_enabled: s.launcher.enabled,
         clipboard_capture: s.clipboard.capture,
         clipboard_skip_secrets: s.clipboard.skip_secrets,
         clipboard_skip_unknown: s.clipboard.skip_unknown_sources,
@@ -660,6 +701,7 @@ fn from_data(d: &SettingsData, monitors: &[placement::Monitor], previous: &Setti
     s.ambient.intensity = d.ambient_intensity.max(0) as u32;
     s.performance.low_power = d.low_power;
     s.performance.hide_in_fullscreen = d.hide_in_fullscreen;
+    s.launcher.enabled = d.launcher_enabled;
     s.clipboard.show = d.show_clipboard;
     if d.clipboard_capture != s.clipboard.capture {
         s.clipboard.capture = d.clipboard_capture;

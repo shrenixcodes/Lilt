@@ -58,6 +58,7 @@ export struct SettingsData {
     shortcut: string,
     calendar-path: string,
     show-clipboard: bool,
+    launcher-enabled: bool,
     clipboard-capture: bool,
     clipboard-skip-secrets: bool,
     clipboard-skip-unknown: bool,
@@ -548,6 +549,9 @@ export component SettingsWindow inherits Window {
     callback clear-shortcut(int);
     callback add-excluded-app(string);
     callback remove-excluded-app(int);
+    callback add-custom-app(string, string);
+    callback remove-custom-app(int);
+    in property <[string]> launcher-custom-apps;
     // Clears copied text, or with `true` everything including pinned entries and snippets.
     callback clear-clipboard(bool);
     callback shortcut-key(string, bool, bool, bool, bool);
@@ -924,6 +928,14 @@ export component SettingsWindow inherits Window {
                             toggled => { root.data.show-clipboard = self.checked; root.edited(); }
                         }
                     }
+                    Row {
+                        label: "Collapsed island app launcher";
+                        description: "Scroll wheel or middle click on the collapsed island to quickly browse and launch apps.";
+                        Switch {
+                            checked: root.data.launcher-enabled;
+                            toggled => { root.data.launcher-enabled = self.checked; root.edited(); }
+                        }
+                    }
                     if root.data.show-tasks || root.data.show-clipboard : Row {
                         label: "Box layout";
                         description: "Where the Tasks and Clipboard box sits when the island is expanded.";
@@ -944,6 +956,39 @@ export component SettingsWindow inherits Window {
                         if root.data.calendar-path != "" : Button {
                             text: "Remove";
                             clicked => { root.clear-calendar(); }
+                        }
+                    }
+                }
+
+                if root.section == 2 && root.data.launcher-enabled : Section {
+                    title: "Custom launcher apps";
+                    for app[i] in root.launcher-custom-apps : Row {
+                        label: app;
+                        Button {
+                            text: "Remove";
+                            clicked => { root.remove-custom-app(i); }
+                        }
+                    }
+                    Row {
+                        label: "Add custom app";
+                        description: "Add your favorite games, daily tools or software to the scroll launcher.";
+                        name-input := LineEdit {
+                            width: 120px;
+                            placeholder-text: "App name";
+                        }
+                        path-input := LineEdit {
+                            width: 170px;
+                            placeholder-text: "Exe or link path";
+                        }
+                        Button {
+                            text: "Add";
+                            clicked => {
+                                if name-input.text != "" && path-input.text != "" {
+                                    root.add-custom-app(name-input.text, path-input.text);
+                                    name-input.text = "";
+                                    path-input.text = "";
+                                }
+                            }
                         }
                     }
                 }

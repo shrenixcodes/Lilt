@@ -1,10 +1,10 @@
 import { MarqueeText } from "components/marquee.slint";
 import { Theme } from "theme.slint";
-import { MediaAvailability } from "types.slint";
+import { AppLauncherItem, MediaAvailability } from "types.slint";
 import { AppState, AppActions } from "state.slint";
 import { ArtworkTile } from "artwork.slint";
 import { IconButton } from "components/controls.slint";
-import { Icons } from "components/icon.slint";
+import { Icon, Icons } from "components/icon.slint";
 
 // "Now playing" bars. While music plays they move like an equalizer: the application
 // advances `AppState.bars-step` about 14 times a second, with no per-frame animation,
@@ -37,6 +37,89 @@ component PlayingGlyph inherits Rectangle {
     }
 }
 
+// App Launcher view on the collapsed island when scrolling or middle-clicked.
+component AppLauncherView inherits Rectangle {
+    property <int> total: AppState.launcher-apps.length;
+    property <int> idx: AppState.launcher-index;
+    property <AppLauncherItem> current: root.total > 0 ? AppState.launcher-apps[root.idx] : { name: "No Apps", path: "", icon-kind: "app" };
+
+    property <length> slide-y: AppState.launcher-direction > 0 ? 0px : -1px;
+    property <length> item-height: 24px;
+    property <float> item-opacity: 1.0;
+    animate slide-y { duration: 160ms; easing: cubic-bezier(0.16, 1, 0.3, 1); }
+    animate item-height { duration: 160ms; easing: cubic-bezier(0.16, 1, 0.3, 1); }
+    animate item-opacity { duration: 140ms; easing: ease-out; }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 12px;
+        spacing: 8px;
+        alignment: center;
+
+        // App Icon capsule
+        Rectangle {
+            width: 22px;
+            height: root.item-height;
+            y: (parent.height - self.height) / 2 + root.slide-y;
+            opacity: root.item-opacity;
+            border-radius: 6px;
+            background: Theme.tile;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            Icon {
+                size: 12px;
+                color: Theme.accent;
+                data: root.current.icon-kind == "code" ? Icons.cpu
+                    : root.current.icon-kind == "game" ? Icons.disc
+                    : root.current.icon-kind == "art" ? Icons.picture
+                    : root.current.icon-kind == "terminal" ? Icons.activity
+                    : root.current.icon-kind == "browser" ? Icons.globe
+                    : Icons.folder;
+            }
+        }
+
+        // App Name
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 1px;
+            y: root.slide-y;
+            opacity: root.item-opacity;
+
+            Text {
+                text: root.current.name;
+                font-size: 11.5px;
+                font-weight: 600;
+                color: Theme.text;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.total > 0 ? ((root.idx + 1) + " of " + root.total + " · Click to launch") : "Configure in Settings";
+                font-size: 8.5px;
+                color: Theme.text-tertiary;
+                overflow: elide;
+            }
+        }
+
+        // Launch indicator
+        Rectangle {
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 8px;
+            background: Theme.tile;
+
+            Icon {
+                size: 9px;
+                color: Theme.accent;
+                data: Icons.chevron-right;
+            }
+        }
+    }
+}
+
 // The resting island: the date and time when idle, the current track while media is
 // active.
 export component CompactView inherits Rectangle {
@@ -59,12 +142,18 @@ export component CompactView inherits Rectangle {
         }
     }
 
+    if AppState.launcher-active : AppLauncherView {
+        width: parent.width;
+        height: parent.height;
+    }
+
     Rectangle {
+        visible: !AppState.launcher-active;
         opacity: root.media-mode ? 0 : 1;
         animate opacity { duration: Theme.fade-duration; }
 
         MarqueeText {
-            live: !root.media-mode && !AppState.expanded;
+            live: !root.media-mode && !AppState.expanded && !AppState.launcher-active;
             centered: true;
             x: 12px;
             width: parent.width - 24px;
@@ -80,7 +169,7 @@ export component CompactView inherits Rectangle {
         }
     }
 
-    if root.media-mode : HorizontalLayout {
+    if root.media-mode && !AppState.launcher-active : HorizontalLayout {
         padding-left: 7px;
         padding-right: 15px;
         spacing: 10px;

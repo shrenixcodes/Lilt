@@ -1,5 +1,5 @@
 import {
-    AgendaEntry, ArchiveRow, CalendarState, ClipFilter, ClipRow, DeviceRow, MediaInfo, NetworkRow, Page, SessionRow, SidePanel, SnippetForm, SyncStatus, SystemInfo,
+    AgendaEntry, AppLauncherItem, ArchiveRow, CalendarState, ClipFilter, ClipRow, DeviceRow, MediaInfo, NetworkRow, Page, SessionRow, SidePanel, SnippetForm, SyncStatus, SystemInfo,
     TaskForm, TaskRow, TaskView, TasksLayout,
 } from "types.slint";
 
@@ -80,6 +80,13 @@ export global AppState {
     // What the island should actually show, factoring in the force.
     out property <bool> effective-tasks: show-tasks || force-side-panel;
     out property <bool> effective-clipboard: show-clipboard || force-side-panel;
+
+    // Collapsed island App Launcher
+    in-out property <bool> launcher-active: false;
+    in property <[AppLauncherItem]> launcher-apps;
+    in-out property <int> launcher-index: 0;
+    in-out property <int> launcher-direction: 0;
+    in-out property <int> launcher-anim-token: 0;
 }
 
 // The clipboard shelf, published by the Rust side.
@@ -300,4 +307,8 @@ export global AppActions {
     callback open-settings();
     // Opens the side box with Tasks and Clipboard, even if both are off in Settings.
     callback open-shelf();
+    // Collapsed island App Launcher
+    callback toggle-launcher();
+    callback scroll-launcher(int);
+    callback launch-app(int);
 }

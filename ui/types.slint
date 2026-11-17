@@ -97,6 +97,13 @@ export struct DeviceRow {
     can-connect: bool,
 }
 
+// An app in the collapsed island launcher.
+export struct AppLauncherItem {
+    name: string,
+    path: string,
+    icon-kind: string,
+}
+
 // Where the tasks box sits next to the expanded island.
 export enum TasksLayout {
     beside,

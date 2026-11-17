@@ -86,6 +86,7 @@ export component Island inherits Window {
     property <bool> hovering: AppState.pointer-inside && !AppState.expanded;
     property <length> target-width: AppState.expanded ? AppState.expanded-width
         : root.showing-activity ? root.activity-width
+        : AppState.launcher-active ? max(AppState.compact-width + 50px, 230px)
         : root.media-mode ? AppState.compact-width + 58px + (root.hovering ? 37px : 0px)
         : AppState.compact-width;
     property <length> target-height: AppState.expanded ? root.expanded-height
@@ -242,7 +243,17 @@ export component Island inherits Window {
                 pointer-event(event) => {
                     if event.kind == PointerEventKind.down {
                         root.dragging = false;
+                        if event.button == PointerEventButton.middle && !AppState.expanded {
+                            AppActions.toggle-launcher();
+                        }
                     }
+                }
+                scroll-event(event) => {
+                    if !AppState.expanded {
+                        AppActions.scroll-launcher(event.delta-y > 0 ? -1 : 1);
+                        return accept;
+                    }
+                    return reject;
                 }
                 moved => {
                     if self.pressed && !root.dragging && AppState.allow-drag && !AppState.expanded
@@ -254,6 +265,8 @@ export component Island inherits Window {
                 clicked => {
                     if root.dragging {
                         root.dragging = false;
+                    } else if AppState.launcher-active && !AppState.expanded {
+                        AppActions.launch-app(AppState.launcher-index);
                     } else {
                         AppActions.toggle-expanded();
                     }

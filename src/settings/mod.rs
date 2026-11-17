@@ -33,6 +33,7 @@ pub struct Settings {
     pub calendar: Calendar,
     pub tasks: Tasks,
     pub clipboard: Clipboard,
+    pub launcher: AppLauncher,
 }
 
 /// Clock formats: time 0 = Windows, 1 = 12-hour, 2 = 24-hour;
@@ -298,6 +299,25 @@ pub struct Calendar {
     pub ics_path: Option<PathBuf>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AppLauncher {
+    pub enabled: bool,
+    pub custom_apps: Vec<CustomApp>,
+}
+
+impl Default for AppLauncher {
+    fn default() -> Self {
+        Self { enabled: true, custom_apps: Vec::new() }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CustomApp {
+    pub name: String,
+    pub path: String,
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -316,6 +336,7 @@ impl Default for Settings {
             calendar: Calendar::default(),
             tasks: Tasks::default(),
             clipboard: Clipboard::default(),
+            launcher: AppLauncher::default(),
         }
     }
 }

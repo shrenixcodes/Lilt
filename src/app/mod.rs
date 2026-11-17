@@ -6,6 +6,7 @@ pub(crate) mod clipboard;
 pub(crate) mod controls;
 mod glass;
 mod idle;
+pub(crate) mod launcher;
 mod media;
 mod preferences;
 mod system;
@@ -110,6 +111,7 @@ pub struct App {
     tasks: Rc<tasks::TasksController>,
     clipboard: clipboard::ClipboardController,
     controls: controls::ControlsController,
+    launcher: launcher::LauncherController,
     /// Liquid Glass's backdrop sampling.
     glass: glass::GlassSampler,
     update_checking: Cell<bool>,
@@ -227,6 +229,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         tasks,
         clipboard: clipboard::ClipboardController::new(crate::clipboard::store::default_path()),
         controls: controls::ControlsController::default(),
+        launcher: launcher::LauncherController::new(),
         glass: glass::GlassSampler::default(),
         update_checking: Cell::new(false),
         update_timer: slint::Timer::default(),
@@ -318,6 +321,27 @@ impl App {
             }
             App::set_expanded(&app, true);
         });
+
+        let weak_launch = weak.clone();
+        actions.on_toggle_launcher(move || {
+            if let Some(app) = weak_launch.upgrade() {
+                app.launcher.toggle(&app.island);
+            }
+        });
+        let weak_scroll = weak.clone();
+        actions.on_scroll_launcher(move |delta| {
+            if let Some(app) = weak_scroll.upgrade() {
+                app.launcher.scroll(delta, &app.island);
+            }
+        });
+        let weak_exec = weak.clone();
+        actions.on_launch_app(move |index| {
+            if let Some(app) = weak_exec.upgrade() {
+                app.launcher.launch(index, &app.island);
+            }
+        });
+        app.launcher.detect_apps(&app.settings.borrow());
+        app.launcher.publish(&app.island);
 
         let island_window = app.island.as_weak();
         actions.on_start_drag(move || {
@@ -503,6 +527,7 @@ impl App {
             // Keep a revealed island out while the pointer rests on it.
             app.peek_hide_timer.stop();
         } else {
+            app.launcher.on_pointer_left(&app.island);
             if app.expanded() {
                 App::schedule_collapse(app);
             }
