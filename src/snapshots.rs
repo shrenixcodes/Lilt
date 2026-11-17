@@ -767,7 +767,7 @@ fn set_glass_alpha_for(h: &Harness, backdrop: [u8; 3]) {
         tertiary: rgb(tokens.text_tertiary),
     };
     let backdrop = Rgb::new(backdrop[0], backdrop[1], backdrop[2]);
-    let aa = crate::appearance::contrast_targets(50);
+    let aa = crate::appearance::contrast_targets(crate::settings::AppearanceMode::LiquidGlass, 50);
     h.theme().set_glass_alpha(legible_alpha(&glass, backdrop, crate::appearance::CLEAR_ALPHA, aa));
 }
 

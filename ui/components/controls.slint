@@ -1,4 +1,4 @@
-import { Theme } from "../theme.slint";
+import { Theme, Appearance } from "../theme.slint";
 import { Icon } from "icon.slint";
 
 // A small square icon button with a restrained hover state.
@@ -123,6 +123,8 @@ export component Tile inherits Rectangle {
     border-radius: Theme.tile-radius;
     background: interactive && touch.has-hover ? Theme.tile-hover : Theme.tile;
     animate background { duration: Theme.hover-duration; }
+    border-width: Theme.reflections ? 1px : 0px;
+    border-color: Theme.appearance == Appearance.liquid-glass ? #ffffff18 : #ffffff0a;
     accessible-role: interactive ? button : groupbox;
     accessible-label: label;
 

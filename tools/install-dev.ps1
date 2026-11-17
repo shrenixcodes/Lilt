@@ -7,8 +7,19 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$cargo = Join-Path $env:USERPROFILE '.cargo\bin\cargo.exe'
-if (-not (Test-Path -LiteralPath $cargo)) { throw "Cargo not found at $cargo" }
+$cargo = if ($env:CARGO_HOME -and (Test-Path (Join-Path $env:CARGO_HOME 'bin\cargo.exe'))) {
+    Join-Path $env:CARGO_HOME 'bin\cargo.exe'
+} elseif (Test-Path (Join-Path $env:USERPROFILE '.cargo\bin\cargo.exe')) {
+    Join-Path $env:USERPROFILE '.cargo\bin\cargo.exe'
+} elseif (Get-Command cargo.exe -ErrorAction SilentlyContinue) {
+    (Get-Command cargo.exe).Source
+} else {
+    throw "Cargo not found"
+}
+$mingw = 'C:\Users\subho\AppData\Local\Microsoft\WinGet\Packages\BrechtSanders.WinLibs.POSIX.MSVCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\mingw64\bin'
+if (Test-Path $mingw) {
+    $env:PATH = "$mingw;$env:PATH"
+}
 
 Push-Location $root
 try {

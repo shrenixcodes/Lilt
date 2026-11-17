@@ -141,12 +141,13 @@ impl App {
         let Some(native) = window::find(self.island.window()) else { return };
         let scale = self.island.window().scale_factor();
         let transparency = self.settings.borrow().appearance.glass_transparency;
-        let blur = blur_radius(transparency) * scale;
+        let liquid = self.island.global::<Theme>().get_appearance() == Appearance::LiquidGlass;
+        let mode = if liquid { AppearanceMode::LiquidGlass } else { AppearanceMode::SmokedGlass };
+        let blur = blur_radius(mode, transparency) * scale;
         let (Some(area), Some(own)) = (native.screen_rect(), native.hwnd()) else { return };
         let Some(backdrop) = window::sample::backdrop_behind(area, blur, own) else { return };
         let brightest = backdrop.brightest_area((16.0 * scale).round() as usize);
         self.glass.backdrop.set(brightest.map(|[r, g, b]| Rgb::new(r, g, b)));
-        let liquid = self.island.global::<Theme>().get_appearance() == Appearance::LiquidGlass;
         native.set_backdrop(backdrop, if liquid { LIQUID_REFRACTION } else { 0.0 });
         self.apply_glass_tint();
     }
@@ -174,7 +175,7 @@ impl App {
         };
         let alpha = match self.glass.backdrop.get() {
             Some(backdrop) if theme.get_live_blur() => {
-                legible_alpha(&glass, backdrop, floor, contrast_targets(transparency))
+                legible_alpha(&glass, backdrop, floor, contrast_targets(mode, transparency))
             }
             _ => floor,
         };
