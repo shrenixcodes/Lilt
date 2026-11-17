@@ -97,10 +97,10 @@ jobs:
           )
           (($install + '' + $notes) -join "`n").Trim() | Out-File -FilePath release-notes.md -Encoding utf8
 
-      - name: Draft GitHub release
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
-          draft: true
+          draft: false
           tag_name: ${{ env.TAG }}
           name: Lilt ${{ env.TAG }}
           body_path: release-notes.md

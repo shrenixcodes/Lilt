@@ -6,6 +6,13 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-18
+
+### Fixed
+
+- Automated GitHub Actions release packaging to directly publish releases with the NSIS installer attached (`Lilt-0.5.2-x64-setup.exe`).
+- Cleaned up changelog history structure and updated release build metadata.
+
 ## [0.5.1] - 2026-11-18
 
 ### Added
@@ -27,6 +34,8 @@ All notable changes to Lilt are documented here. The format follows
 - Resolved meter bar layout collapsing when horizontal layout alignment was centered.
 - Corrected peek auto-hide icon state inversion to accurately reflect island visibility.
 - Prevented CPU/RAM meter bar default color from showing purple, aligning with the default UI theme accent.
+
+## [0.4.13] - 2026-11-17
 
 ### Added
 
