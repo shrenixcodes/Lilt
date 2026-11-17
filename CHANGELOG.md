@@ -6,6 +6,8 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-11-17
+
 ### Added
 
 - Sound output and microphone device selectors, microphone volume and mute controls.
