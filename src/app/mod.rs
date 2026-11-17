@@ -289,6 +289,15 @@ impl App {
                     App::open_settings(&app);
                     return;
                 }
+                if action == QuickAction::AutoHide {
+                    let current = app.settings.borrow().general.auto_hide;
+                    let next = !current;
+                    app.settings.borrow_mut().general.auto_hide = next;
+                    app.island.global::<AppState>().set_auto_hide(next);
+                    App::schedule_save(&app);
+                    App::apply_peek(&app);
+                    return;
+                }
                 // Collapse first so the opened window is not covered and gets the focus.
                 App::set_expanded(&app, false);
             }

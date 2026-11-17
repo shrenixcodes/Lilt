@@ -16,7 +16,8 @@ pub enum QuickAction {
     /// Opens the Tasks + Clipboard shelf; handled in the application, not launched.
     Shelf,
     Snip,
-    Explorer,
+    /// Toggles hide until pointed at (peek mode); handled in the application.
+    AutoHide,
 }
 
 impl QuickAction {
@@ -28,7 +29,7 @@ impl QuickAction {
         Self::Wifi,
         Self::Snip,
         Self::Shelf,
-        Self::Explorer,
+        Self::AutoHide,
         Self::Settings,
     ];
 
@@ -48,7 +49,7 @@ impl QuickAction {
             Self::Wifi => "ms-settings:network-wifi",
             Self::Settings => return None,
             Self::Snip => "ms-screenclip:",
-            Self::Explorer => "explorer.exe",
+            Self::AutoHide => return None,
             // The shelf is opened inside the island.
             Self::Shelf => return None,
         })
@@ -82,7 +83,7 @@ mod tests {
                 Some(t) => {
                     assert!(t.ends_with(':') || t.starts_with("ms-settings:") || t.ends_with(".exe"), "{t}")
                 }
-                None => assert!(matches!(action, QuickAction::Shelf | QuickAction::Settings)),
+                None => assert!(matches!(action, QuickAction::Shelf | QuickAction::Settings | QuickAction::AutoHide)),
             }
         }
     }

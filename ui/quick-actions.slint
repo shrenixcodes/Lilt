@@ -14,12 +14,13 @@ export component ActionPill inherits Rectangle {
     in property <string> icon;
     in property <string> tooltip;
     in property <color> tint: Theme.text-secondary;
+    in property <bool> active: false;
     callback clicked();
 
     width: 29px;
     height: 29px;
     border-radius: 8px;
-    background: touch.pressed ? Theme.control-pressed : touch.has-hover ? Theme.control-hover : Theme.tile;
+    background: root.active ? Theme.accent.with-alpha(0.25) : touch.pressed ? Theme.control-pressed : touch.has-hover ? Theme.control-hover : Theme.tile;
     animate background { duration: Theme.hover-duration; }
     accessible-role: button;
     accessible-label: root.tooltip;
@@ -27,7 +28,7 @@ export component ActionPill inherits Rectangle {
     Icon {
         data: root.icon;
         size: 14px;
-        color: touch.has-hover ? Theme.text : root.tint;
+        color: root.active ? Theme.accent : touch.has-hover ? Theme.text : root.tint;
     }
 
     touch := TouchArea {
@@ -45,7 +46,7 @@ component DeckMeter inherits HorizontalLayout {
     height: 16px;
 
     Text {
-        width: 30px;
+        width: 32px;
         vertical-alignment: center;
         text: root.label;
         color: Theme.text-secondary;
@@ -56,13 +57,25 @@ component DeckMeter inherits HorizontalLayout {
     VerticalLayout {
         alignment: center;
         horizontal-stretch: 1;
-        Meter {
-            value: root.value;
+        Rectangle {
+            height: 6px;
+            border-radius: 3px;
+            background: Theme.track;
+            clip: true;
+
+            Rectangle {
+                x: 0;
+                width: parent.width * clamp(root.value, 0, 1);
+                height: 100%;
+                border-radius: parent.border-radius;
+                background: Theme.accent;
+                animate width { duration: Theme.fade-duration * 2; easing: ease-out; }
+            }
         }
     }
 
     Text {
-        width: 34px;
+        width: 36px;
         vertical-alignment: center;
         horizontal-alignment: right;
         text: root.value-text;
@@ -114,7 +127,10 @@ export component ControlDeck inherits Tile {
         { icon: Icons.wifi, tooltip: "Wi-Fi" },
         { icon: Icons.scissors, tooltip: "Snipping Tool" },
         { icon: Icons.tasks, tooltip: "Tasks and Clipboard" },
-        { icon: Icons.folder, tooltip: "File Explorer" },
+        {
+            icon: AppState.auto-hide ? Icons.eye-open-lashes : Icons.eye-closed-lashes,
+            tooltip: AppState.auto-hide ? "Hide until pointed at (On)" : "Hide until pointed at (Off)",
+        },
         { icon: Icons.settings, tooltip: "Lilt Settings" },
     ];
 
@@ -126,7 +142,7 @@ export component ControlDeck inherits Tile {
         spacing: 6px;
         alignment: space-between;
 
-        // Telemetry header
+        // Telemetry header: CPU & RAM on the left, Up & Down rates on the right
         if root.show-system : Rectangle {
             height: 40px;
 
@@ -176,28 +192,6 @@ export component ControlDeck inherits Tile {
                         text: root.info.ready ? root.info.down-text : "–";
                     }
                 }
-
-                // Hide until pointed at (Peek mode) toggle icon button
-                Rectangle {
-                    width: 26px;
-                    height: 26px;
-                    border-radius: 7px;
-                    background: AppState.auto-hide ? Theme.accent.with-alpha(0.25) : peek-touch.has-hover ? Theme.control-hover : Theme.tile;
-                    animate background { duration: Theme.hover-duration; }
-                    accessible-role: button;
-                    accessible-label: AppState.auto-hide ? "Hide until pointed at (On)" : "Hide until pointed at (Off)";
-
-                    Icon {
-                        data: AppState.auto-hide ? Icons.eye-off : Icons.eye;
-                        size: 14px;
-                        color: AppState.auto-hide ? Theme.accent : peek-touch.has-hover ? Theme.text : Theme.text-secondary;
-                    }
-
-                    peek-touch := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { AppActions.toggle-auto-hide(); }
-                    }
-                }
             }
         }
 
@@ -210,6 +204,8 @@ export component ControlDeck inherits Tile {
             for action[i] in root.actions : ActionPill {
                 icon: action.icon;
                 tooltip: action.tooltip;
+                active: i == 6 && AppState.auto-hide;
+                tint: (i == 6 && AppState.auto-hide) ? Theme.accent : Theme.text-secondary;
                 clicked => { root.activate(i); }
             }
         }
@@ -231,7 +227,10 @@ export component QuickActions inherits Tile {
         { icon: Icons.scissors, tooltip: "Snipping Tool" },
         // Opens the Tasks + Clipboard shelf, even when both are off in Settings.
         { icon: Icons.tasks, tooltip: "Tasks and Clipboard" },
-        { icon: Icons.folder, tooltip: "File Explorer" },
+        {
+            icon: AppState.auto-hide ? Icons.eye-open-lashes : Icons.eye-closed-lashes,
+            tooltip: AppState.auto-hide ? "Hide until pointed at (On)" : "Hide until pointed at (Off)",
+        },
         { icon: Icons.settings, tooltip: "Lilt Settings" },
     ];
 

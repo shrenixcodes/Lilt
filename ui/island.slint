@@ -265,8 +265,6 @@ export component Island inherits Window {
                 clicked => {
                     if root.dragging {
                         root.dragging = false;
-                    } else if AppState.launcher-active && !AppState.expanded {
-                        AppActions.launch-app(AppState.launcher-index);
                     } else {
                         AppActions.toggle-expanded();
                     }
