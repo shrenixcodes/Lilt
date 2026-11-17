@@ -2,14 +2,15 @@ import { Theme } from "theme.slint";
 import { Page } from "types.slint";
 import { AppState, AppActions } from "state.slint";
 import { MediaPlayer } from "media-player.slint";
-import { SystemTile, SystemPage } from "system-monitor.slint";
+import { SystemPage } from "system-monitor.slint";
 import { CalendarTile, CalendarPage } from "calendar.slint";
-import { QuickActions } from "quick-actions.slint";
+import { ControlDeck } from "quick-actions.slint";
 import { SoundPanel, BrightnessPanel, BluetoothPanel, WifiPanel } from "quick-panels.slint";
 
 // Content of the expanded island.
 export component ExpandedView inherits Rectangle {
     property <bool> tiles: AppState.show-calendar || AppState.show-system || AppState.show-actions;
+    property <bool> show-deck: AppState.show-system || AppState.show-actions;
 
     if AppState.page == Page.dashboard: VerticalLayout {
         padding: Theme.padding;
@@ -25,24 +26,21 @@ export component ExpandedView inherits Rectangle {
             spacing: Theme.gap;
 
             if AppState.show-calendar: CalendarTile {
-                horizontal-stretch: 1;
+                width: root.show-deck ? 128px : parent.width;
+                horizontal-stretch: root.show-deck ? 0 : 1;
                 clicked => {
                     AppState.page = Page.calendar;
                 }
             }
 
-            if AppState.show-system: SystemTile {
+            if root.show-deck: ControlDeck {
                 horizontal-stretch: 1;
                 info: AppState.system;
-                clicked => {
+                show-system: AppState.show-system;
+                show-actions: AppState.show-actions;
+                open-system => {
                     AppState.page = Page.system;
                 }
-            }
-
-            if AppState.show-actions: QuickActions {
-                width: 144px;
-                // The first four open a pop-up with the controls; index 5 opens the
-                // Tasks + Clipboard shelf, the rest launch apps.
                 activate(index) => {
                     if index < 4 {
                         AppState.page = [Page.sound, Page.brightness, Page.bluetooth, Page.wifi][index];

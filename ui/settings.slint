@@ -961,7 +961,7 @@ export component SettingsWindow inherits Window {
                 }
 
                 if root.section == 2 && root.data.launcher-enabled : Section {
-                    title: "Custom launcher apps";
+                    title: "Collapsed island shortcuts (" + root.launcher-custom-apps.length + " of 7)";
                     for app[i] in root.launcher-custom-apps : Row {
                         label: app;
                         Button {
@@ -969,9 +969,9 @@ export component SettingsWindow inherits Window {
                             clicked => { root.remove-custom-app(i); }
                         }
                     }
-                    Row {
-                        label: "Add custom app";
-                        description: "Add your favorite games, daily tools or software to the scroll launcher.";
+                    if root.launcher-custom-apps.length < 7 : Row {
+                        label: "Add shortcut";
+                        description: "Add an application or game shortcut (up to 7 max).";
                         name-input := LineEdit {
                             width: 120px;
                             placeholder-text: "App name";
@@ -990,6 +990,10 @@ export component SettingsWindow inherits Window {
                                 }
                             }
                         }
+                    }
+                    if root.launcher-custom-apps.length >= 7 : Row {
+                        label: "Maximum reached";
+                        description: "You have added the maximum of 7 shortcuts. Remove one to add another.";
                     }
                 }
 

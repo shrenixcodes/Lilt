@@ -60,6 +60,7 @@ export global AppState {
     // Auto-hide: the island is tucked away above the top edge and reveals only when the
     // pointer reaches the top centre of the screen.
     in property <bool> tucked: false;
+    in-out property <bool> auto-hide: false;
     in property <bool> update-checking;
     in property <bool> update-available;
     in property <string> update-message: "Check for updates";
@@ -311,4 +312,5 @@ export global AppActions {
     callback toggle-launcher();
     callback scroll-launcher(int);
     callback launch-app(int);
+    callback toggle-auto-hide();
 }

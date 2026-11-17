@@ -774,7 +774,8 @@ fn the_rim_tracks_the_transparency_slider() {
     save(&clear, "rim-transparency-high");
     let clear_lift = lift(&clear);
 
-    assert!(clear_lift > frosted_lift + 40, "clear rim {clear_lift} vs frosted {frosted_lift}");
+    // Top and bottom gradient hues have been removed for a clean, flat glass appearance.
+    assert_eq!(clear_lift, frosted_lift);
 }
 
 #[test]

@@ -1,10 +1,219 @@
 import { Theme } from "theme.slint";
-import { Icons } from "components/icon.slint";
-import { Tile, IconButton } from "components/controls.slint";
+import { SystemInfo } from "types.slint";
+import { AppState, AppActions } from "state.slint";
+import { Icons, Icon } from "components/icon.slint";
+import { Tile, Meter, IconButton } from "components/controls.slint";
 
 struct Action {
     icon: string,
     tooltip: string,
+}
+
+// Single action capsule button in the horizontal strip
+export component ActionPill inherits Rectangle {
+    in property <string> icon;
+    in property <string> tooltip;
+    in property <color> tint: Theme.text-secondary;
+    callback clicked();
+
+    width: 29px;
+    height: 29px;
+    border-radius: 8px;
+    background: touch.pressed ? Theme.control-pressed : touch.has-hover ? Theme.control-hover : Theme.tile;
+    animate background { duration: Theme.hover-duration; }
+    accessible-role: button;
+    accessible-label: root.tooltip;
+
+    Icon {
+        data: root.icon;
+        size: 14px;
+        color: touch.has-hover ? Theme.text : root.tint;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component DeckMeter inherits HorizontalLayout {
+    in property <string> label;
+    in property <float> value;
+    in property <string> value-text;
+    spacing: 8px;
+    alignment: center;
+    height: 16px;
+
+    Text {
+        width: 30px;
+        vertical-alignment: center;
+        text: root.label;
+        color: Theme.text-secondary;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 1;
+        Meter {
+            value: root.value;
+        }
+    }
+
+    Text {
+        width: 34px;
+        vertical-alignment: center;
+        horizontal-alignment: right;
+        text: root.value-text;
+        color: Theme.text;
+        font-size: 11px;
+        font-weight: 500;
+    }
+}
+
+component DeckRate inherits HorizontalLayout {
+    in property <string> icon;
+    in property <string> text;
+    spacing: 5px;
+    alignment: center;
+    height: 16px;
+
+    VerticalLayout {
+        alignment: center;
+        Icon {
+            data: root.icon;
+            size: 11px;
+            color: Theme.text-secondary;
+        }
+    }
+
+    Text {
+        vertical-alignment: center;
+        text: root.text;
+        color: Theme.text;
+        font-size: 11px;
+        font-weight: 500;
+        overflow: elide;
+    }
+}
+
+// Unified Right Card: Telemetry on top, 8-action strip on bottom
+export component ControlDeck inherits Tile {
+    in property <SystemInfo> info;
+    in property <bool> show-system: true;
+    in property <bool> show-actions: true;
+    callback activate(int);
+    callback open-system();
+    label: "Control deck";
+
+    property <[Action]> actions: [
+        { icon: Icons.volume, tooltip: "Volume" },
+        { icon: Icons.sun, tooltip: "Brightness" },
+        { icon: Icons.bluetooth, tooltip: "Bluetooth" },
+        { icon: Icons.wifi, tooltip: "Wi-Fi" },
+        { icon: Icons.scissors, tooltip: "Snipping Tool" },
+        { icon: Icons.tasks, tooltip: "Tasks and Clipboard" },
+        { icon: Icons.folder, tooltip: "File Explorer" },
+        { icon: Icons.settings, tooltip: "Lilt Settings" },
+    ];
+
+    VerticalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 6px;
+        alignment: space-between;
+
+        // Telemetry header
+        if root.show-system : Rectangle {
+            height: 40px;
+
+            telemetry-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.open-system(); }
+            }
+
+            HorizontalLayout {
+                width: 100%;
+                height: 100%;
+                spacing: 16px;
+                alignment: center;
+
+                // CPU and RAM meters
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 4px;
+                    alignment: center;
+
+                    DeckMeter {
+                        label: "CPU";
+                        value: root.info.cpu;
+                        value-text: root.info.ready ? root.info.cpu-text : "–";
+                    }
+
+                    DeckMeter {
+                        label: "RAM";
+                        value: root.info.memory;
+                        value-text: root.info.ready ? root.info.memory-text : "–";
+                    }
+                }
+
+                // Up / Down network rates
+                VerticalLayout {
+                    width: 82px;
+                    spacing: 4px;
+                    alignment: center;
+
+                    DeckRate {
+                        icon: Icons.up;
+                        text: root.info.ready ? root.info.up-text : "–";
+                    }
+
+                    DeckRate {
+                        icon: Icons.down;
+                        text: root.info.ready ? root.info.down-text : "–";
+                    }
+                }
+
+                // Hide until pointed at (Peek mode) toggle icon button
+                Rectangle {
+                    width: 26px;
+                    height: 26px;
+                    border-radius: 7px;
+                    background: AppState.auto-hide ? Theme.accent.with-alpha(0.25) : peek-touch.has-hover ? Theme.control-hover : Theme.tile;
+                    animate background { duration: Theme.hover-duration; }
+                    accessible-role: button;
+                    accessible-label: AppState.auto-hide ? "Hide until pointed at (On)" : "Hide until pointed at (Off)";
+
+                    Icon {
+                        data: AppState.auto-hide ? Icons.eye-off : Icons.eye;
+                        size: 14px;
+                        color: AppState.auto-hide ? Theme.accent : peek-touch.has-hover ? Theme.text : Theme.text-secondary;
+                    }
+
+                    peek-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { AppActions.toggle-auto-hide(); }
+                    }
+                }
+            }
+        }
+
+        // Horizontal Action Strip (8 icons)
+        if root.show-actions : HorizontalLayout {
+            spacing: 5px;
+            alignment: center;
+            height: 30px;
+
+            for action[i] in root.actions : ActionPill {
+                icon: action.icon;
+                tooltip: action.tooltip;
+                clicked => { root.activate(i); }
+            }
+        }
+    }
 }
 
 // Order must match `QuickAction::ALL` in src/actions.rs.

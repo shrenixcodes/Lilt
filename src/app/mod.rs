@@ -340,6 +340,17 @@ impl App {
                 app.launcher.launch(index, &app.island);
             }
         });
+        let weak_hide = weak.clone();
+        actions.on_toggle_auto_hide(move || {
+            if let Some(app) = weak_hide.upgrade() {
+                let current = app.settings.borrow().general.auto_hide;
+                let next = !current;
+                app.settings.borrow_mut().general.auto_hide = next;
+                app.island.global::<AppState>().set_auto_hide(next);
+                App::schedule_save(&app);
+                App::apply_peek(&app);
+            }
+        });
         app.launcher.detect_apps(&app.settings.borrow());
         app.launcher.publish(&app.island);
 

@@ -95,6 +95,7 @@ impl App {
         state.set_compact_width(settings.appearance.compact_width as f32);
         state.set_expanded_width(settings.appearance.expanded_width as f32);
         state.set_allow_drag(settings.position.allow_drag);
+        state.set_auto_hide(settings.general.auto_hide);
         state.set_show_media(settings.widgets.media);
         state.set_show_calendar(settings.widgets.calendar);
         state.set_show_system(settings.widgets.system);
@@ -428,6 +429,9 @@ impl App {
         let weak_add_custom = weak.clone();
         window.on_add_custom_app(move |name, path| {
             let Some(app) = weak_add_custom.upgrade() else { return };
+            if app.settings.borrow().launcher.custom_apps.len() >= 7 {
+                return;
+            }
             let name = name.trim().to_owned();
             let path = path.trim().trim_matches('"').to_owned();
             if name.is_empty() || path.is_empty() {
