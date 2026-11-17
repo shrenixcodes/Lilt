@@ -6,7 +6,24 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.4.11] - 2026-11-17
+## [0.4.12] - 2026-11-17
+
+### Changed
+
+- Liquid Glass transparency has been redesigned to be distinctly clearer and set apart
+  from Smoked Glass, with a 30 % baseline opacity (down from 36 %) and a crisper 11 px
+  liquid blur that keeps background shapes and colors recognizable.
+- Dashboard tiles in Liquid Glass use a lighter, airy 5 % translucent fill framed by a
+  fine 1 px specular glass border, allowing wallpaper to flow seamlessly through them.
+- Liquid Glass edge reflections have been brightened with a more radiant upper rim and
+  clearer caustic lower glow.
+- Liquid Glass text luminance has been tuned to ensure WCAG AA contrast across any
+  desktop wallpaper without turning the surface into an opaque dark slab.
+
+### Fixed
+
+- Development install script now detects non-standard Cargo home paths and ensures the
+  MinGW compiler tools are prioritized in PATH.
 
 ### Added
 
