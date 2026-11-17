@@ -6,6 +6,19 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-11-18
+
+### Added
+
+- Native file browse dialog for adding custom application shortcuts (`.exe`, `.lnk`, `.url`, `.cmd`, `.bat`) with automatic display name and icon extraction.
+- Clear and reset controls for the application shortcuts list in Settings, allowing default detected shortcuts to be removed or cleared completely.
+- Return-to-resting loop in the collapsed island launcher: scrolling cycles through all shortcuts and seamlessly returns to the resting music/idle view before continuing the loop.
+- Descriptive instructions for compact island scroll navigation across the Settings widgets and shortcuts pages.
+
+### Fixed
+
+- Left indentation disparity in the clipboard shelf where items with custom titles or short preview text were centered instead of aligning to the start.
+
 ## [0.5.2] - 2026-11-18
 
 ### Fixed
