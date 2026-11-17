@@ -46,6 +46,7 @@ component Toggle inherits Rectangle {
 component Level inherits Rectangle {
     in property <float> value;
     in property <string> label;
+    out property <float> current-value: root.shown;
     callback changed(float);
     property <float> shown: root.value;
     // Dragging sets `shown` directly; later readings from Windows move it again.
@@ -262,6 +263,7 @@ component LevelRow inherits HorizontalLayout {
     in property <float> value;
     in property <bool> dimmed;
     in property <bool> editable-percent;
+    in property <bool> dynamic-sun: false;
     // An optional raster icon that spins with the level (the sun for brightness). When set
     // it replaces the vector icon, since the software renderer cannot rotate a path.
     in property <image> icon-source;
@@ -275,7 +277,7 @@ component LevelRow inherits HorizontalLayout {
         width: 30px;
         height: 30px;
 
-        if root.icon-source.width == 0 : IconButton {
+        if !root.dynamic-sun && root.icon-source.width == 0 : IconButton {
             width: parent.width;
             height: parent.height;
             icon: root.icon;
@@ -284,7 +286,16 @@ component LevelRow inherits HorizontalLayout {
             clicked => { root.icon-clicked(); }
         }
 
-        if root.icon-source.width > 0 : Image {
+        if root.dynamic-sun : IconButton {
+            width: parent.width;
+            height: parent.height;
+            icon: Icons.sun-frames[mod(floor(clamp(slider.current-value, 0, 1) * 64), 16)];
+            tooltip: root.icon-label;
+            tint: root.dimmed ? Theme.text-tertiary : Theme.text;
+            clicked => { root.icon-clicked(); }
+        }
+
+        if !root.dynamic-sun && root.icon-source.width > 0 : Image {
             width: 16px;
             height: 16px;
             source: root.icon-source;
@@ -300,7 +311,7 @@ component LevelRow inherits HorizontalLayout {
         horizontal-stretch: 1;
         alignment: center;
 
-        Level {
+        slider := Level {
             value: root.value;
             label: root.icon-label;
             changed(v) => { root.changed(v); }
@@ -312,7 +323,7 @@ component LevelRow inherits HorizontalLayout {
         height: root.height;
         horizontal-alignment: right;
         vertical-alignment: center;
-        text: round(root.value * 100) + " %";
+        text: round(slider.current-value * 100) + " %";
         font-size: Theme.font-sm;
         color: Theme.text-secondary;
     }
@@ -509,9 +520,8 @@ export component BrightnessPanel inherits Panel {
         LevelRow {
             icon-label: "Brightness";
             value: ControlsState.brightness;
-            // The sun turns as the brightness is dragged.
-            icon-source: @image-url("../assets/icons/sun.png");
-            icon-spin: ControlsState.brightness * 180deg;
+            // The sun turns live as the brightness slider is moved.
+            dynamic-sun: true;
             changed(v) => { ControlsActions.set-brightness(v); }
         }
     }
