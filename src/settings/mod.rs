@@ -150,6 +150,8 @@ pub struct Appearance {
     /// each appearance's own design; Lilt still darkens the glass over bright windows so
     /// text stays legible.
     pub glass_transparency: u32,
+    /// UI hue gradient edge intensity, 0..=100 percent. Stays 0 by default.
+    pub ui_hue_gradient: u32,
     /// Compact island width in logical pixels.
     pub compact_width: u32,
     /// Expanded island width in logical pixels.
@@ -359,6 +361,7 @@ impl Default for Appearance {
             theme: AppearanceMode::Midnight,
             reduce_transparency: false,
             glass_transparency: 50,
+            ui_hue_gradient: 0,
             compact_width: 196,
             expanded_width: 460,
             motion: MotionPreference::System,
@@ -427,6 +430,7 @@ pub mod limits {
     pub const AUTO_COLLAPSE_SECONDS: (u32, u32) = (3, 60);
     pub const AMBIENT_INTENSITY: (u32, u32) = (0, 100);
     pub const GLASS_TRANSPARENCY: (u32, u32) = (0, 100);
+    pub const UI_HUE_GRADIENT: (u32, u32) = (0, 100);
     pub const CLIPBOARD_MAX_ITEMS: (u32, u32) = (50, 5000);
     /// Excluded apps kept, and the longest name.
     pub const EXCLUDED_APPS: usize = 100;
@@ -454,6 +458,7 @@ impl Settings {
         self.ambient.intensity = self.ambient.intensity.clamp(AMBIENT_INTENSITY.0, AMBIENT_INTENSITY.1);
         self.appearance.glass_transparency =
             self.appearance.glass_transparency.clamp(GLASS_TRANSPARENCY.0, GLASS_TRANSPARENCY.1);
+        self.appearance.ui_hue_gradient = self.appearance.ui_hue_gradient.clamp(UI_HUE_GRADIENT.0, UI_HUE_GRADIENT.1);
         self.shortcuts.toggle = self.shortcuts.toggle.filter(|s| s.len() <= 48);
         self.clipboard.shortcut = self.clipboard.shortcut.filter(|s| s.len() <= 48);
         self.clipboard.max_items = self.clipboard.max_items.clamp(CLIPBOARD_MAX_ITEMS.0, CLIPBOARD_MAX_ITEMS.1);

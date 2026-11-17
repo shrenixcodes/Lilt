@@ -103,9 +103,9 @@ export global Theme {
         shadow-near: #0000004d,
         shadow-far: #00000024,
         reflections: false,
-        rim: transparent,
-        lower-rim: transparent,
-        sheen: transparent,
+        rim: #ffffff30,
+        lower-rim: #ffffff14,
+        sheen: #ffffff10,
         text: #f3f3f5,
         text-secondary: #a0a0a8,
         text-tertiary: #6c6c75,
@@ -158,9 +158,9 @@ export global Theme {
         shadow-near: #00000038,
         shadow-far: #0000001a,
         reflections: true,
-        rim: transparent,
-        lower-rim: transparent,
-        sheen: transparent,
+        rim: #ffffff42,
+        lower-rim: #ffffff1c,
+        sheen: #ffffff14,
         text: #f6f6f8,
         text-secondary: #b7b7c0,
         text-tertiary: #9595a0,
@@ -225,9 +225,9 @@ export global Theme {
         shadow-near: #00000028,
         shadow-far: #00000010,
         reflections: true,
-        rim: transparent,
-        lower-rim: transparent,
-        sheen: transparent,
+        rim: #ffffff8c,
+        lower-rim: #ffffff36,
+        sheen: #ffffff24,
         text: #ffffff,
         text-secondary: #f6f7fb,
         text-tertiary: #d6d9e4,
@@ -319,6 +319,8 @@ export global Theme {
     in-out property <color> glow: #686870;
     // 0..1, scales every ambient effect. Zero disables them.
     in-out property <float> ambient: 0.6;
+    // UI hue gradient, 0..1 (0% to 100%). Stays 0 by default unless tweaked.
+    in-out property <float> hue-gradient: 0.0;
 
     // Geometry
     out property <length> compact-height: 38px;

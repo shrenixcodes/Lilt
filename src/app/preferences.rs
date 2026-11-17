@@ -149,6 +149,7 @@ impl App {
         theme.set_appearance(ui_appearance(settings.appearance.theme));
         theme.set_live_blur(live);
         theme.set_glass_transparency(settings.appearance.glass_transparency as f32 / 100.0);
+        theme.set_hue_gradient(settings.appearance.ui_hue_gradient as f32 / 100.0);
         app.glass_fallback.set(fallback);
         app.window_blur.set(live && appearance::window_backdrop_supported(&env));
         if material != Material::Solid {
@@ -173,6 +174,7 @@ impl App {
         theme.set_smoked_alpha(appearance::preferred_alpha(AppearanceMode::SmokedGlass, transparency));
         theme.set_glass_alpha(appearance::preferred_alpha(AppearanceMode::LiquidGlass, transparency));
         theme.set_glass_transparency(transparency as f32 / 100.0);
+        theme.set_hue_gradient(island.get_hue_gradient());
         let blur =
             window::find(window.window()).is_some_and(|native| native.set_system_backdrop(self.window_blur.get()));
         theme.set_live_blur(blur);
@@ -621,6 +623,7 @@ fn to_data(s: &Settings, monitors: &[placement::Monitor]) -> SettingsData {
         weather_longitude: s.weather_location.map_or(0.0, |p| p.longitude as f32),
         reduce_transparency: s.appearance.reduce_transparency,
         glass_transparency: s.appearance.glass_transparency as i32,
+        ui_hue_gradient: s.appearance.ui_hue_gradient as i32,
         auto_collapse: s.general.auto_collapse,
         auto_collapse_seconds: s.general.auto_collapse_seconds as i32,
         collapse_on_outside_click: s.general.collapse_on_outside_click,
@@ -677,6 +680,7 @@ fn from_data(d: &SettingsData, monitors: &[placement::Monitor], previous: &Setti
     };
     s.appearance.reduce_transparency = d.reduce_transparency;
     s.appearance.glass_transparency = d.glass_transparency.clamp(0, 100) as u32;
+    s.appearance.ui_hue_gradient = d.ui_hue_gradient.clamp(0, 100) as u32;
     s.general.auto_collapse = d.auto_collapse;
     s.general.auto_collapse_seconds = d.auto_collapse_seconds.max(0) as u32;
     s.general.collapse_on_outside_click = d.collapse_on_outside_click;
@@ -745,6 +749,7 @@ mod tests {
         s.appearance.theme = AppearanceMode::LiquidGlass;
         s.appearance.reduce_transparency = true;
         s.appearance.glass_transparency = 80;
+        s.appearance.ui_hue_gradient = 25;
         s.widgets.system = false;
         s.shortcuts.toggle = Some("Ctrl+Alt+K".into());
         let data = to_data(&s, &monitors);

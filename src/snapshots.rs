@@ -455,6 +455,7 @@ fn settings_data() -> SettingsData {
         collapse_on_outside_click: true,
         activity_banners: true,
         glass_transparency: 50,
+        ui_hue_gradient: 0,
         compact_width: 196,
         expanded_width: 460,
         allow_drag: true,
@@ -776,6 +777,33 @@ fn the_rim_tracks_the_transparency_slider() {
 
     // Top and bottom gradient hues have been removed for a clean, flat glass appearance.
     assert_eq!(clear_lift, frosted_lift);
+}
+
+#[test]
+fn ui_hue_gradient_lights_edges() {
+    let h = Harness::new(1.0);
+    h.theme().set_live_blur(true);
+    playing_with_artwork(&h);
+    h.state().set_expanded(true);
+    h.theme().set_appearance(Appearance::LiquidGlass);
+    let brightness = |p: [u8; 4]| p[0] as u32 + p[1] as u32 + p[2] as u32;
+    let lift = |image: &RgbaImage| {
+        brightness(image.get_pixel(240, 0).0) as i32 - brightness(image.get_pixel(240, 135).0) as i32
+    };
+
+    // By default, hue gradient is 0: edge is unlit by gradient hues.
+    h.theme().set_hue_gradient(0.0);
+    let zero = h.render_on(wallpaper);
+    save(&zero, "hue-gradient-zero");
+    let zero_lift = lift(&zero);
+
+    // Tweaked hue gradient (> 0): rim and sheen gather light along the top edge.
+    h.theme().set_hue_gradient(1.0);
+    let lit = h.render_on(wallpaper);
+    save(&lit, "hue-gradient-full");
+    let lit_lift = lift(&lit);
+
+    assert!(lit_lift > zero_lift + 20, "lit {lit_lift} vs zero {zero_lift}");
 }
 
 #[test]

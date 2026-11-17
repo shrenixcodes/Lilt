@@ -41,7 +41,7 @@ component DeckMeter inherits HorizontalLayout {
     in property <string> label;
     in property <float> value;
     in property <string> value-text;
-    in property <color> fill-color: AppState.has-artwork ? Theme.accent : #a59ffd;
+    in property <color> fill-color: Theme.accent;
     property <color> shown-fill: root.fill-color;
     animate shown-fill { duration: Theme.ambient-duration; easing: ease-in-out; }
 
@@ -52,7 +52,7 @@ component DeckMeter inherits HorizontalLayout {
         width: 34px;
         vertical-alignment: center;
         text: root.label;
-        color: #ffffff;
+        color: Theme.text-secondary;
         font-size: 13px;
         font-weight: 400;
     }
@@ -64,7 +64,7 @@ component DeckMeter inherits HorizontalLayout {
         Rectangle {
             height: 9px;
             border-radius: 4.5px;
-            background: #ffffff1f;
+            background: Theme.track;
             clip: true;
 
             Rectangle {
@@ -83,7 +83,7 @@ component DeckMeter inherits HorizontalLayout {
         vertical-alignment: center;
         horizontal-alignment: right;
         text: root.value-text;
-        color: #ffffff;
+        color: Theme.text;
         font-size: 13px;
         font-weight: 400;
     }
@@ -100,14 +100,14 @@ component DeckRate inherits HorizontalLayout {
         Icon {
             data: root.icon;
             size: 12px;
-            color: #ffffff;
+            color: Theme.text-secondary;
         }
     }
 
     Text {
         vertical-alignment: center;
         text: root.text;
-        color: #ffffff;
+        color: Theme.text;
         font-size: 13px;
         font-weight: 400;
         overflow: elide;

@@ -215,28 +215,29 @@ export component Island inherits Window {
             clip: true;
             animate x, width, height, border-radius { duration: Theme.resize-duration; easing: cubic-bezier(0.32, 0.72, 0, 1); }
 
-            if Theme.reflections && Theme.sheen.alpha > 0 : GlassSheen {
+            if (Theme.reflections || Theme.hue-gradient > 0) && Theme.sheen.alpha > 0 && Theme.hue-gradient > 0 : GlassSheen {
                 width: parent.width;
                 height: parent.height;
                 radius: island.border-radius;
+                strength: Theme.hue-gradient;
             }
 
             // The lit edges: soft light gathering along the top and bottom and easing off
             // inward and around the corners. Drawn beneath the content so text stays crisp.
-            if Theme.reflections && Theme.rim.alpha > 0 : GlassRim {
+            if (Theme.reflections || Theme.hue-gradient > 0) && Theme.rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
                 width: parent.width;
                 height: parent.height;
                 radius: island.border-radius;
-                strength: Theme.rim-strength;
+                strength: Theme.hue-gradient;
             }
 
-            if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
+            if (Theme.reflections || Theme.hue-gradient > 0) && Theme.lower-rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
                 width: parent.width;
                 height: parent.height;
                 radius: island.border-radius;
                 lower: true;
                 rim: Theme.lower-rim;
-                strength: Theme.rim-strength;
+                strength: Theme.hue-gradient;
             }
 
             touch := TouchArea {
@@ -348,26 +349,27 @@ export component Island inherits Window {
                 border-color: Theme.border;
                 clip: true;
 
-                if Theme.reflections && Theme.sheen.alpha > 0 : GlassSheen {
+                if (Theme.reflections || Theme.hue-gradient > 0) && Theme.sheen.alpha > 0 && Theme.hue-gradient > 0 : GlassSheen {
                     width: parent.width;
                     height: parent.height;
                     radius: Theme.expanded-radius;
+                    strength: Theme.hue-gradient;
                 }
 
-                if Theme.reflections && Theme.rim.alpha > 0 : GlassRim {
+                if (Theme.reflections || Theme.hue-gradient > 0) && Theme.rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
                     width: parent.width;
                     height: parent.height;
                     radius: Theme.expanded-radius;
-                    strength: Theme.rim-strength;
+                    strength: Theme.hue-gradient;
                 }
 
-                if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
+                if (Theme.reflections || Theme.hue-gradient > 0) && Theme.lower-rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
                     width: parent.width;
                     height: parent.height;
                     radius: Theme.expanded-radius;
                     lower: true;
                     rim: Theme.lower-rim;
-                    strength: Theme.rim-strength;
+                    strength: Theme.hue-gradient;
                 }
 
                 if !root.clipboard-panel : TasksView {

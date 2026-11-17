@@ -14,6 +14,9 @@ import { Theme } from "../theme.slint";
 export component GlassSheen inherits Rectangle {
     in property <length> radius;
     in property <color> sheen: Theme.sheen;
+    in property <float> strength: 1.0;
+
+    property <color> tint: root.sheen.with-alpha(min(1.0, root.sheen.alpha * root.strength / 255));
 
     // Horizontal distance from the centre to where the rounded corners begin. Every
     // point of the corner areas is farther than `spread` from the sheen's centre.
@@ -24,7 +27,7 @@ export component GlassSheen inherits Rectangle {
     property <length> centre-y: 0px - root.lift;
 
     background: @radial-gradient(circle root.spread at root.centre-x root.centre-y,
-        root.sheen 0%, root.sheen 60%, root.sheen.transparentize(0.6) 78%, transparent 100%);
+        root.tint 0%, root.tint 60%, root.tint.transparentize(0.6) 78%, transparent 100%);
 }
 
 // A soft lit edge for glass. Light gathers along the top edge (or the bottom, with `lower`)

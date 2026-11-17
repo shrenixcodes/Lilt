@@ -27,6 +27,8 @@ export struct SettingsData {
     reduce-transparency: bool,
     // 0..100; 50 is each glass appearance as designed.
     glass-transparency: int,
+    // 0..100; UI hue gradient intensity, stays 0 by default.
+    ui-hue-gradient: int,
     auto-collapse: bool,
     auto-collapse-seconds: int,
     collapse-on-outside-click: bool,
@@ -268,11 +270,12 @@ component AppearancePreview inherits Rectangle {
         border-color: root.tokens.border;
         clip: true;
 
-        if root.tokens.reflections : GlassSheen {
+        if (root.tokens.reflections || Theme.hue-gradient > 0) && root.tokens.sheen.alpha > 0 && Theme.hue-gradient > 0 : GlassSheen {
             width: parent.width;
             height: parent.height;
             radius: parent.border-radius;
             sheen: root.tokens.sheen;
+            strength: Theme.hue-gradient;
         }
 
         Text {
@@ -282,12 +285,12 @@ component AppearancePreview inherits Rectangle {
             font-weight: 600;
         }
 
-        if root.tokens.reflections : GlassRim {
+        if (root.tokens.reflections || Theme.hue-gradient > 0) && root.tokens.rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
             width: parent.width;
             height: parent.height;
             radius: parent.border-radius;
             rim: root.tokens.rim;
-            strength: Theme.rim-strength;
+            strength: Theme.hue-gradient;
         }
     }
 
@@ -302,11 +305,12 @@ component AppearancePreview inherits Rectangle {
         border-color: root.tokens.border;
         clip: true;
 
-        if root.tokens.reflections : GlassSheen {
+        if (root.tokens.reflections || Theme.hue-gradient > 0) && root.tokens.sheen.alpha > 0 && Theme.hue-gradient > 0 : GlassSheen {
             width: parent.width;
             height: parent.height;
             radius: parent.border-radius;
             sheen: root.tokens.sheen;
+            strength: Theme.hue-gradient;
         }
 
         // Artwork
@@ -362,12 +366,12 @@ component AppearancePreview inherits Rectangle {
             background: root.tokens.tile;
         }
 
-        if root.tokens.reflections : GlassRim {
+        if (root.tokens.reflections || Theme.hue-gradient > 0) && root.tokens.rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
             width: parent.width;
             height: parent.height;
             radius: parent.border-radius;
             rim: root.tokens.rim;
-            strength: Theme.rim-strength;
+            strength: Theme.hue-gradient;
         }
     }
 }
@@ -809,6 +813,15 @@ export component SettingsWindow inherits Window {
                         maximum: 100;
                         unit: "%";
                         edited(v) => { root.data.glass-transparency = v; root.edited(); }
+                    }
+                    SliderRow {
+                        label: "UI hue gradient";
+                        description: "Top and bottom gradient edge sheen along the island surfaces.";
+                        value: root.data.ui-hue-gradient;
+                        minimum: 0;
+                        maximum: 100;
+                        unit: "%";
+                        edited(v) => { root.data.ui-hue-gradient = v; root.edited(); }
                     }
                     SliderRow {
                         label: "Compact width";
