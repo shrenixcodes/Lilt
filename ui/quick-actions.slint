@@ -41,8 +41,11 @@ component DeckMeter inherits HorizontalLayout {
     in property <string> label;
     in property <float> value;
     in property <string> value-text;
+    in property <color> fill-color: AppState.has-artwork ? Theme.accent : #a59ffd;
+    property <color> shown-fill: root.fill-color;
+    animate shown-fill { duration: Theme.ambient-duration; easing: ease-in-out; }
+
     spacing: 10px;
-    alignment: center;
     height: 18px;
 
     Text {
@@ -57,6 +60,7 @@ component DeckMeter inherits HorizontalLayout {
     VerticalLayout {
         alignment: center;
         horizontal-stretch: 1;
+
         Rectangle {
             height: 9px;
             border-radius: 4.5px;
@@ -68,7 +72,7 @@ component DeckMeter inherits HorizontalLayout {
                 width: max(0px, parent.width * clamp(root.value, 0, 1));
                 height: 100%;
                 border-radius: 4.5px;
-                background: #a59ffd;
+                background: root.shown-fill;
                 animate width { duration: Theme.fade-duration * 2; easing: ease-out; }
             }
         }
@@ -89,7 +93,6 @@ component DeckRate inherits HorizontalLayout {
     in property <string> icon;
     in property <string> text;
     spacing: 6px;
-    alignment: center;
     height: 18px;
 
     VerticalLayout {
@@ -128,7 +131,7 @@ export component ControlDeck inherits Tile {
         { icon: Icons.scissors, tooltip: "Snipping Tool" },
         { icon: Icons.tasks, tooltip: "Tasks and Clipboard" },
         {
-            icon: AppState.auto-hide ? Icons.eye-open-lashes : Icons.eye-closed-lashes,
+            icon: AppState.auto-hide ? Icons.eye-closed-lashes : Icons.eye-open-lashes,
             tooltip: AppState.auto-hide ? "Hide until pointed at (On)" : "Hide until pointed at (Off)",
         },
         { icon: Icons.settings, tooltip: "Lilt Settings" },
@@ -154,8 +157,7 @@ export component ControlDeck inherits Tile {
             HorizontalLayout {
                 width: 100%;
                 height: 100%;
-                spacing: 18px;
-                alignment: center;
+                spacing: 16px;
 
                 // CPU and RAM meters
                 VerticalLayout {
@@ -228,7 +230,7 @@ export component QuickActions inherits Tile {
         // Opens the Tasks + Clipboard shelf, even when both are off in Settings.
         { icon: Icons.tasks, tooltip: "Tasks and Clipboard" },
         {
-            icon: AppState.auto-hide ? Icons.eye-open-lashes : Icons.eye-closed-lashes,
+            icon: AppState.auto-hide ? Icons.eye-closed-lashes : Icons.eye-open-lashes,
             tooltip: AppState.auto-hide ? "Hide until pointed at (On)" : "Hide until pointed at (Off)",
         },
         { icon: Icons.settings, tooltip: "Lilt Settings" },
