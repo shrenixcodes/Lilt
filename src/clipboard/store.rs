@@ -39,11 +39,12 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX entries_fingerprint ON entries(fingerprint);
     CREATE INDEX entries_order ON entries(pinned, manual, updated_at);",
+    // 2: image thumbnails
+    "ALTER TABLE entries ADD COLUMN thumbnail BLOB;",
 ];
 
 /// Columns of a [`Summary`]; the text is cut to the preview in SQL.
-const SUMMARY: &str =
-    "id, substr(text, 1, 400), title, description, kind, created_at, updated_at, source, pinned, manual, chars, lines";
+const SUMMARY: &str = "id, substr(text, 1, 400), title, description, kind, created_at, updated_at, source, pinned, manual, chars, lines, thumbnail IS NOT NULL, thumbnail";
 
 #[derive(Debug)]
 pub enum StoreError {
@@ -127,6 +128,45 @@ impl ClipboardStore {
         Ok(())
     }
 
+    /// Remembers a captured image. Returns the entry's id.
+    pub fn capture_image(&self, thumbnail: &[u8], source: Option<&str>, now: i64) -> Result<i64> {
+        // Use a hash of the thumbnail bytes for deduplication.
+        let fingerprint = {
+            let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+            for &byte in thumbnail {
+                hash ^= byte as u64;
+                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+            hash as i64
+        };
+        let existing: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT id FROM entries WHERE fingerprint = ?1 AND kind = 6 AND manual = 0 ORDER BY updated_at DESC LIMIT 1",
+                [fingerprint],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(id) = existing {
+            self.conn.execute(
+                "UPDATE entries SET updated_at = ?2, source = COALESCE(?3, source) WHERE id = ?1",
+                params![id, now, source],
+            )?;
+            return Ok(id);
+        }
+        self.conn.execute(
+            "INSERT INTO entries (text, kind, created_at, updated_at, source, fingerprint, chars, lines, thumbnail)
+             VALUES ('', 6, ?1, ?1, ?2, ?3, 0, 0, ?4)",
+            params![now, source, fingerprint, thumbnail],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// The thumbnail bytes of an image entry.
+    pub fn thumbnail(&self, id: i64) -> Result<Option<Vec<u8>>> {
+        Ok(self.conn.query_row("SELECT thumbnail FROM entries WHERE id = ?1", [id], |r| r.get(0)).optional()?)
+    }
+
     /// Remembers copied text. A repeat of captured text moves that entry to the top
     /// instead of adding another. Returns the entry's id.
     pub fn capture(&self, text: &str, kind: Kind, source: Option<&str>, now: i64) -> Result<i64> {
@@ -192,7 +232,7 @@ impl ClipboardStore {
             if !filter.matches(summary.kind, summary.pinned, summary.manual) {
                 continue;
             }
-            let text: String = row.get(12)?;
+            let text: String = row.get(14)?;
             let app = summary.source.as_deref().map(super::app_name).unwrap_or_default();
             let found = [text.as_str(), &summary.title, &summary.description, &app]
                 .iter()
@@ -359,6 +399,8 @@ fn summary(row: &rusqlite::Row) -> rusqlite::Result<Summary> {
         manual: row.get(9)?,
         chars: row.get::<_, i64>(10)? as usize,
         lines: row.get::<_, i64>(11)? as usize,
+        has_thumbnail: row.get(12)?,
+        thumbnail: row.get(13)?,
     })
 }
 

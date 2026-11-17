@@ -22,6 +22,7 @@ pub enum Kind {
     Code,
     Json,
     Command,
+    Image,
 }
 
 impl Kind {
@@ -33,6 +34,7 @@ impl Kind {
             Kind::Code => 3,
             Kind::Json => 4,
             Kind::Command => 5,
+            Kind::Image => 6,
         }
     }
 
@@ -43,6 +45,7 @@ impl Kind {
             3 => Kind::Code,
             4 => Kind::Json,
             5 => Kind::Command,
+            6 => Kind::Image,
             _ => Kind::Text,
         }
     }
@@ -60,6 +63,7 @@ impl Kind {
             Kind::Code => "Code",
             Kind::Json => "JSON",
             Kind::Command => "Command",
+            Kind::Image => "Image",
         }
     }
 }
@@ -77,6 +81,8 @@ pub enum Filter {
     Urls,
     /// Code, JSON and commands.
     Code,
+    /// Captured images.
+    Images,
     /// Plain and multi-line text.
     Other,
 }
@@ -90,6 +96,7 @@ impl Filter {
             Filter::Manual => manual,
             Filter::Urls => kind == Kind::Url,
             Filter::Code => kind.is_technical(),
+            Filter::Images => kind == Kind::Image,
             Filter::Other => matches!(kind, Kind::Text | Kind::Multiline),
         }
     }
@@ -130,6 +137,10 @@ pub struct Summary {
     /// Characters and lines of the full text.
     pub chars: usize,
     pub lines: usize,
+    /// Whether the entry has a stored image thumbnail.
+    pub has_thumbnail: bool,
+    /// Compressed thumbnail PNG bytes if available.
+    pub thumbnail: Option<Vec<u8>>,
 }
 
 /// A snippet as edited in the shelf.
@@ -545,6 +556,71 @@ pub fn relative_time(then: i64, now: i64) -> String {
     }
 }
 
+/// Maximum size of a compressed thumbnail stored in the database, in bytes.
+/// Keeps the database lean even with many captured screenshots.
+pub const MAX_THUMBNAIL_BYTES: usize = 512 * 1024;
+
+/// Maximum dimensions for a thumbnail. Larger images are scaled down.
+pub const THUMBNAIL_MAX_SIDE: u32 = 256;
+
+/// Extracts a CSS hex colour from copied text, if the whole text is one colour.
+/// Accepts `#RGB`, `#RRGGBB` and `#RRGGBBAA`.
+pub fn detect_hex_color(text: &str) -> Option<&str> {
+    let trimmed = text.trim();
+    if !trimmed.starts_with('#') {
+        return None;
+    }
+    let hex = &trimmed[1..];
+    let valid_len = matches!(hex.len(), 3 | 4 | 6 | 8);
+    if valid_len && hex.chars().all(|c| c.is_ascii_hexdigit()) { Some(trimmed) } else { None }
+}
+
+/// Expands a 3 or 4-digit hex colour to 6 digits (without alpha). Returns the
+/// six hex digits as `RRGGBB` (no `#` prefix), suitable for rendering a swatch.
+pub fn normalize_hex_color(hex: &str) -> Option<String> {
+    let hex = hex.strip_prefix('#').unwrap_or(hex);
+    match hex.len() {
+        3 | 4 => {
+            let mut out = String::with_capacity(6);
+            for c in hex.chars().take(3) {
+                out.push(c);
+                out.push(c);
+            }
+            Some(out)
+        }
+        6 | 8 => Some(hex[..6].to_owned()),
+        _ => None,
+    }
+}
+
+/// Parses a hex colour string into (r, g, b) components, 0–255.
+pub fn parse_hex_rgb(hex: &str) -> Option<(u8, u8, u8)> {
+    let norm = normalize_hex_color(hex)?;
+    let r = u8::from_str_radix(&norm[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&norm[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&norm[4..6], 16).ok()?;
+    Some((r, g, b))
+}
+
+/// Extracts the domain from a URL for the link preview badge.
+/// `https://docs.google.com/spreadsheets/d/…` → `docs.google.com`.
+pub fn extract_domain(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let after_scheme = ["https://", "http://", "ftp://"].iter().find_map(|p| lower.strip_prefix(p)).or_else(|| {
+        lower.strip_prefix("www.").map(|r| {
+            // "www." without a scheme: return everything after "www."
+            let _ = r;
+            &trimmed[4..]
+        })
+    })?;
+    // `after_scheme` is lowercase; use the original text's offset for the domain.
+    let scheme_len = trimmed.len() - after_scheme.len();
+    let rest = &trimmed[scheme_len..];
+    let host = rest.split(&['/', '?', '#', ':'][..]).next().unwrap_or(rest);
+    if host.contains('.') && !host.is_empty() { Some(host.to_ascii_lowercase()) } else { None }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -661,5 +737,43 @@ mod tests {
         assert!(!Filter::Recent.matches(Kind::Url, false, true));
         assert!(Filter::Manual.matches(Kind::Text, false, true));
         assert!(Filter::Pinned.matches(Kind::Text, true, true));
+        assert!(Filter::Images.matches(Kind::Image, false, false));
+        assert!(!Filter::Images.matches(Kind::Text, false, false));
+    }
+
+    #[test]
+    fn hex_color_detection() {
+        assert_eq!(detect_hex_color("#6366F1"), Some("#6366F1"));
+        assert_eq!(detect_hex_color("  #fff  "), Some("#fff"));
+        assert_eq!(detect_hex_color("#AABBCCDD"), Some("#AABBCCDD"));
+        assert_eq!(detect_hex_color("#abc"), Some("#abc"));
+        assert_eq!(detect_hex_color("#GGG"), None);
+        assert_eq!(detect_hex_color("not a color"), None);
+        assert_eq!(detect_hex_color("#12"), None);
+        assert_eq!(detect_hex_color("#12345"), None);
+    }
+
+    #[test]
+    fn hex_color_normalization() {
+        assert_eq!(normalize_hex_color("#fff"), Some("ffffff".to_owned()));
+        assert_eq!(normalize_hex_color("#6366F1"), Some("6366F1".to_owned()));
+        assert_eq!(normalize_hex_color("#abcd"), Some("aabbcc".to_owned()));
+        assert_eq!(normalize_hex_color("#aabbccdd"), Some("aabbcc".to_owned()));
+    }
+
+    #[test]
+    fn hex_rgb_parsing() {
+        assert_eq!(parse_hex_rgb("#ff0000"), Some((255, 0, 0)));
+        assert_eq!(parse_hex_rgb("#00ff00"), Some((0, 255, 0)));
+        assert_eq!(parse_hex_rgb("#fff"), Some((255, 255, 255)));
+    }
+
+    #[test]
+    fn domain_extraction() {
+        assert_eq!(extract_domain("https://docs.google.com/spreadsheets/d/abc"), Some("docs.google.com".to_owned()));
+        assert_eq!(extract_domain("http://example.com/path?q=1"), Some("example.com".to_owned()));
+        assert_eq!(extract_domain("https://github.com"), Some("github.com".to_owned()));
+        assert_eq!(extract_domain("www.rust-lang.org"), Some("rust-lang.org".to_owned()));
+        assert_eq!(extract_domain("not a url"), None);
     }
 }

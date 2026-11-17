@@ -1494,6 +1494,8 @@ fn clip_entry(
         manual: false,
         chars: text.chars().count(),
         lines: text.lines().count().max(1),
+        has_thumbnail: false,
+        thumbnail: None,
     }
 }
 

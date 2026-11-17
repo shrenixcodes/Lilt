@@ -186,9 +186,8 @@ impl Worker<'_> {
                 return true;
             }
             Command::Copy(id) => {
-                let text = self.store.text(id);
-                match text {
-                    Ok(Some(text)) => match capture::write(&text) {
+                if let Ok(Some(thumbnail)) = self.store.thumbnail(id) {
+                    match capture::write_image(&thumbnail) {
                         Some(sequence) => {
                             self.seen = sequence;
                             (self.publish)(Update::Copied(id));
@@ -198,9 +197,24 @@ impl Worker<'_> {
                             (self.publish)(Update::CopyFailed);
                             return false;
                         }
-                    },
-                    Ok(None) => return true,
-                    Err(err) => Err(err),
+                    }
+                } else {
+                    let text = self.store.text(id);
+                    match text {
+                        Ok(Some(text)) => match capture::write(&text) {
+                            Some(sequence) => {
+                                self.seen = sequence;
+                                (self.publish)(Update::Copied(id));
+                                self.store.touch(id, now)
+                            }
+                            None => {
+                                (self.publish)(Update::CopyFailed);
+                                return false;
+                            }
+                        },
+                        Ok(None) => return true,
+                        Err(err) => Err(err),
+                    }
                 }
             }
             Command::SetPinned(id, pinned) => self.store.set_pinned(id, pinned),
@@ -231,7 +245,7 @@ impl Worker<'_> {
         }
         self.seen = sequence;
         let copied = capture::read(&self.config.policy).and_then(|copied| {
-            if self.config.skip_secrets && super::looks_secret(&copied.text) {
+            if copied.image.is_none() && self.config.skip_secrets && super::looks_secret(&copied.text) {
                 Err(Skip::LooksSecret)
             } else {
                 Ok(copied)
@@ -239,10 +253,17 @@ impl Worker<'_> {
         });
         match copied {
             Ok(copied) => {
-                let kind = super::classify(&copied.text);
-                if let Err(err) = self.store.capture(&copied.text, kind, copied.source.as_deref(), now_unix()) {
-                    tracing::warn!(%err, "could not remember copied text");
-                    return false;
+                if let Some(image_bytes) = copied.image {
+                    if let Err(err) = self.store.capture_image(&image_bytes, copied.source.as_deref(), now_unix()) {
+                        tracing::warn!(%err, "could not remember copied image");
+                        return false;
+                    }
+                } else {
+                    let kind = super::classify(&copied.text);
+                    if let Err(err) = self.store.capture(&copied.text, kind, copied.source.as_deref(), now_unix()) {
+                        tracing::warn!(%err, "could not remember copied text");
+                        return false;
+                    }
                 }
                 self.prune();
                 true

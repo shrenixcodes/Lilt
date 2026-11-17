@@ -196,6 +196,7 @@ export enum ClipFilter {
     snippets,
     links,
     code,
+    images,
     other,
 }
 
@@ -220,6 +221,12 @@ export struct ClipRow {
     pinned: bool,
     manual: bool,
     count: int,
+    has-color: bool,
+    color-val: color,
+    color-hex: string,
+    domain: string,
+    has-thumbnail: bool,
+    thumbnail: image,
 }
 
 // A snippet being edited.

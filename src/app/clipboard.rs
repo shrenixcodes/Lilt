@@ -84,6 +84,7 @@ fn filter(state: &ClipboardState) -> Filter {
         ClipFilter::Snippets => Filter::Manual,
         ClipFilter::Links => Filter::Urls,
         ClipFilter::Code => Filter::Code,
+        ClipFilter::Images => Filter::Images,
         ClipFilter::Other => Filter::Other,
         _ => Filter::All,
     }
@@ -118,10 +119,39 @@ fn meta(entry: &Summary, now: i64) -> String {
 }
 
 fn entry_row(entry: &Summary, now: i64) -> ClipRow {
-    let preview = if entry.title.is_empty() {
-        entry.preview.clone()
-    } else {
+    let preview = if !entry.title.is_empty() {
         entry.preview.lines().next().unwrap_or_default().to_owned()
+    } else if entry.kind == clipboard::Kind::Image {
+        "Image".to_owned()
+    } else {
+        entry.preview.clone()
+    };
+    let hex_color = clipboard::detect_hex_color(&entry.preview);
+    let (has_color, color_val, color_hex) = if let Some(hex) = hex_color {
+        if let Some((r, g, b)) = clipboard::parse_hex_rgb(hex) {
+            (true, slint::Color::from_argb_u8(255, r, g, b), hex.into())
+        } else {
+            (false, slint::Color::default(), String::new())
+        }
+    } else {
+        (false, slint::Color::default(), String::new())
+    };
+    let domain = if entry.kind == clipboard::Kind::Url {
+        clipboard::extract_domain(&entry.preview).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let thumbnail = if let Some(bytes) = &entry.thumbnail {
+        if let Ok(img) = image::load_from_memory(bytes) {
+            let rgba = img.to_rgba8();
+            let (w, h) = rgba.dimensions();
+            let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&rgba, w, h);
+            slint::Image::from_rgba8(buf)
+        } else {
+            slint::Image::default()
+        }
+    } else {
+        slint::Image::default()
     };
     ClipRow {
         kind: ClipRowKind::Entry,
@@ -133,6 +163,12 @@ fn entry_row(entry: &Summary, now: i64) -> ClipRow {
         pinned: entry.pinned,
         manual: entry.manual,
         count: 0,
+        has_color,
+        color_val,
+        color_hex: color_hex.into(),
+        domain: domain.into(),
+        has_thumbnail: entry.has_thumbnail,
+        thumbnail,
     }
 }
 
@@ -607,6 +643,8 @@ mod tests {
             manual,
             chars: 7,
             lines: 1,
+            has_thumbnail: false,
+            thumbnail: None,
         }
     }
 
