@@ -6,6 +6,31 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-11-17
+
+### Added
+
+- The brightness control's sun turns as the slider is dragged.
+
+### Changed
+
+- The glass appearances' lit edge is a soft radial glow that eases around the rounded
+  corners and fades inward, and it tracks the transparency slider: brighter and more
+  defined as the glass clears, softer as it frosts.
+
+### Fixed
+
+- Auto-hide no longer leaves a blurred patch at the top of the screen; the live blur now
+  lifts away with the island.
+- A tucked island only reappears when the pointer reaches the very top edge of the screen.
+- The Appearance settings page keeps its controls in place when the appearance is changed,
+  rather than shifting the layout.
+- The Brightness quick action shows a sun instead of a monitor, and the skip-track buttons
+  show their bar so they no longer look like a play button.
+- The clipboard entries show their Pin and Delete buttons again.
+- The Tasks and Clipboard quick action closes the shelf when its button is tapped a second
+  time.
+
 ## [0.4.8] - 2026-11-17
 
 ### Added
