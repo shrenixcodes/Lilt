@@ -47,14 +47,28 @@ impl App {
                 } else {
                     MediaAvailability::Idle
                 };
+                Self::update_idle_grace(app, false);
+                let previous = state.get_media();
                 app.media_state.replace(None);
                 app.last_track.replace(None);
                 app.activity_timer.stop();
                 state.set_activity(false);
-                state.set_media(MediaInfo { availability, ..Default::default() });
-                state.set_has_artwork(false);
-                state.set_artwork(slint::Image::default());
-                app.apply_palette(&AmbientPalette::NEUTRAL);
+                state.set_media(if state.get_media_grace() {
+                    MediaInfo {
+                        availability,
+                        title: previous.title,
+                        artist: previous.artist,
+                        source: previous.source,
+                        ..Default::default()
+                    }
+                } else {
+                    MediaInfo { availability, ..Default::default() }
+                });
+                if !state.get_media_grace() {
+                    state.set_has_artwork(false);
+                    state.set_artwork(slint::Image::default());
+                    app.apply_palette(&AmbientPalette::NEUTRAL);
+                }
             }
             MediaUpdate::Artwork(Some(artwork)) => {
                 tracing::debug!(palette = ?artwork.palette, "artwork received");
@@ -77,6 +91,7 @@ impl App {
                 let previous = app.last_track.replace(Some(track.clone()));
                 // Announce new tracks, but not the one already playing when Lilt starts.
                 let announce = app.media_ready.get() && previous.as_ref() != Some(&track) && !media.title.is_empty();
+                Self::update_idle_grace(app, media.status == PlaybackStatus::Playing);
                 state.set_media(info(&media));
                 app.media_state.replace(Some(media));
                 if announce {
@@ -86,6 +101,29 @@ impl App {
         }
         app.media_ready.set(true);
         App::update_progress_timer(app);
+    }
+
+    fn update_idle_grace(app: &Rc<Self>, playing: bool) {
+        let state = app.island.global::<AppState>();
+        if playing {
+            app.idle_grace_timer.stop();
+            state.set_media_grace(false);
+        } else if state.get_media().playing {
+            state.set_media_grace(true);
+            let weak = Rc::downgrade(app);
+            app.idle_grace_timer.start(slint::TimerMode::SingleShot, Duration::from_secs(10), move || {
+                let Some(app) = weak.upgrade() else { return };
+                let state = app.island.global::<AppState>();
+                state.set_media_grace(false);
+                if state.get_media().availability != MediaAvailability::Active {
+                    let availability = state.get_media().availability;
+                    state.set_media(MediaInfo { availability, ..Default::default() });
+                    state.set_has_artwork(false);
+                    state.set_artwork(slint::Image::default());
+                    app.apply_palette(&AmbientPalette::NEUTRAL);
+                }
+            });
+        }
     }
 
     /// Hands the artwork palette to the UI, which cross-fades to it.

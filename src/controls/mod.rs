@@ -42,6 +42,9 @@ pub enum Command {
         name: String,
         connect: bool,
     },
+    SelectEndpoint(String),
+    SetInputVolume(f32),
+    SetInputMuted(bool),
     SetVolume(f32),
     SetMuted(bool),
     /// Per-application volume in the mixer, 0.0..=1.0.
@@ -72,6 +75,7 @@ pub enum Update {
     Wifi(WifiView),
     Bluetooth(BluetoothView),
     Sound(Option<audio::Output>, Vec<audio::Session>),
+    Endpoints(audio::Endpoints),
     Display(Option<u32>),
     /// A short message for a pop-up, such as a failed connection.
     Message(Panel, String),
@@ -153,12 +157,28 @@ impl<'a> Worker<'a> {
             batch.extend(receiver.try_iter());
             // Only the last position of a dragged slider matters.
             let last_volume = batch.iter().rposition(|m| matches!(m, Message::Command(Command::SetVolume(_))));
+            let last_input_volume =
+                batch.iter().rposition(|m| matches!(m, Message::Command(Command::SetInputVolume(_))));
+            let last_session_volumes: std::collections::HashMap<String, usize> = batch
+                .iter()
+                .enumerate()
+                .filter_map(|(index, message)| {
+                    if let Message::Command(Command::SetSessionVolume(id, _)) = message {
+                        Some((id.clone(), index))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
             let last_brightness = batch.iter().rposition(|m| matches!(m, Message::Command(Command::SetBrightness(_))));
             let mut refresh: Vec<Panel> = Vec::new();
             for (index, message) in batch.into_iter().enumerate() {
                 match message {
                     Message::Shutdown => return,
                     Message::Command(Command::SetVolume(_)) if Some(index) != last_volume => {}
+                    Message::Command(Command::SetInputVolume(_)) if Some(index) != last_input_volume => {}
+                    Message::Command(Command::SetSessionVolume(ref id, _))
+                        if last_session_volumes.get(id) != Some(&index) => {}
                     Message::Command(Command::SetBrightness(_)) if Some(index) != last_brightness => {}
                     Message::Command(command) => self.handle(command, &mut refresh),
                     Message::Wifi(event) => self.wifi_event(event, &mut refresh),
@@ -245,6 +265,24 @@ impl<'a> Worker<'a> {
                 }
                 refresh.push(Panel::Bluetooth);
             }
+            Command::SelectEndpoint(id) => {
+                if !audio::select_endpoint(&id) {
+                    self.message(Panel::Sound, "Windows could not switch that audio device. It may have disconnected.");
+                }
+                refresh.push(Panel::Sound);
+            }
+            Command::SetInputVolume(level) => {
+                if !audio::set_input_volume(level) {
+                    self.message(Panel::Sound, "The microphone volume could not be changed.");
+                    refresh.push(Panel::Sound);
+                }
+            }
+            Command::SetInputMuted(muted) => {
+                if !audio::set_input_muted(muted) {
+                    self.message(Panel::Sound, "The microphone mute could not be changed.");
+                }
+                refresh.push(Panel::Sound);
+            }
             Command::SetVolume(level) => {
                 if !audio::set_volume(level) {
                     self.message(Panel::Sound, "The volume could not be changed.");
@@ -258,8 +296,8 @@ impl<'a> Worker<'a> {
             Command::SetSessionVolume(id, level) => {
                 if !audio::set_session_volume(&id, level) {
                     self.message(Panel::Sound, "That app's volume could not be changed.");
+                    refresh.push(Panel::Sound);
                 }
-                refresh.push(Panel::Sound);
             }
             Command::SetSessionMuted(id, muted) => {
                 audio::set_session_muted(&id, muted);
@@ -332,7 +370,10 @@ impl<'a> Worker<'a> {
                     .collect();
                 Update::Bluetooth(BluetoothView { radio, devices })
             }
-            Panel::Sound => Update::Sound(audio::output(), audio::sessions()),
+            Panel::Sound => {
+                (self.publish)(Update::Endpoints(audio::endpoints()));
+                Update::Sound(audio::output(), audio::sessions())
+            }
             Panel::Display => Update::Display(display::brightness()),
         };
         (self.publish)(update);

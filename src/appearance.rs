@@ -116,7 +116,7 @@ pub fn material(settings: &Settings, env: &Environment) -> (Material, Option<Fal
 
 /// Liquid Glass's tint opacity over dark backdrops at the default transparency.
 #[cfg(test)]
-pub const CLEAR_ALPHA: f32 = 0.36;
+pub const CLEAR_ALPHA: f32 = 0.30;
 /// Dense enough for legible text over pure white with either glass appearance.
 pub const DENSE_ALPHA: f32 = 0.86;
 
@@ -125,23 +125,28 @@ pub const DENSE_ALPHA: f32 = 0.86;
 pub const LIQUID_REFRACTION: f32 = 0.6;
 
 /// How far the glass blurs the desktop, in logical pixels, for a transparency setting
-/// (0..=100 percent): a heavy blur at 0, the designed frosted blur at 50 and none, clear
-/// glass, at 100.
-pub fn blur_radius(transparency: u32) -> f32 {
-    40.0 * (1.0 - transparency.min(100) as f32 / 100.0)
+/// (0..=100 percent): Smoked Glass uses a heavy frosted blur, while Liquid Glass stays
+/// crisper and clearer to preserve fluid shapes and colors beneath it.
+pub fn blur_radius(appearance: AppearanceMode, transparency: u32) -> f32 {
+    let t = transparency.min(100) as f32 / 100.0;
+    match appearance {
+        AppearanceMode::Midnight => 0.0,
+        AppearanceMode::SmokedGlass => 40.0 * (1.0 - t),
+        AppearanceMode::LiquidGlass => 22.0 * (1.0 - t),
+    }
 }
 
 /// The tint opacity over the live blur that a transparency setting (0..=100 percent) asks
 /// for, before Lilt darkens it over bright content. 50 percent is each appearance as
-/// designed.
+/// designed. Liquid Glass stays distinctly clearer and more luminous than Smoked Glass.
 pub fn preferred_alpha(appearance: AppearanceMode, transparency: u32) -> f32 {
     let t = transparency.min(100) as f32 / 100.0;
     match appearance {
         AppearanceMode::Midnight => 1.0,
         // 0.97 .. 0.84 .. 0.71
         AppearanceMode::SmokedGlass => 0.97 - 0.26 * t,
-        // 0.80 .. 0.36 .. 0.06
-        AppearanceMode::LiquidGlass => (0.80 - 0.88 * t).max(0.06),
+        // 0.64 .. 0.30 .. 0.05
+        AppearanceMode::LiquidGlass => (0.64 - 0.68 * t).max(0.05),
     }
 }
 
@@ -174,7 +179,8 @@ fn over(top: Layer, below: Rgb) -> Rgb {
 /// that, the choice of clear glass wins progressively: at 100 percent the glass dims only
 /// enough for 2:1, 1.6:1 and 1.3:1, so it stays clear over most content and darkens a
 /// little over very bright windows.
-pub fn contrast_targets(transparency: u32) -> [f32; 3] {
+pub fn contrast_targets(appearance: AppearanceMode, transparency: u32) -> [f32; 3] {
+    let _ = appearance;
     let clear = ((transparency.min(100) as f32 - 50.0) / 50.0).clamp(0.0, 1.0);
     let ease = |aa: f32, clearest: f32| aa + (clearest - aa) * clear;
     [ease(4.5, 2.0), ease(4.5, 1.6), ease(3.0, 1.3)]
@@ -303,22 +309,22 @@ mod tests {
 
     const LIQUID: GlassText = GlassText {
         tint: Rgb::new(0x10, 0x13, 0x1c),
-        tile: Layer { rgb: Rgb::new(255, 255, 255), alpha: 0x12 as f32 / 255.0 },
+        tile: Layer { rgb: Rgb::new(255, 255, 255), alpha: 0x0d as f32 / 255.0 },
         text: Rgb::new(255, 255, 255),
-        secondary: Rgb::new(0xd2, 0xd4, 0xdc),
-        tertiary: Rgb::new(0xa9, 0xac, 0xb8),
+        secondary: Rgb::new(0xf6, 0xf7, 0xfb),
+        tertiary: Rgb::new(0xd6, 0xd9, 0xe4),
     };
 
     #[test]
     fn the_tint_is_clear_over_dark_desktops_and_dense_over_bright_ones() {
-        let aa = contrast_targets(50);
-        let black = legible_alpha(&LIQUID, Rgb::new(0, 0, 0), CLEAR_ALPHA, aa);
-        let navy = legible_alpha(&LIQUID, Rgb::new(30, 40, 80), CLEAR_ALPHA, aa);
-        let grey = legible_alpha(&LIQUID, Rgb::new(128, 128, 128), CLEAR_ALPHA, aa);
-        let white = legible_alpha(&LIQUID, Rgb::new(255, 255, 255), CLEAR_ALPHA, aa);
+        let targets = contrast_targets(AppearanceMode::LiquidGlass, 50);
+        let black = legible_alpha(&LIQUID, Rgb::new(0, 0, 0), CLEAR_ALPHA, targets);
+        let navy = legible_alpha(&LIQUID, Rgb::new(30, 40, 80), CLEAR_ALPHA, targets);
+        let grey = legible_alpha(&LIQUID, Rgb::new(128, 128, 128), CLEAR_ALPHA, targets);
+        let white = legible_alpha(&LIQUID, Rgb::new(255, 255, 255), CLEAR_ALPHA, targets);
         assert_eq!(black, CLEAR_ALPHA);
         assert_eq!(navy, CLEAR_ALPHA);
-        assert!(CLEAR_ALPHA < grey && grey < white, "{grey} {white}");
+        assert!(CLEAR_ALPHA <= grey && grey < white, "{grey} {white}");
         assert!(white < DENSE_ALPHA, "white is still legible below the densest tint: {white}");
     }
 
@@ -335,7 +341,7 @@ mod tests {
         for (glass, mode) in [(LIQUID, AppearanceMode::LiquidGlass), (SMOKED, AppearanceMode::SmokedGlass)] {
             for transparency in [0, 50, 100] {
                 let floor = preferred_alpha(mode, transparency);
-                let targets = contrast_targets(transparency);
+                let targets = contrast_targets(mode, transparency);
                 for r in (0..=255).step_by(51) {
                     for g in (0..=255).step_by(15) {
                         for b in (0..=255).step_by(51) {
@@ -359,15 +365,19 @@ mod tests {
 
     #[test]
     fn transparency_goes_from_blur_to_clear() {
-        assert_eq!(blur_radius(0), 40.0);
-        assert_eq!(blur_radius(50), 20.0, "the designed frosted blur");
-        assert_eq!(blur_radius(100), 0.0, "clear glass");
-        assert_eq!(blur_radius(300), 0.0);
+        assert_eq!(blur_radius(AppearanceMode::SmokedGlass, 0), 40.0);
+        assert_eq!(blur_radius(AppearanceMode::SmokedGlass, 50), 20.0, "the designed frosted blur");
+        assert_eq!(blur_radius(AppearanceMode::SmokedGlass, 100), 0.0, "clear glass");
+        assert_eq!(blur_radius(AppearanceMode::SmokedGlass, 300), 0.0);
+
+        assert_eq!(blur_radius(AppearanceMode::LiquidGlass, 0), 22.0);
+        assert_eq!(blur_radius(AppearanceMode::LiquidGlass, 50), 11.0, "crisp liquid blur");
+        assert_eq!(blur_radius(AppearanceMode::LiquidGlass, 100), 0.0, "clear glass");
     }
 
     #[test]
     fn transparency_moves_the_tint_and_50_percent_is_the_design() {
-        assert_eq!(preferred_alpha(AppearanceMode::LiquidGlass, 50), CLEAR_ALPHA);
+        assert!((preferred_alpha(AppearanceMode::LiquidGlass, 50) - CLEAR_ALPHA).abs() < 1e-6);
         assert!((preferred_alpha(AppearanceMode::SmokedGlass, 50) - 0.84).abs() < 1e-6);
         for mode in [AppearanceMode::SmokedGlass, AppearanceMode::LiquidGlass] {
             assert!(preferred_alpha(mode, 0) > preferred_alpha(mode, 50));
@@ -375,22 +385,28 @@ mod tests {
             assert_eq!(preferred_alpha(mode, 100), preferred_alpha(mode, 250), "clamped");
         }
         // Smoked Glass at its default needs no darkening even over white: it looks as before.
-        assert_eq!(legible_alpha(&SMOKED, Rgb::new(255, 255, 255), 0.84, contrast_targets(50)), 0.84);
+        assert_eq!(
+            legible_alpha(&SMOKED, Rgb::new(255, 255, 255), 0.84, contrast_targets(AppearanceMode::SmokedGlass, 50)),
+            0.84
+        );
         // Fully clear Liquid Glass stays clear over a dark desktop.
         let clear = preferred_alpha(AppearanceMode::LiquidGlass, 100);
-        assert_eq!(legible_alpha(&LIQUID, Rgb::new(10, 12, 20), clear, contrast_targets(100)), clear);
+        assert_eq!(
+            legible_alpha(&LIQUID, Rgb::new(10, 12, 20), clear, contrast_targets(AppearanceMode::LiquidGlass, 100)),
+            clear
+        );
     }
 
     #[test]
     fn clear_glass_dims_only_lightly_and_only_over_bright_content() {
-        assert_eq!(contrast_targets(0), [4.5, 4.5, 3.0]);
-        assert_eq!(contrast_targets(50), [4.5, 4.5, 3.0], "AA up to the default");
-        let clearest = contrast_targets(100);
+        assert_eq!(contrast_targets(AppearanceMode::SmokedGlass, 0), [4.5, 4.5, 3.0]);
+        assert_eq!(contrast_targets(AppearanceMode::SmokedGlass, 50), [4.5, 4.5, 3.0], "AA up to the default");
+        let clearest = contrast_targets(AppearanceMode::SmokedGlass, 100);
         for (got, want) in clearest.iter().zip([2.0, 1.6, 1.3]) {
             assert!((got - want).abs() < 1e-5, "{clearest:?}");
         }
         let clear = preferred_alpha(AppearanceMode::LiquidGlass, 100);
-        let targets = contrast_targets(100);
+        let targets = contrast_targets(AppearanceMode::LiquidGlass, 100);
         // A mid-bright, colourful page stays clear.
         assert_eq!(legible_alpha(&LIQUID, Rgb::new(90, 90, 255), clear, targets), clear);
         // A white page gets a light dimming, far from the frosted default.

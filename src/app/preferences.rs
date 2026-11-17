@@ -88,6 +88,9 @@ impl App {
     /// Applies every setting to the running application.
     pub(super) fn apply_settings(app: &Rc<Self>) {
         let settings = app.settings.borrow().clone();
+        App::refresh_clock(app);
+        App::restart_idle_cycle(app);
+        App::update_weather_location(app);
         let state = app.island.global::<AppState>();
         state.set_compact_width(settings.appearance.compact_width as f32);
         state.set_expanded_width(settings.appearance.expanded_width as f32);
@@ -144,6 +147,7 @@ impl App {
         let theme = app.island.global::<Theme>();
         theme.set_appearance(ui_appearance(settings.appearance.theme));
         theme.set_live_blur(live);
+        theme.set_glass_transparency(settings.appearance.glass_transparency as f32 / 100.0);
         app.glass_fallback.set(fallback);
         app.window_blur.set(live && appearance::window_backdrop_supported(&env));
         if material != Material::Solid {
@@ -167,6 +171,7 @@ impl App {
         let transparency = self.settings.borrow().appearance.glass_transparency;
         theme.set_smoked_alpha(appearance::preferred_alpha(AppearanceMode::SmokedGlass, transparency));
         theme.set_glass_alpha(appearance::preferred_alpha(AppearanceMode::LiquidGlass, transparency));
+        theme.set_glass_transparency(transparency as f32 / 100.0);
         let blur =
             window::find(window.window()).is_some_and(|native| native.set_system_backdrop(self.window_blur.get()));
         theme.set_live_blur(blur);
@@ -327,6 +332,31 @@ impl App {
             app.place();
             App::schedule_save(app);
             app.refresh_settings_window();
+        }));
+        let weak_weather = weak.clone();
+        window.on_search_weather(move |query| {
+            if let Some(app) = weak_weather.upgrade() {
+                App::search_weather(&app, query.as_str());
+            }
+        });
+        let weak_weather = weak.clone();
+        window.on_select_weather(move |index| {
+            if let Some(app) = weak_weather.upgrade() {
+                App::select_weather(&app, index);
+            }
+        });
+        window.on_clear_weather(super::with(&weak, |app| {
+            app.settings.borrow_mut().weather_location = None;
+            app.settings.borrow_mut().weather_location_name.clear();
+            App::update_weather_location(app);
+            App::schedule_save(app);
+            app.refresh_settings_window();
+            if let Some(window) = app.settings_window.borrow().as_ref() {
+                window.set_weather_message("".into());
+                window.set_weather_results(ModelRc::default());
+                window.set_weather_search_id(window.get_weather_search_id().wrapping_add(1));
+                window.set_weather_searching(false);
+            }
         }));
         window.on_choose_calendar(super::with(&weak, |app| {
             let weak = Rc::downgrade(app);
@@ -536,12 +566,22 @@ fn to_data(s: &Settings, monitors: &[placement::Monitor]) -> SettingsData {
         .map_or(0, |i| i as i32 + 1);
     SettingsData {
         appearance: appearance_index(s.appearance.theme),
+        time_format: s.clock.time_format as i32,
+        date_format: s.clock.date_format as i32,
+        idle_cycle: s.clock.cycle_enabled,
+        clock_seconds: s.clock.clock_seconds as i32,
+        item_seconds: s.clock.item_seconds as i32,
+        weather_location_name: s.weather_location_name.as_str().into(),
+        weather_selected: s.weather_location.is_some(),
+        weather_latitude: s.weather_location.map_or(0.0, |p| p.latitude as f32),
+        weather_longitude: s.weather_location.map_or(0.0, |p| p.longitude as f32),
         reduce_transparency: s.appearance.reduce_transparency,
         glass_transparency: s.appearance.glass_transparency as i32,
         auto_collapse: s.general.auto_collapse,
         auto_collapse_seconds: s.general.auto_collapse_seconds as i32,
         collapse_on_outside_click: s.general.collapse_on_outside_click,
         activity_banners: s.general.activity_banners,
+        auto_hide: s.general.auto_hide,
         compact_width: s.appearance.compact_width as i32,
         expanded_width: s.appearance.expanded_width as i32,
         motion: motion_index(s.appearance.motion),
@@ -580,6 +620,11 @@ fn to_data(s: &Settings, monitors: &[placement::Monitor]) -> SettingsData {
 /// their own actions and carried over from `previous`.
 fn from_data(d: &SettingsData, monitors: &[placement::Monitor], previous: &Settings) -> Settings {
     let mut s = previous.clone();
+    s.clock.time_format = d.time_format.clamp(0, 2) as u8;
+    s.clock.date_format = d.date_format.clamp(0, 2) as u8;
+    s.clock.cycle_enabled = d.idle_cycle;
+    s.clock.clock_seconds = d.clock_seconds.clamp(3, 60) as u32;
+    s.clock.item_seconds = d.item_seconds.clamp(3, 60) as u32;
     s.appearance.theme = match d.appearance {
         1 => AppearanceMode::SmokedGlass,
         2 => AppearanceMode::LiquidGlass,
@@ -591,6 +636,7 @@ fn from_data(d: &SettingsData, monitors: &[placement::Monitor], previous: &Setti
     s.general.auto_collapse_seconds = d.auto_collapse_seconds.max(0) as u32;
     s.general.collapse_on_outside_click = d.collapse_on_outside_click;
     s.general.activity_banners = d.activity_banners;
+    s.general.auto_hide = d.auto_hide;
     s.appearance.compact_width = d.compact_width.max(0) as u32;
     s.appearance.expanded_width = d.expanded_width.max(0) as u32;
     s.appearance.motion = match d.motion {
@@ -647,6 +693,7 @@ mod tests {
         }];
         let mut s = Settings::default();
         s.position.monitor = Some(r"\\.\DISPLAY2".into());
+        s.general.auto_hide = true;
         s.ambient.intensity = 35;
         s.appearance.motion = MotionPreference::Reduced;
         s.appearance.theme = AppearanceMode::LiquidGlass;

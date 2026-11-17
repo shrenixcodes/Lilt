@@ -166,7 +166,71 @@ fn compact_idle_shows_a_small_pill() {
     // Row 11 lies above the text, where the rounded ends are nearly full width.
     let width = island_width(&image, 11);
     assert!((185..=200).contains(&width), "compact width {width}");
-    assert!((36..=40).contains(&island_height(&image, image.width() / 2)));
+    // Measure away from the centered clock glyphs.
+    assert!((36..=40).contains(&island_height(&image, image.width() / 2 - 60)));
+    assert_eq!(h.island.get_body_height(), 38.0);
+}
+
+#[test]
+fn idle_carousel_shows_one_item_and_paused_media_can_be_resumed_on_hover() {
+    let h = Harness::new(1.0);
+    h.state().set_time("12:34".into());
+    h.state().set_weekday("Tue".into());
+    h.state().set_date("17 Nov".into());
+    h.state().set_weather("24?C ? Clear".into());
+    let time = h.render();
+    h.state().set_idle_index(1);
+    let date = h.render();
+    h.state().set_idle_index(2);
+    let weather = h.render();
+    assert_ne!(time, date);
+    assert_ne!(date, weather);
+    assert_ne!(time, weather);
+    let mut media = playing("Blue Hours");
+    media.playing = false;
+    h.state().set_media(media);
+    assert_eq!(h.render(), weather, "paused media leaves the idle item visible");
+    h.state().set_pointer_inside(true);
+    let hovered = h.render();
+    assert!(island_width(&hovered, 11) > island_width(&weather, 11), "hover reveals the paused media controls");
+    h.state().set_pointer_inside(false);
+    assert_eq!(h.render(), weather);
+}
+
+#[test]
+fn idle_grace_keeps_paused_and_ended_media_visible_until_expiry() {
+    let h = Harness::new(1.0);
+    let mut media = playing("Last track");
+    media.playing = false;
+    h.state().set_media(media.clone());
+    h.state().set_media_grace(true);
+    let paused = h.render();
+    assert!(island_width(&paused, 11) > 240);
+    media.availability = MediaAvailability::Idle;
+    h.state().set_media(media);
+    let ended = h.render();
+    assert!(island_width(&ended, 11) > 240, "ended media stays visible during grace");
+    h.state().set_media_grace(false);
+    let idle = h.render();
+    assert!(island_width(&idle, 11) < 210, "clock appears after grace ends");
+    h.state().set_media(playing("Resumed track"));
+    assert!(island_width(&h.render(), 11) > 240, "resuming playback returns to media immediately");
+}
+
+#[test]
+fn overflowing_media_titles_move_and_reduced_motion_stays_still() {
+    let h = Harness::new(1.0);
+    let mut media = playing("A very long track title that cannot possibly fit inside the compact island viewport");
+    media.playing = false;
+    h.state().set_media(media);
+    h.state().set_pointer_inside(true);
+    h.theme().set_motion(1.0);
+    let first = h.render();
+    let later = h.render();
+    assert_ne!(first, later, "overflowing content moves to reveal the rest of the title");
+    h.theme().set_motion(0.0);
+    let still = h.render();
+    assert_eq!(still, h.render(), "reduced motion keeps the title still");
 }
 
 #[test]
@@ -183,6 +247,23 @@ fn compact_media_widens_and_expanded_grows() {
     save(&expanded, "expanded-media");
     assert!((450..=465).contains(&island_width(&expanded, 120)));
     assert!(island_height(&expanded, expanded.width() / 2) > 200);
+}
+
+#[test]
+fn expanded_artwork_fits_the_whole_media_stack_beside_it() {
+    let h = Harness::new(1.0);
+    h.state().set_media(playing("Tutor"));
+    h.state().set_artwork(solid_artwork([240, 40, 40]));
+    h.state().set_has_artwork(true);
+    h.state().set_position_text("2:42".into());
+    h.state().set_duration_text("3:20".into());
+    h.state().set_expanded(true);
+    let image = h.render();
+    save(&image, "expanded-media-alignment");
+    let artwork: Vec<_> = image.enumerate_pixels().filter(|(_, _, p)| p[0] > 220 && p[1] < 60 && p[2] < 60).collect();
+    let left = artwork.iter().map(|(x, _, _)| *x).min().unwrap();
+    let right = artwork.iter().map(|(x, _, _)| *x).max().unwrap();
+    assert!((94..=96).contains(&(right - left + 1)), "artwork must be large enough for the media stack");
 }
 
 #[test]
@@ -285,7 +366,7 @@ fn ambient_colours_tint_the_expanded_player() {
     let tinted = ambient_scene(1.0);
     save(&tinted, "expanded-ambient");
     // Just right of the artwork tile, inside the glow.
-    let glow = tinted.get_pixel(10 + 14 + 72 + 6, 64);
+    let glow = tinted.get_pixel(10 + 14 + 96 + 6, 64);
     assert!(glow[2] > glow[0] + 12, "glow should be blue: {glow:?}");
     // In the panel away from the artwork, inside the tint.
     let wash = tinted.get_pixel(300, 120);
@@ -295,7 +376,7 @@ fn ambient_colours_tint_the_expanded_player() {
 #[test]
 fn ambient_effects_can_be_disabled() {
     let plain = ambient_scene(0.0);
-    let glow = plain.get_pixel(10 + 14 + 72 + 6, 64);
+    let glow = plain.get_pixel(10 + 14 + 96 + 6, 64);
     assert!(glow[2].abs_diff(glow[0]) <= 3, "no tint expected: {glow:?}");
 }
 
@@ -366,6 +447,9 @@ fn agenda_without_calendar_explains_itself() {
 
 fn settings_data() -> SettingsData {
     SettingsData {
+        idle_cycle: true,
+        clock_seconds: 7,
+        item_seconds: 5,
         auto_collapse: true,
         auto_collapse_seconds: 8,
         collapse_on_outside_click: true,
@@ -432,7 +516,7 @@ fn settings_sections_render() {
         slint::SharedString::from("1Password.exe"),
     ])));
     settings.set_clipboard_usage("42 entries · 96 KB on disk".into());
-    for section in 0..10 {
+    for section in 0..11 {
         settings.set_section(section);
         let image = render_settings(&window, &clock);
         save(&image, &format!("settings-{section}"));
@@ -618,16 +702,14 @@ fn glass_renders_every_state() {
                 "{name}: corner at {x},{y}"
             );
         }
-        // The rim lights the top edge: compared with the row just inside it, the edge is
-        // far brighter than Midnight's plain border.
+        // The rim lights the top edge: the soft glow makes the very edge clearly brighter
+        // than the surface a little inside it.
         let edge = |image: &RgbaImage| {
-            brightness(image.get_pixel(240, 0).0) as i32 - brightness(image.get_pixel(240, 1).0) as i32
+            brightness(image.get_pixel(240, 0).0) as i32 - brightness(image.get_pixel(240, 9).0) as i32
         };
         h.theme().set_appearance(appearance);
         let glass_edge = edge(&h.render());
-        h.theme().set_appearance(Appearance::Midnight);
-        let midnight_edge = edge(&h.render());
-        assert!(glass_edge > midnight_edge + 60, "{name}: rim {glass_edge} vs border {midnight_edge}");
+        assert!(glass_edge > 18, "{name}: rim edge {glass_edge}");
 
         for page in [Page::System, Page::Calendar] {
             h.theme().set_appearance(appearance);
@@ -657,12 +739,42 @@ fn liquid_glass_is_clearer_and_lights_its_lower_edge() {
     h.theme().set_glass_alpha(crate::appearance::DENSE_ALPHA);
     let dense = h.render_on(wallpaper);
     assert!(brightness(dense.get_pixel(240, 230).0) < brightness(l));
-    // Both glass appearances light the lower edge; Liquid Glass's is noticeably brighter.
+    // Both glass appearances light the lower edge; Liquid Glass's is brighter.
     let bottom = (h.island.get_body_y() + h.island.get_body_height()) as u32 - 1;
     let lower = |image: &RgbaImage| {
-        brightness(image.get_pixel(240, bottom).0) as i32 - brightness(image.get_pixel(240, bottom - 1).0) as i32
+        brightness(image.get_pixel(240, bottom).0) as i32 - brightness(image.get_pixel(240, bottom - 9).0) as i32
     };
-    assert!(lower(&liquid) > lower(&smoked) + 10, "{} vs {}", lower(&liquid), lower(&smoked));
+    assert!(lower(&smoked) > 0 && lower(&liquid) > lower(&smoked), "{} vs {}", lower(&liquid), lower(&smoked));
+}
+
+#[test]
+fn the_rim_tracks_the_transparency_slider() {
+    let h = Harness::new(1.0);
+    h.theme().set_live_blur(true);
+    playing_with_artwork(&h);
+    h.state().set_expanded(true);
+    h.theme().set_appearance(Appearance::LiquidGlass);
+    let brightness = |p: [u8; 4]| p[0] as u32 + p[1] as u32 + p[2] as u32;
+    // How much light the rim adds at the top edge over the surface deeper in, where the
+    // glow no longer reaches. Transparency moves only the rim, so the surface baseline is
+    // the same in both renders and this isolates the rim's strength.
+    let lift = |image: &RgbaImage| {
+        brightness(image.get_pixel(240, 0).0) as i32 - brightness(image.get_pixel(240, 135).0) as i32
+    };
+
+    // Frosted (low transparency): a soft, dim edge.
+    h.theme().set_glass_transparency(0.1);
+    let frosted = h.render_on(wallpaper);
+    save(&frosted, "rim-transparency-low");
+    let frosted_lift = lift(&frosted);
+
+    // Clear (high transparency): the edge brightens.
+    h.theme().set_glass_transparency(0.95);
+    let clear = h.render_on(wallpaper);
+    save(&clear, "rim-transparency-high");
+    let clear_lift = lift(&clear);
+
+    assert!(clear_lift > frosted_lift + 40, "clear rim {clear_lift} vs frosted {frosted_lift}");
 }
 
 #[test]
@@ -679,7 +791,7 @@ fn ambient_colours_work_in_glass() {
     h.state().set_expanded(true);
     let tinted = h.render();
     save(&tinted, "glass-ambient");
-    let glow = tinted.get_pixel(10 + 14 + 72 + 6, 64);
+    let glow = tinted.get_pixel(10 + 14 + 96 + 6, 64);
     assert!(glow[2] > glow[0] + 12, "glow should be blue: {glow:?}");
     let wash = tinted.get_pixel(300, 120);
     assert!(wash[2] > wash[0] + 6, "tint should be blue: {wash:?}");
@@ -739,7 +851,7 @@ fn set_glass_alpha_for(h: &Harness, backdrop: [u8; 3]) {
         tertiary: rgb(tokens.text_tertiary),
     };
     let backdrop = Rgb::new(backdrop[0], backdrop[1], backdrop[2]);
-    let aa = crate::appearance::contrast_targets(50);
+    let aa = crate::appearance::contrast_targets(crate::settings::AppearanceMode::LiquidGlass, 50);
     h.theme().set_glass_alpha(legible_alpha(&glass, backdrop, crate::appearance::CLEAR_ALPHA, aa));
 }
 
@@ -1634,4 +1746,173 @@ fn quick_control_popups_render() {
     // Collapsing returns to the dashboard.
     h.state().set_page(Page::Dashboard);
     assert_eq!(h.render_on(wallpaper), dashboard);
+}
+
+#[test]
+fn sound_sliders_follow_pointer_drags() {
+    use crate::ui::{ControlsActions, ControlsState, SessionRow};
+    use slint::platform::WindowEvent;
+    let h = Harness::new(1.0);
+    h.state().set_expanded(true);
+    fill_controls(&h);
+    let state = h.island.global::<ControlsState>();
+    state.set_input_available(true);
+    state.set_input_volume(0.5);
+    state.set_sessions(slint::ModelRc::new(slint::VecModel::from(vec![SessionRow {
+        id: "test-player".into(),
+        name: "Player".into(),
+        volume: 0.5,
+        ..Default::default()
+    }])));
+    h.state().set_page(Page::Sound);
+    save(&h.render(), "sound-slider-interaction");
+    let input_changes = Rc::new(std::cell::RefCell::new(Vec::<f32>::new()));
+    let session_changes = Rc::new(std::cell::RefCell::new(Vec::<f32>::new()));
+    let changes = input_changes.clone();
+    h.island.global::<ControlsActions>().on_set_input_volume(move |value| changes.borrow_mut().push(value));
+    let changes = session_changes.clone();
+    h.island.global::<ControlsActions>().on_set_session_volume(move |id, value| {
+        assert_eq!(id, "test-player");
+        changes.borrow_mut().push(value);
+    });
+    let drag = |from: LogicalPosition, to: LogicalPosition, stale_input: bool| {
+        h.window.dispatch_event(WindowEvent::PointerMoved { position: from });
+        h.window.dispatch_event(WindowEvent::PointerPressed { position: from, button: PointerEventButton::Left });
+        for step in 1..=10 {
+            let t = step as f32 / 10.0;
+            h.window.dispatch_event(WindowEvent::PointerMoved {
+                position: LogicalPosition::new(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t),
+            });
+        }
+        if stale_input {
+            state.set_input_volume(0.1);
+        }
+        h.window.dispatch_event(WindowEvent::PointerReleased { position: to, button: PointerEventButton::Left });
+    };
+    let x = h.island.get_body_x();
+    let y = h.island.get_body_y();
+    drag(LogicalPosition::new(x + 285.0, y + 128.0), LogicalPosition::new(x + 375.0, y + 128.0), true);
+    assert!(input_changes.borrow().len() > 5, "input should receive the entire drag: {:?}", input_changes.borrow());
+    let input = input_changes.borrow();
+    assert!(input.last().unwrap() - input.first().unwrap() > 0.4);
+    let final_input = *input.last().unwrap();
+    drop(input);
+    key(&h, &char::from(slint::platform::Key::RightArrow).to_string());
+    assert!(
+        input_changes.borrow().last().unwrap() >= &final_input,
+        "stale hardware reading must not reset the dragged knob"
+    );
+    drag(LogicalPosition::new(x + 205.0, y + 218.0), LogicalPosition::new(x + 350.0, y + 218.0), false);
+    assert!(
+        session_changes.borrow().len() > 5,
+        "app mixer should receive the entire drag: {:?}",
+        session_changes.borrow()
+    );
+    let sessions = session_changes.borrow();
+    assert!(sessions.last().unwrap() - sessions.first().unwrap() > 0.5);
+}
+
+#[test]
+fn sound_mixer_pages_without_scrolling_and_clamps_after_disconnect() {
+    use crate::ui::{ControlsActions, ControlsState, SessionRow};
+    use slint::platform::WindowEvent;
+    let h = Harness::new(1.0);
+    h.state().set_expanded(true);
+    fill_controls(&h);
+    let state = h.island.global::<ControlsState>();
+    state.set_input_available(true);
+    state.set_input_volume(0.5);
+    let names = |name: &str| slint::ModelRc::new(slint::VecModel::from(vec![slint::SharedString::from(name)]));
+    state.set_output_names(names("Speakers (Realtek High Definition Audio Device)"));
+    state.set_output_index(0);
+    state.set_input_names(names("Microphone Array (Intel Smart Sound Technology)"));
+    state.set_input_index(0);
+    let sessions = (0..9)
+        .map(|index| SessionRow {
+            id: format!("app-{index}").into(),
+            name: format!("App {index}").into(),
+            volume: 0.5,
+            ..Default::default()
+        })
+        .collect::<Vec<_>>();
+    state.set_sessions(slint::ModelRc::new(slint::VecModel::from(sessions.clone())));
+    h.state().set_page(Page::Sound);
+    save(&h.render(), "sound-paged-long-device-names");
+    let changed = Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+    let seen = changed.clone();
+    h.island.global::<ControlsActions>().on_set_session_volume(move |id, _| seen.borrow_mut().push(id.to_string()));
+    let click = |x: f32, y: f32| {
+        let position = LogicalPosition::new(h.island.get_body_x() + x, h.island.get_body_y() + y);
+        h.window.dispatch_event(WindowEvent::PointerMoved { position });
+        h.window.dispatch_event(WindowEvent::PointerPressed { position, button: PointerEventButton::Left });
+        h.window.dispatch_event(WindowEvent::PointerReleased { position, button: PointerEventButton::Left });
+    };
+    click(250.0, 218.0);
+    assert_eq!(changed.borrow().last().map(String::as_str), Some("app-0"));
+    click(431.0, 180.0);
+    save(&h.render(), "sound-mixer-page-two");
+    click(250.0, 218.0);
+    assert_eq!(changed.borrow().last().map(String::as_str), Some("app-4"));
+    click(431.0, 180.0);
+    h.render();
+    click(250.0, 218.0);
+    assert_eq!(changed.borrow().last().map(String::as_str), Some("app-8"));
+    let position = LogicalPosition::new(h.island.get_body_x() + 250.0, h.island.get_body_y() + 218.0);
+    h.window.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y: -300.0 });
+    click(250.0, 218.0);
+    assert_eq!(changed.borrow().last().map(String::as_str), Some("app-8"), "wheel must not scroll Sound content");
+    state.set_sessions(slint::ModelRc::new(slint::VecModel::from(vec![sessions[0].clone()])));
+    h.render();
+    click(250.0, 218.0);
+    assert_eq!(
+        changed.borrow().last().map(String::as_str),
+        Some("app-0"),
+        "removing devices must clamp the current app page"
+    );
+}
+
+#[test]
+fn sound_mixer_row_contents_share_vertical_center() {
+    use crate::ui::{ControlsState, SessionRow};
+    let h = Harness::new(1.0);
+    h.state().set_expanded(true);
+    fill_controls(&h);
+    let state = h.island.global::<ControlsState>();
+    state.set_input_available(true);
+    state.set_input_volume(0.5);
+    let mut pixels = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(24, 24);
+    for pixel in pixels.make_mut_slice() {
+        *pixel = slint::Rgba8Pixel::new(255, 0, 255, 255);
+    }
+    state.set_sessions(slint::ModelRc::new(slint::VecModel::from(vec![SessionRow {
+        id: "aligned".into(),
+        name: "Chrome".into(),
+        volume: 0.5,
+        icon: slint::Image::from_rgba8(pixels),
+        ..Default::default()
+    }])));
+    h.state().set_page(Page::Sound);
+    let image = h.render();
+    save(&image, "sound-aligned-row");
+    let x = h.island.get_body_x().round() as u32;
+    let y = h.island.get_body_y().round() as u32;
+    let center = |left: u32, right: u32, predicate: &dyn Fn(&Rgba<u8>) -> bool| {
+        let rows = (y + 195..y + 245)
+            .filter(|&row| (x + left..x + right).any(|column| predicate(image.get_pixel(column, row))))
+            .collect::<Vec<_>>();
+        assert!(!rows.is_empty(), "expected visible content between {left} and {right}");
+        (*rows.first().unwrap() + *rows.last().unwrap()) as f32 / 2.0
+    };
+    let white = |p: &Rgba<u8>| p[0] > 180 && p[1] > 180 && p[2] > 180;
+    let icon = center(14, 38, &|p| p[0] > 240 && p[1] < 10 && p[2] > 240);
+    let knob = center(278, 296, &white);
+    let label = center(46, 134, &white);
+    let mute = center(140, 164, &white);
+    let percent_box =
+        center(400, 443, &|p| p[0] > 20 && p[0] < 100 && p[0].abs_diff(p[1]) < 5 && p[1].abs_diff(p[2]) < 5);
+    for (name, actual) in
+        [("app icon", icon), ("app label", label), ("mute icon", mute), ("percent field", percent_box)]
+    {
+        assert!((actual - knob).abs() <= 3.0, "{name} center {actual} must match slider center {knob}");
+    }
 }

@@ -20,12 +20,38 @@ pub struct ClockText {
     pub date: String,
 }
 
+#[cfg(test)]
 pub fn now(h24: bool) -> ClockText {
+    now_formatted(h24, 0)
+}
+
+pub fn resolved_h24(settings: &crate::settings::Clock) -> bool {
+    match settings.time_format {
+        1 => false,
+        2 => true,
+        _ => uses_24_hour_clock(),
+    }
+}
+
+pub fn configured_now(settings: &crate::settings::Clock) -> ClockText {
+    now_formatted(resolved_h24(settings), settings.date_format)
+}
+
+fn format_date(year: u16, month: u16, day: u16, format: u8) -> String {
+    let name = MONTHS.get(month.saturating_sub(1) as usize).copied().unwrap_or_default();
+    match format {
+        1 => format!("{name} {day}"),
+        2 => format!("{year:04}-{month:02}-{day:02}"),
+        _ => format!("{day} {name}"),
+    }
+}
+
+fn now_formatted(h24: bool, date_format: u8) -> ClockText {
     let t = unsafe { GetLocalTime() };
     ClockText {
         time: format_time(t.wHour as u32, t.wMinute as u32, h24),
         weekday: WEEKDAYS.get(t.wDayOfWeek as usize).copied().unwrap_or_default().to_owned(),
-        date: format!("{} {}", t.wDay, MONTHS.get(t.wMonth as usize - 1).copied().unwrap_or_default()),
+        date: format_date(t.wYear, t.wMonth, t.wDay, date_format),
     }
 }
 
@@ -71,6 +97,20 @@ mod tests {
         assert_eq!(format_time(0, 5, false), "12:05 AM");
         assert_eq!(format_time(12, 0, false), "12:00 PM");
         assert_eq!(format_time(13, 30, false), "1:30 PM");
+    }
+
+    #[test]
+    fn chosen_time_format_overrides_the_windows_format() {
+        assert!(!resolved_h24(&crate::settings::Clock { time_format: 1, date_format: 0, ..Default::default() }));
+        assert!(resolved_h24(&crate::settings::Clock { time_format: 2, date_format: 0, ..Default::default() }));
+        assert_eq!(resolved_h24(&crate::settings::Clock::default()), uses_24_hour_clock());
+    }
+
+    #[test]
+    fn date_formats_distinguish_day_month_and_iso() {
+        assert_eq!(format_date(2026, 11, 7, 0), "7 Nov");
+        assert_eq!(format_date(2026, 11, 7, 1), "Nov 7");
+        assert_eq!(format_date(2026, 11, 7, 2), "2026-11-07");
     }
 
     #[test]

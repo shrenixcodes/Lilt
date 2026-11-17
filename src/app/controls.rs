@@ -148,6 +148,26 @@ impl App {
             app.send_control(Command::Bluetooth { address: address.to_string(), name: name.to_string(), connect });
         });
         let w = weak.clone();
+        actions.on_select_endpoint(move |id| {
+            if let Some(app) = w.upgrade() {
+                app.send_control(Command::SelectEndpoint(id.to_string()));
+            }
+        });
+        let w = weak.clone();
+        actions.on_set_input_volume(move |level| {
+            if let Some(app) = w.upgrade() {
+                app.island.global::<ControlsState>().set_input_volume(level);
+                app.send_control(Command::SetInputVolume(level));
+            }
+        });
+        let w = weak.clone();
+        actions.on_set_input_muted(move |muted| {
+            if let Some(app) = w.upgrade() {
+                app.island.global::<ControlsState>().set_input_muted(muted);
+                app.send_control(Command::SetInputMuted(muted));
+            }
+        });
+        let w = weak.clone();
         actions.on_set_volume(move |level| {
             let Some(app) = w.upgrade() else { return };
             app.island.global::<ControlsState>().set_volume(level);
@@ -260,6 +280,22 @@ impl App {
                 state.set_devices(ModelRc::new(VecModel::from(device_rows(&view))));
                 if open == Some(Panel::Bluetooth) {
                     state.set_loading(false);
+                }
+            }
+            Update::Endpoints(endpoints) => {
+                let strings = |values: Vec<String>| {
+                    ModelRc::new(VecModel::from(values.into_iter().map(SharedString::from).collect::<Vec<_>>()))
+                };
+                state.set_output_names(strings(endpoints.outputs.iter().map(|(_, name)| name.clone()).collect()));
+                state.set_output_ids(strings(endpoints.outputs.into_iter().map(|(id, _)| id).collect()));
+                state.set_output_index(endpoints.output_index);
+                state.set_input_names(strings(endpoints.inputs.iter().map(|(_, name)| name.clone()).collect()));
+                state.set_input_ids(strings(endpoints.inputs.into_iter().map(|(id, _)| id).collect()));
+                state.set_input_index(endpoints.input_index);
+                state.set_input_available(endpoints.input.is_some());
+                if let Some(input) = endpoints.input {
+                    state.set_input_volume(input.volume);
+                    state.set_input_muted(input.muted);
                 }
             }
             Update::Sound(output, sessions) => {

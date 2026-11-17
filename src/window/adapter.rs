@@ -47,6 +47,7 @@ pub enum Notice {
     Pointer(bool),
     /// The user finished dragging the window.
     MoveFinished,
+    CenterSnap(bool),
     ScaleChanged,
 }
 
@@ -67,6 +68,7 @@ pub struct Win32Window {
     tracking_mouse: Cell<bool>,
     last_pointer: Cell<LogicalPosition>,
     drag_top: Cell<Option<i32>>,
+    drag_origin: Cell<Option<super::placement::HorizontalDrag>>,
     notice: RefCell<Option<NoticeHandler>>,
     /// The live blur beneath the island (Liquid Glass).
     /// The glass backdrop: whether it is on, the desktop behind the window and how much
@@ -138,6 +140,7 @@ impl Win32Window {
             tracking_mouse: Cell::new(false),
             last_pointer: Cell::new(LogicalPosition::default()),
             drag_top: Cell::new(None),
+            drag_origin: Cell::new(None),
             notice: RefCell::new(None),
             glass: Cell::new(false),
             backdrop: RefCell::new(None),
@@ -449,10 +452,18 @@ impl Win32Window {
             let mut rect = RECT::default();
             let _ = GetWindowRect(hwnd, &mut rect);
             self.drag_top.set(Some(rect.top));
+            let mut pointer = POINT::default();
+            self.drag_origin.set(
+                GetCursorPos(&mut pointer).ok().map(|()| super::placement::HorizontalDrag::new(rect.left, pointer.x)),
+            );
             let _ = ReleaseCapture();
+            // Keep Slint feedback painting while Windows owns the modal move loop.
+            let _ = SetTimer(Some(hwnd), 0x4c49, 16, None);
             // Runs a modal loop until the mouse button is released.
             SendMessageW(hwnd, WM_SYSCOMMAND, Some(WPARAM((SC_MOVE | 2) as usize)), Some(LPARAM(0)));
+            let _ = KillTimer(Some(hwnd), 0x4c49);
             self.drag_top.set(None);
+            self.drag_origin.set(None);
         }
         // The release happened inside the system loop; tell Slint the press is over.
         let position = self.last_pointer.get();
@@ -647,17 +658,44 @@ impl Win32Window {
                 self.window.dispatch_event(WindowEvent::CloseRequested);
                 Some(LRESULT(0))
             }
+            WM_TIMER if wparam.0 == 0x4c49 && self.drag_top.get().is_some() => {
+                slint::platform::update_timers_and_animations();
+                self.render_if_needed();
+                Some(LRESULT(0))
+            }
             WM_MOVING => {
                 if let Some(top) = self.drag_top.get() {
                     let rect = unsafe { &mut *(lparam.0 as *mut RECT) };
                     let height = rect.bottom - rect.top;
                     rect.top = top;
                     rect.bottom = top + height;
+                    let monitors = super::placement::monitors();
+                    let width = rect.right - rect.left;
+                    let mut pointer = POINT::default();
+                    let proposed = self
+                        .drag_origin
+                        .get()
+                        .filter(|_| unsafe { GetCursorPos(&mut pointer) }.is_ok())
+                        .map(|origin| origin.left_at(pointer.x));
+                    if let Some(left) = proposed {
+                        rect.left = left;
+                        rect.right = left + width;
+                    }
+                    let snapped = proposed.and_then(|left| {
+                        super::placement::monitor_at(&monitors, left + width / 2, top + 1)
+                            .and_then(|monitor| super::placement::snap_center(monitor, left, width))
+                    });
+                    if let Some(left) = snapped {
+                        rect.left = left;
+                        rect.right = left + width;
+                    }
+                    self.notify(Notice::CenterSnap(snapped.is_some()));
                     return Some(LRESULT(1));
                 }
                 None
             }
             WM_EXITSIZEMOVE if self.kind == WindowKind::Island => {
+                self.notify(Notice::CenterSnap(false));
                 self.notify(Notice::MoveFinished);
                 Some(LRESULT(0))
             }

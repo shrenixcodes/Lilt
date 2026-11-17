@@ -15,9 +15,10 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{
-    AudioSessionStateExpired, DEVICE_STATE, DEVICE_STATEMASK_ALL, IAudioSessionControl, IAudioSessionControl2,
-    IAudioSessionManager2, IConnector, IDeviceTopology, IMMDevice, IMMDeviceEnumerator, IPart, ISimpleAudioVolume,
-    MMDeviceEnumerator, eConsole, eRender,
+    AudioSessionStateExpired, DEVICE_STATE, DEVICE_STATE_ACTIVE, DEVICE_STATEMASK_ALL, EDataFlow, ERole,
+    IAudioSessionControl, IAudioSessionControl2, IAudioSessionManager2, IConnector, IDeviceTopology, IMMDevice,
+    IMMDeviceEnumerator, IPart, ISimpleAudioVolume, MMDeviceEnumerator, eCapture, eCommunications, eConsole,
+    eMultimedia, eRender,
 };
 use windows::Win32::Media::KernelStreaming::{
     IKsControl, KSIDENTIFIER, KSIDENTIFIER_0, KSIDENTIFIER_0_0, KSPROPERTY_ONESHOT_DISCONNECT,
@@ -81,6 +82,96 @@ pub fn set_volume(level: f32) -> bool {
 pub fn set_muted(muted: bool) -> bool {
     let Some((_, volume)) = default_volume() else { return false };
     unsafe { volume.SetMute(muted, std::ptr::null()) }.is_ok()
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Endpoints {
+    pub outputs: Vec<(String, String)>,
+    pub inputs: Vec<(String, String)>,
+    pub output_index: i32,
+    pub input_index: i32,
+    pub input: Option<Output>,
+}
+
+fn device_id(device: &IMMDevice) -> Option<String> {
+    let id = unsafe { device.GetId() }.ok()?;
+    let text = unsafe { id.to_string() }.ok();
+    unsafe { CoTaskMemFree(Some(id.0.cast())) };
+    text
+}
+
+fn endpoint_list(flow: EDataFlow) -> (Vec<(String, String)>, i32) {
+    let Some(enumerator) = enumerator() else { return (Vec::new(), -1) };
+    let selected = unsafe { enumerator.GetDefaultAudioEndpoint(flow, eConsole) }.ok().and_then(|d| device_id(&d));
+    let Ok(devices) = (unsafe { enumerator.EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE) }) else {
+        return (Vec::new(), -1);
+    };
+    let mut rows = Vec::new();
+    for index in 0..unsafe { devices.GetCount() }.unwrap_or(0) {
+        if let Ok(device) = unsafe { devices.Item(index) }
+            && let Some(id) = device_id(&device)
+        {
+            rows.push((id, friendly_name(&device)));
+        }
+    }
+    let index = rows.iter().position(|(id, _)| Some(id) == selected.as_ref()).map_or(-1, |i| i as i32);
+    (rows, index)
+}
+
+fn input_volume() -> Option<(IMMDevice, IAudioEndpointVolume)> {
+    let device = unsafe { enumerator()?.GetDefaultAudioEndpoint(eCapture, eConsole) }.ok()?;
+    let volume = unsafe { device.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None) }.ok()?;
+    Some((device, volume))
+}
+
+pub fn endpoints() -> Endpoints {
+    let (outputs, output_index) = endpoint_list(eRender);
+    let (inputs, input_index) = endpoint_list(eCapture);
+    let input = input_volume().and_then(|(device, volume)| unsafe {
+        Some(Output {
+            name: friendly_name(&device),
+            volume: volume.GetMasterVolumeLevelScalar().ok()?,
+            muted: volume.GetMute().ok()?.as_bool(),
+        })
+    });
+    Endpoints { outputs, inputs, output_index, input_index, input }
+}
+
+pub fn set_input_volume(level: f32) -> bool {
+    let Some((_, volume)) = input_volume() else { return false };
+    unsafe { volume.SetMasterVolumeLevelScalar(level.clamp(0.0, 1.0), std::ptr::null()) }.is_ok()
+}
+
+pub fn set_input_muted(muted: bool) -> bool {
+    let Some((_, volume)) = input_volume() else { return false };
+    unsafe { volume.SetMute(muted, std::ptr::null()) }.is_ok()
+}
+
+#[repr(transparent)]
+#[derive(Clone)]
+struct IPolicyConfig(windows::core::IUnknown);
+unsafe impl Interface for IPolicyConfig {
+    type Vtable = IPolicyConfig_Vtbl;
+    const IID: GUID = GUID::from_u128(0xf8679f50_850a_41cf_9c72_430f290290c8);
+}
+#[repr(C)]
+struct IPolicyConfig_Vtbl {
+    base: windows::core::IUnknown_Vtbl,
+    // The ten audio format, processing period, share mode and property methods precede SetDefaultEndpoint.
+    preceding_methods: [usize; 10],
+    set_default_endpoint:
+        unsafe extern "system" fn(*mut core::ffi::c_void, windows::core::PCWSTR, ERole) -> windows::core::HRESULT,
+}
+
+pub fn select_endpoint(id: &str) -> bool {
+    // Windows exposes default-device selection through PolicyConfig rather than IMMDeviceEnumerator.
+    let policy: windows::core::Result<IPolicyConfig> =
+        unsafe { CoCreateInstance(&GUID::from_u128(0x870af99c_171d_4f9e_af0d_e63df40c2bc9), None, CLSCTX_ALL) };
+    let Ok(policy) = policy else { return false };
+    let id = HSTRING::from(id);
+    [eConsole, eMultimedia, eCommunications].into_iter().all(|role| unsafe {
+        (policy.vtable().set_default_endpoint)(policy.as_raw(), windows::core::PCWSTR(id.as_ptr()), role).is_ok()
+    })
 }
 
 /// One application-level audio session on the default output, as the mixer shows it.

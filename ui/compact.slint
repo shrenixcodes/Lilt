@@ -1,3 +1,4 @@
+import { MarqueeText } from "components/marquee.slint";
 import { Theme } from "theme.slint";
 import { MediaAvailability } from "types.slint";
 import { AppState, AppActions } from "state.slint";
@@ -62,25 +63,20 @@ export component CompactView inherits Rectangle {
         opacity: root.media-mode ? 0 : 1;
         animate opacity { duration: Theme.fade-duration; }
 
-        HorizontalLayout {
-            padding-left: 17px;
-            padding-right: 17px;
-            alignment: space-between;
-
-            Text {
-                vertical-alignment: center;
-                text: AppState.weekday + " " + AppState.date;
-                color: Theme.text-secondary;
-                font-size: Theme.font-sm;
-            }
-
-            Text {
-                vertical-alignment: center;
-                text: AppState.time;
-                color: Theme.text;
-                font-size: Theme.font-md;
-                font-weight: 600;
-            }
+        MarqueeText {
+            live: !root.media-mode && !AppState.expanded;
+            centered: true;
+            x: 12px;
+            width: parent.width - 24px;
+            height: parent.height;
+            text: AppState.idle-index == 0 ? AppState.time
+                : AppState.idle-index == 1 ? AppState.weekday + " " + AppState.date
+                : AppState.weather;
+            tint: Theme.text;
+            font-size: Theme.font-md;
+            font-weight: 600;
+            opacity: AppState.idle-visible ? 1 : 0;
+            animate opacity { duration: Theme.fade-duration; }
         }
     }
 
@@ -99,13 +95,11 @@ export component CompactView inherits Rectangle {
             ArtworkTile { size: 24px; }
         }
 
-        Text {
-            horizontal-stretch: 1;
-            vertical-alignment: center;
+        MarqueeText {
+            live: !AppState.expanded && !AppState.activity;
             text: AppState.media.title;
-            color: Theme.text-secondary;
+            tint: Theme.text-secondary;
             font-size: Theme.font-sm;
-            overflow: elide;
         }
 
         Rectangle {
@@ -184,19 +178,19 @@ export component ActivityView inherits Rectangle {
                 font-weight: 600;
             }
 
-            Text {
+            MarqueeText {
+                live: AppState.activity && !AppState.expanded;
                 text: AppState.media.title;
-                color: Theme.text;
+                tint: Theme.text;
                 font-size: Theme.font-md;
                 font-weight: 600;
-                overflow: elide;
             }
 
-            Text {
+            MarqueeText {
+                live: AppState.activity && !AppState.expanded;
                 text: AppState.media.artist;
-                color: Theme.text-secondary;
+                tint: Theme.text-secondary;
                 font-size: Theme.font-sm;
-                overflow: elide;
             }
         }
     }

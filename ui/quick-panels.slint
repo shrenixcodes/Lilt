@@ -1,4 +1,4 @@
-import { ListView } from "std-widgets.slint";
+import { ListView, ComboBox } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState, ControlsState, ControlsActions } from "state.slint";
 import { DeviceRow, NetworkRow, Page, SessionRow } from "types.slint";
@@ -50,7 +50,7 @@ component Level inherits Rectangle {
     property <float> shown: root.value;
     // Dragging sets `shown` directly; later readings from Windows move it again.
     changed value => {
-        root.shown = root.value;
+        if !touch.pressed { root.shown = root.value; }
     }
     height: 24px;
     accessible-role: slider;
@@ -95,7 +95,11 @@ component Level inherits Rectangle {
         pointer-event(event) => {
             if event.kind == PointerEventKind.down {
                 keys.focus();
+                ControlsActions.busy(true);
                 root.set(self.mouse-x / root.width);
+            }
+            if event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel {
+                ControlsActions.busy(false);
             }
         }
         moved => {
@@ -242,6 +246,7 @@ component PercentInput inherits Rectangle {
         vertical-alignment: center;
         color: Theme.text;
         font-size: 11px;
+        font-weight: 700;
         accessible-label: root.label + " percent";
         changed has-focus => {
             if !self.has-focus { root.commit(); }
@@ -257,16 +262,38 @@ component LevelRow inherits HorizontalLayout {
     in property <float> value;
     in property <bool> dimmed;
     in property <bool> editable-percent;
+    // An optional raster icon that spins with the level (the sun for brightness). When set
+    // it replaces the vector icon, since the software renderer cannot rotate a path.
+    in property <image> icon-source;
+    in property <angle> icon-spin: 0deg;
     callback icon-clicked();
     callback changed(float);
     spacing: 10px;
     height: 36px;
 
-    IconButton {
-        icon: root.icon;
-        tooltip: root.icon-label;
-        tint: root.dimmed ? Theme.text-tertiary : Theme.text;
-        clicked => { root.icon-clicked(); }
+    Rectangle {
+        width: 30px;
+        height: 30px;
+
+        if root.icon-source.width == 0 : IconButton {
+            width: parent.width;
+            height: parent.height;
+            icon: root.icon;
+            tooltip: root.icon-label;
+            tint: root.dimmed ? Theme.text-tertiary : Theme.text;
+            clicked => { root.icon-clicked(); }
+        }
+
+        if root.icon-source.width > 0 : Image {
+            width: 16px;
+            height: 16px;
+            source: root.icon-source;
+            image-fit: contain;
+            colorize: root.dimmed ? Theme.text-tertiary : Theme.text;
+            transform-rotation: root.icon-spin;
+            accessible-role: image;
+            accessible-label: root.icon-label;
+        }
     }
 
     VerticalLayout {
@@ -282,149 +309,67 @@ component LevelRow inherits HorizontalLayout {
 
     if !root.editable-percent : Text {
         width: 40px;
+        height: root.height;
         horizontal-alignment: right;
         vertical-alignment: center;
         text: round(root.value * 100) + " %";
         font-size: Theme.font-sm;
         color: Theme.text-secondary;
     }
-    if root.editable-percent : PercentInput {
-        label: root.icon-label;
-        value: root.value;
-        changed(v) => { root.changed(v); }
+    if root.editable-percent : Rectangle {
+        width: 48px;
+        height: root.height;
+        background: transparent;
+        PercentInput {
+            y: (parent.height - self.height) / 2;
+            label: root.icon-label;
+            value: root.value;
+            changed(v) => { root.changed(v); }
+        }
     }
 }
 
-component SessionColumn inherits VerticalLayout {
+component SessionControl inherits HorizontalLayout {
     in property <SessionRow> session;
-    width: 62px;
-    spacing: 3px;
-    alignment: center;
+    height: 42px;
+    spacing: 8px;
     accessible-role: groupbox;
     accessible-label: root.session.name + " volume";
-    changed session => { slider.shown = root.session.volume; }
 
+    Rectangle {
+        width: 24px;
+        height: root.height;
+        background: transparent;
+        Image {
+            y: (parent.height - self.height) / 2;
+            width: parent.width;
+            height: 24px;
+            source: root.session.icon;
+            image-fit: contain;
+        }
+    }
     Text {
-        width: parent.width;
-        height: 16px;
+        width: 88px;
+        height: root.height;
         text: root.session.name;
-        font-size: 10.5px;
         font-weight: 700;
         color: Theme.text;
+        font-size: Theme.font-sm;
         overflow: elide;
-        horizontal-alignment: center;
+        vertical-alignment: center;
     }
-
-    HorizontalLayout {
-        width: parent.width;
-        height: 24px;
+    VerticalLayout {
+        height: root.height;
+        horizontal-stretch: 1;
         alignment: center;
-        Rectangle {
-            width: 24px;
-            height: 24px;
-            background: transparent;
-            Image {
-                width: parent.width;
-                height: parent.height;
-                source: root.session.icon;
-                image-fit: contain;
-            }
-        }
-    }
-
-    HorizontalLayout {
-        width: parent.width;
-        height: 86px;
-        alignment: center;
-        slider := Rectangle {
-        width: 24px;
-        height: 86px;
-        property <float> shown: root.session.volume;
-        accessible-role: AccessibleRole.slider;
-        accessible-label: root.session.name + " volume";
-        accessible-value: round(self.shown * 100) + " %";
-        accessible-value-minimum: 0;
-        accessible-value-maximum: 100;
-
-        function set(v: float) {
-            self.shown = clamp(v, 0, 1);
-            ControlsActions.set-session-volume(root.session.id, self.shown);
-        }
-
-        Rectangle {
-            x: (parent.width - self.width) / 2;
-            width: 6px;
-            height: parent.height;
-            border-radius: 3px;
-            background: Theme.track;
-            Rectangle {
-                y: parent.height * (1 - clamp(slider.shown, 0, 1));
-                width: parent.width;
-                height: parent.height - self.y;
-                border-radius: 3px;
-                background: Theme.accent;
-            }
-        }
-        Rectangle {
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) * (1 - clamp(slider.shown, 0, 1));
-            width: 16px;
-            height: 16px;
-            border-radius: 8px;
-            background: Theme.text;
-            border-width: keys.has-focus ? 2px : 0px;
-            border-color: Theme.accent;
-        }
-        TouchArea {
-            mouse-cursor: pointer;
-            pointer-event(event) => {
-                if event.kind == PointerEventKind.down {
-                    keys.focus();
-                    slider.set(1 - self.mouse-y / slider.height);
-                }
-            }
-            moved => {
-                if self.pressed { slider.set(1 - self.mouse-y / slider.height); }
-            }
-        }
-        keys := FocusScope {
-            width: 0;
-            height: 0;
-            key-pressed(event) => {
-                if event.text == Key.UpArrow || event.text == Key.RightArrow {
-                    slider.set(slider.shown + 0.05);
-                    return accept;
-                }
-                if event.text == Key.DownArrow || event.text == Key.LeftArrow {
-                    slider.set(slider.shown - 0.05);
-                    return accept;
-                }
-                reject
-            }
-        }
-        }
-    }
-
-    HorizontalLayout {
-        width: parent.width;
-        height: 23px;
-        alignment: center;
-        PercentInput {
-            label: root.session.name + " volume";
-            value: root.session.volume;
-            changed(v) => { ControlsActions.set-session-volume(root.session.id, v); }
-        }
-    }
-
-    HorizontalLayout {
-        width: parent.width;
-        height: 30px;
-        alignment: center;
-        IconButton {
+        LevelRow {
             icon: root.session.muted ? Icons.volume-off : Icons.volume;
-            tooltip: root.session.muted ? ("Unmute " + root.session.name) : ("Mute " + root.session.name);
-            tint: root.session.muted ? Theme.text-tertiary : Theme.text;
-            clicked => { ControlsActions.set-session-muted(root.session.id, !root.session.muted); }
+            icon-label: (root.session.muted ? "Unmute " : "Mute ") + root.session.name;
+            value: root.session.volume;
+            dimmed: root.session.muted;
+            editable-percent: true;
+            icon-clicked => { ControlsActions.set-session-muted(root.session.id, !root.session.muted); }
+            changed(v) => { ControlsActions.set-session-volume(root.session.id, v); }
         }
     }
 }
@@ -433,64 +378,116 @@ export component SoundPanel inherits Panel {
     title: "Sound";
     settings-label: "Sound settings";
     kind: 0;
+    property <int> mixer-page: 0;
+    property <int> page-count: max(1, ceil(ControlsState.sessions.length / 4.0));
+    property <int> current-page: min(root.mixer-page, root.page-count - 1);
 
     init => { ControlsActions.opened(0); }
 
-    if !ControlsState.loading && !ControlsState.sound-available : Centered {
-        text: "No audio output is available.";
-    }
-
-    if ControlsState.sound-available : VerticalLayout {
+    VerticalLayout {
         vertical-stretch: 1;
-        spacing: 6px;
+        spacing: 8px;
+        alignment: start;
 
-        Text {
-            text: ControlsState.output-name;
-            font-size: Theme.font-sm;
-            color: Theme.text-secondary;
-            overflow: elide;
-        }
-
-        LevelRow {
-            icon: ControlsState.muted ? Icons.volume-off : Icons.volume;
-            icon-label: ControlsState.muted ? "Unmute" : "Mute";
-            value: ControlsState.volume;
-            dimmed: ControlsState.muted;
-            editable-percent: true;
-            icon-clicked => { ControlsActions.set-muted(!ControlsState.muted); }
-            changed(v) => { ControlsActions.set-volume(v); }
-        }
-
-        if ControlsState.sessions.length > 0 : Rectangle {
-            height: 1px;
-            background: Theme.border;
-        }
-
-        if ControlsState.sessions.length > 0 : Text {
-            text: "App mixer";
-            font-size: 10.5px;
-            color: Theme.text-tertiary;
-            font-weight: 600;
-        }
-
-        if ControlsState.sessions.length > 0 : Flickable {
-            vertical-stretch: 1;
-            HorizontalLayout {
+        HorizontalLayout {
+            spacing: 14px;
+            VerticalLayout {
+                width: (root.width - 2 * Theme.padding - 14px) / 2;
+                horizontal-stretch: 1;
                 spacing: 6px;
-                for session in ControlsState.sessions : SessionColumn {
-                    session: session;
+                Text { text: "Output"; font-weight: 700; font-size: Theme.font-sm; color: Theme.text-secondary; }
+                ComboBox {
+                    model: ControlsState.output-names;
+                    current-index: ControlsState.output-index;
+                    enabled: ControlsState.output-names.length > 0;
+                    selected(value) => { if self.current-index >= 0 { ControlsActions.select-endpoint(ControlsState.output-ids[self.current-index]); } }
+                }
+                if ControlsState.sound-available : LevelRow {
+                    icon: ControlsState.muted ? Icons.volume-off : Icons.volume;
+                    icon-label: ControlsState.muted ? "Unmute output" : "Mute output";
+                    value: ControlsState.volume;
+                    dimmed: ControlsState.muted;
+                    editable-percent: true;
+                    icon-clicked => { ControlsActions.set-muted(!ControlsState.muted); }
+                    changed(v) => { ControlsActions.set-volume(v); }
+                }
+                if !ControlsState.sound-available : Text {
+                    text: "No audio output available";
+                    color: Theme.text-tertiary;
+                    font-size: Theme.font-sm;
+                }
+            }
+            VerticalLayout {
+                width: (root.width - 2 * Theme.padding - 14px) / 2;
+                horizontal-stretch: 1;
+                spacing: 6px;
+                Text { text: "Input"; font-weight: 700; font-size: Theme.font-sm; color: Theme.text-secondary; }
+                ComboBox {
+                    model: ControlsState.input-names;
+                    current-index: ControlsState.input-index;
+                    enabled: ControlsState.input-names.length > 0;
+                    selected(value) => { if self.current-index >= 0 { ControlsActions.select-endpoint(ControlsState.input-ids[self.current-index]); } }
+                }
+                if ControlsState.input-available : LevelRow {
+                    icon: ControlsState.input-muted ? Icons.microphone-off : Icons.microphone;
+                    icon-label: ControlsState.input-muted ? "Unmute microphone" : "Mute microphone";
+                    value: ControlsState.input-volume;
+                    dimmed: ControlsState.input-muted;
+                    editable-percent: true;
+                    icon-clicked => { ControlsActions.set-input-muted(!ControlsState.input-muted); }
+                    changed(v) => { ControlsActions.set-input-volume(v); }
+                }
+                if !ControlsState.input-available : Text {
+                    text: "No microphone available";
+                    color: Theme.text-tertiary;
+                    font-size: Theme.font-sm;
                 }
             }
         }
 
+        Rectangle { height: 1px; background: Theme.border; }
+        HorizontalLayout {
+            height: 30px;
+            spacing: 8px;
+            Text {
+                horizontal-stretch: 1;
+                text: "App mixer";
+                font-weight: 700;
+                font-size: Theme.font-sm;
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+            }
+            if root.page-count > 1 : Text {
+                text: (root.current-page + 1) + " / " + root.page-count;
+                font-size: Theme.font-sm;
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+            }
+            if root.page-count > 1 : IconButton {
+                icon: Icons.chevron-left;
+                tooltip: "Previous apps";
+                enabled: root.current-page > 0;
+                clicked => { root.mixer-page = root.current-page - 1; }
+            }
+            if root.page-count > 1 : IconButton {
+                icon: Icons.chevron-right;
+                tooltip: "Next apps";
+                enabled: root.current-page < root.page-count - 1;
+                clicked => { root.mixer-page = root.current-page + 1; }
+            }
+        }
+        for row in [0, 1, 2, 3] : VerticalLayout {
+            if root.current-page * 4 + row < ControlsState.sessions.length : SessionControl {
+                session: ControlsState.sessions[root.current-page * 4 + row];
+            }
+        }
         if ControlsState.sessions.length == 0 : Text {
-            vertical-stretch: 1;
             text: "Play audio in any app and it appears here with its own volume.";
-            font-size: 10.5px;
+            font-size: Theme.font-sm;
             color: Theme.text-tertiary;
             wrap: word-wrap;
-            vertical-alignment: center;
         }
+        Rectangle { vertical-stretch: 1; background: transparent; }
     }
 }
 
@@ -510,9 +507,11 @@ export component BrightnessPanel inherits Panel {
         alignment: center;
 
         LevelRow {
-            icon: Icons.sun;
             icon-label: "Brightness";
             value: ControlsState.brightness;
+            // The sun turns as the brightness is dragged.
+            icon-source: @image-url("../assets/icons/sun.png");
+            icon-spin: ControlsState.brightness * 180deg;
             changed(v) => { ControlsActions.set-brightness(v); }
         }
     }

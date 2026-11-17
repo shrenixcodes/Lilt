@@ -107,6 +107,28 @@ pub fn island_origin(monitor: &Monitor, size: (i32, i32), offset_x: i32, top_mar
     (x, y)
 }
 
+#[derive(Clone, Copy)]
+pub struct HorizontalDrag {
+    left: i32,
+    pointer_x: i32,
+}
+
+impl HorizontalDrag {
+    pub fn new(left: i32, pointer_x: i32) -> Self {
+        Self { left, pointer_x }
+    }
+
+    pub fn left_at(self, pointer_x: i32) -> i32 {
+        self.left.saturating_add(pointer_x.saturating_sub(self.pointer_x))
+    }
+}
+
+/// A small magnet around the work area's horizontal center, in physical pixels.
+pub fn snap_center(monitor: &Monitor, left: i32, width: i32) -> Option<i32> {
+    let centered = monitor.work.left + monitor.work.width() / 2 - width / 2;
+    ((left - centered).abs() <= (24.0 * monitor.scale).round() as i32).then_some(centered)
+}
+
 /// Inverse of [`island_origin`] for the horizontal axis: the logical offset of a window
 /// whose left edge is at `left`.
 pub fn offset_for(monitor: &Monitor, left: i32, width: i32) -> i32 {
@@ -132,6 +154,29 @@ mod tests {
             scale,
             primary,
         }
+    }
+
+    #[test]
+    fn slow_drags_escape_center_in_both_directions() {
+        let m = monitor(0, 1920, 1.0, true, 0);
+        for direction in [-1, 1] {
+            let drag = HorizontalDrag::new(730, 960);
+            let mut left = 730;
+            for distance in 1..=60 {
+                let proposed = drag.left_at(960 + direction * distance);
+                left = snap_center(&m, proposed, 460).unwrap_or(proposed);
+            }
+            assert_eq!(left, 730 + direction * 60, "small pointer deltas must accumulate past the snap zone");
+        }
+    }
+
+    #[test]
+    fn center_snap_is_scaled_and_can_be_escaped() {
+        let m = monitor(-1920, 1920, 1.5, false, 0);
+        let center = -960 - 690 / 2;
+        assert_eq!(snap_center(&m, center + 35, 690), Some(center));
+        assert_eq!(snap_center(&m, center - 35, 690), Some(center));
+        assert_eq!(snap_center(&m, center + 37, 690), None);
     }
 
     #[test]

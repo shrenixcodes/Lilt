@@ -1,6 +1,6 @@
 # Architecture
 
-Lilt is a single Windows process with one UI thread and one worker thread. The UI is
+Lilt is a single Windows process with one UI thread and dedicated background workers. The UI is
 written in [Slint](https://slint.dev) and drawn by Slint's software renderer into memory
 that Lilt presents with plain Win32 calls; native features are reached through
 [`windows-rs`](https://github.com/microsoft/windows-rs). The reasoning behind these
@@ -47,7 +47,13 @@ flowchart LR
 **UI thread.** Runs the message loop, every Slint timer, rendering, the system monitor,
 calendar parsing and settings. It sleeps in `MsgWaitForMultipleObjectsEx` until input
 arrives, a timer is due, another thread posts work, or an animation needs its next
-frame. Nothing ticks while the island is idle.
+frame. The compact idle carousel schedules one-shot transitions; it stops cycling
+when disabled, expanded, hidden or replaced by active media.
+
+**Weather requests.** `src/app/idle.rs` runs place search and current-weather HTTP
+requests on short-lived threads with 12-second timeouts and bounded response reads.
+Results return to the UI event loop. Search request IDs and selected-location checks
+reject stale results. A 20-minute UI timer refreshes weather for a selected place.
 
 **Media thread.** Owns the Global System Media Transport Controls session manager.
 WinRT raises change events on thread-pool threads; their handlers only send a message

@@ -65,4 +65,6 @@ Nothing is published automatically: the workflow only creates drafts.
 Builds are currently unsigned, so Windows SmartScreen may show a warning the first
 time the installer runs. Signing can be added to the release workflow with a
 certificate stored as an encrypted repository secret; certificates and keys must never
-be committed. Lilt has no auto-updater, so no update signing keys exist.
+be committed. Lilt checks GitHub Releases for updates and verifies the downloaded installer against
+the published SHA-256 checksum. This integrity check does not provide publisher
+authentication; installers are currently unsigned.

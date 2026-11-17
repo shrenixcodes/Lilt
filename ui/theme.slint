@@ -187,13 +187,13 @@ export global Theme {
         card: #ffffff0a,
         card-hover: #ffffff12,
         card-border: #ffffff1a,
-        // Smoked Glass: Instrument Serif, editorial and understated.
-        display-font: "Instrument Serif",
-        display-weight: 400,
+        // Smoked Glass: Newsreader italic, an editorial masthead.
+        display-font: "Newsreader",
+        display-weight: 500,
         display-scale: 1.3,
-        title-font: "Instrument Serif",
-        title-weight: 400,
-        title-scale: 1.25,
+        title-font: "Newsreader",
+        title-weight: 500,
+        title-scale: 1.2,
     };
 
     // How opaque the glass tints are over the live blur, 0..1. The application sets them
@@ -203,6 +203,12 @@ export global Theme {
     in-out property <float> glass-alpha: 0.5;
     in-out property <float> smoked-alpha: 0.84;
 
+    // The transparency slider, 0 (heaviest blur) .. 1 (clearest), set by the application.
+    // The lit edge tracks it: brighter and more defined as the glass clears, softer as it
+    // frosts, centred on the as-designed look at 0.5.
+    in-out property <float> glass-transparency: 0.5;
+    out property <float> rim-strength: clamp(0.4 + glass-transparency * 1.2, 0.4, 1.4);
+
     out property <AppearanceTokens> liquid-glass: {
         // Without a blur, sharp content would show through, so the frosted surface stays
         // dense; it is cooler and lighter than Smoked Glass.
@@ -210,21 +216,21 @@ export global Theme {
         surface-hover: #20232eed,
         blurred-surface: #10131c.with-alpha(glass-alpha),
         blurred-surface-hover: #10131c.with-alpha(min(1, glass-alpha + 0.04)),
-        tile: #ffffff12,
-        tile-hover: #ffffff1c,
+        tile: #ffffff0d,
+        tile-hover: #ffffff18,
         control-hover: #ffffff1f,
         control-pressed: #ffffff12,
-        border: #ffffff29,
+        border: #ffffff33,
         track: #ffffff2e,
-        shadow-near: #0000002e,
-        shadow-far: #00000014,
+        shadow-near: #00000028,
+        shadow-far: #00000010,
         reflections: true,
-        rim: #ffffff73,
-        lower-rim: #ffffff2b,
-        sheen: #ffffff1f,
+        rim: #ffffff8c,
+        lower-rim: #ffffff36,
+        sheen: #ffffff24,
         text: #ffffff,
-        text-secondary: #d2d4dc,
-        text-tertiary: #a9acb8,
+        text-secondary: #f6f7fb,
+        text-tertiary: #d6d9e4,
         text-on-light: #0a0a0b,
         expanded-radius: 32px,
         tile-radius: 19px,
@@ -248,11 +254,11 @@ export global Theme {
         card: #ffffff0d,
         card-hover: #ffffff17,
         card-border: #ffffff21,
-        // Liquid Glass: Allura, a script, for short headings only; longer titles stay
-        // in DM Sans so they remain easy to read.
-        display-font: "Allura",
-        display-weight: 400,
-        display-scale: 1.6,
+        // Liquid Glass: Unbounded, rounded and luminous, for short headings; longer titles
+        // stay in DM Sans so a wide face never overflows a narrow panel.
+        display-font: "Unbounded",
+        display-weight: 500,
+        display-scale: 0.95,
         title-font: "DM Sans",
         title-weight: 600,
         title-scale: 1.0,

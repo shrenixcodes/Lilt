@@ -1,3 +1,4 @@
+import { MarqueeText } from "components/marquee.slint";
 import { Theme } from "theme.slint";
 import { MediaAvailability } from "types.slint";
 import { AppState, AppActions } from "state.slint";
@@ -53,33 +54,36 @@ export component MediaPlayer inherits Rectangle {
     HorizontalLayout {
         spacing: 14px;
 
-        if AppState.show-artwork: ArtworkTile {
-            size: 72px;
+        if AppState.show-artwork: Rectangle {
+            width: 96px;
+            height: 100px;
+            ArtworkTile { y: 2px; size: 96px; }
         }
 
         VerticalLayout {
             alignment: center;
-            spacing: 2px;
+            spacing: 4px;
 
             HorizontalLayout {
+                height: 34px;
                 spacing: 4px;
 
-                Text {
-                    horizontal-stretch: 1;
-                    vertical-alignment: center;
+                MarqueeText {
+                    height: 34px;
+                    live: AppState.expanded;
                     text: !root.active
                         ? (AppState.media.availability == MediaAvailability.idle ? "Nothing playing" : "Media controls unavailable")
                         : AppState.media.title == "" ? "Unknown title" : AppState.media.title;
-                    color: Theme.text;
+                    tint: Theme.text;
                     // A track title is content, in the body face; "Nothing playing" is
                     // a heading.
                     font-family: root.active ? Theme.font : Theme.title-font;
                     font-size: root.active ? Theme.font-lg : Theme.font-lg * Theme.title-scale;
-                    font-weight: root.active ? 600 : Theme.title-weight;
-                    overflow: elide;
+                    font-weight: root.active ? 700 : Theme.title-weight;
                 }
 
                 if root.active: IconButton {
+                    height: 34px;
                     icon: Icons.previous;
                     icon-size: 14px;
                     filled: true;
@@ -99,6 +103,7 @@ export component MediaPlayer inherits Rectangle {
                 }
 
                 if root.active: IconButton {
+                    height: 34px;
                     icon: Icons.next;
                     icon-size: 14px;
                     filled: true;
@@ -111,10 +116,13 @@ export component MediaPlayer inherits Rectangle {
             }
 
             HorizontalLayout {
+                height: 20px;
                 spacing: 6px;
 
                 Text {
                     horizontal-stretch: 1;
+                    height: 20px;
+                    vertical-alignment: center;
                     text: !root.active
                         ? (AppState.media.availability == MediaAvailability.idle
                             ? "Play something in Spotify, a browser or any media app."
@@ -122,18 +130,20 @@ export component MediaPlayer inherits Rectangle {
                         : AppState.media.artist == "" ? AppState.media.source : AppState.media.artist + "  ·  " + AppState.media.source;
                     color: Theme.text-secondary;
                     font-size: Theme.font-sm;
+                    font-weight: 600;
                     overflow: elide;
                 }
 
                 // Several apps expose sessions: let the user pick which one to follow.
                 if root.active && AppState.media.session-count > 1: TouchArea {
                     width: 18px;
-                    height: 16px;
+                    height: 20px;
                     clicked => {
                         AppActions.cycle-source();
                     }
 
                     Icon {
+                        y: (parent.height - self.height) / 2;
                         data: Icons.switch;
                         size: 13px;
                         color: parent.has-hover ? Theme.text : Theme.text-tertiary;
@@ -142,8 +152,8 @@ export component MediaPlayer inherits Rectangle {
             }
 
             if root.active && AppState.show-progress && AppState.media.has-timeline: VerticalLayout {
-                padding-top: 6px;
-                spacing: 1px;
+                height: 30px;
+                spacing: 0px;
 
                 ProgressBar {
                     value: AppState.progress;

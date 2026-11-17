@@ -20,6 +20,9 @@ const MAX_FILE_BYTES: u64 = 256 * 1024;
 pub struct Settings {
     pub version: u32,
     pub general: General,
+    pub clock: Clock,
+    pub weather_location: Option<WeatherLocation>,
+    pub weather_location_name: String,
     pub appearance: Appearance,
     pub position: Position,
     pub widgets: Widgets,
@@ -32,6 +35,40 @@ pub struct Settings {
     pub clipboard: Clipboard,
 }
 
+/// Clock formats: time 0 = Windows, 1 = 12-hour, 2 = 24-hour;
+/// date 0 = day/month name, 1 = month name/day, 2 = ISO year-month-day.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Clock {
+    pub time_format: u8,
+    pub date_format: u8,
+    pub cycle_enabled: bool,
+    pub clock_seconds: u32,
+    pub item_seconds: u32,
+}
+
+impl Default for Clock {
+    fn default() -> Self {
+        Self { time_format: 0, date_format: 0, cycle_enabled: true, clock_seconds: 7, item_seconds: 5 }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WeatherLocation {
+    pub latitude: f64,
+    pub longitude: f64,
+}
+
+impl WeatherLocation {
+    pub fn new(latitude: f64, longitude: f64) -> Option<Self> {
+        (latitude.is_finite()
+            && longitude.is_finite()
+            && (-90.0..=90.0).contains(&latitude)
+            && (-180.0..=180.0).contains(&longitude))
+        .then_some(Self { latitude, longitude })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct General {
@@ -42,6 +79,9 @@ pub struct General {
     pub collapse_on_outside_click: bool,
     /// Briefly show track changes in the compact island.
     pub activity_banners: bool,
+    /// Keep the island tucked away, revealing it only when the pointer reaches the top
+    /// centre of the screen.
+    pub auto_hide: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -263,6 +303,9 @@ impl Default for Settings {
         Self {
             version: CURRENT_VERSION,
             general: General::default(),
+            clock: Clock::default(),
+            weather_location: None,
+            weather_location_name: String::new(),
             appearance: Appearance::default(),
             position: Position::default(),
             widgets: Widgets::default(),
@@ -279,7 +322,13 @@ impl Default for Settings {
 
 impl Default for General {
     fn default() -> Self {
-        Self { auto_collapse: true, auto_collapse_seconds: 8, collapse_on_outside_click: true, activity_banners: true }
+        Self {
+            auto_collapse: true,
+            auto_collapse_seconds: 8,
+            collapse_on_outside_click: true,
+            activity_banners: true,
+            auto_hide: false,
+        }
     }
 }
 
@@ -368,6 +417,12 @@ impl Settings {
     pub fn sanitize(mut self) -> Self {
         use limits::*;
         self.version = CURRENT_VERSION;
+        self.clock.time_format = self.clock.time_format.min(2);
+        self.clock.date_format = self.clock.date_format.min(2);
+        self.clock.clock_seconds = self.clock.clock_seconds.clamp(3, 60);
+        self.clock.item_seconds = self.clock.item_seconds.clamp(3, 60);
+        self.weather_location_name = self.weather_location_name.chars().filter(|c| !c.is_control()).take(160).collect();
+        self.weather_location = self.weather_location.and_then(|p| WeatherLocation::new(p.latitude, p.longitude));
         self.appearance.compact_width = self.appearance.compact_width.clamp(COMPACT_WIDTH.0, COMPACT_WIDTH.1);
         self.appearance.expanded_width = self.appearance.expanded_width.clamp(EXPANDED_WIDTH.0, EXPANDED_WIDTH.1);
         self.position.top_margin = self.position.top_margin.clamp(TOP_MARGIN.0, TOP_MARGIN.1);
@@ -491,6 +546,42 @@ pub fn settings_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn idle_timing_defaults_and_user_values_are_safe() {
+        let settings: Settings = serde_json::from_str(r#"{"clock":{"time_format":1}}"#).unwrap();
+        assert_eq!(settings.clock.clock_seconds, 7);
+        assert_eq!(settings.clock.item_seconds, 5);
+        assert!(settings.clock.cycle_enabled);
+        let mut settings = settings;
+        settings.clock.clock_seconds = 0;
+        settings.clock.item_seconds = 999;
+        settings.clock.cycle_enabled = false;
+        settings.weather_location_name = "City\nName".into();
+        let settings = settings.sanitize();
+        assert_eq!(settings.clock.clock_seconds, 3);
+        assert_eq!(settings.clock.item_seconds, 60);
+        assert!(!settings.clock.cycle_enabled);
+        assert_eq!(settings.weather_location_name, "CityName");
+    }
+
+    #[test]
+    fn manual_weather_location_and_clock_settings_are_safe_and_round_trip() {
+        let defaults: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(defaults.weather_location, None);
+        assert_eq!(defaults.clock, Clock::default());
+        assert!(WeatherLocation::new(f64::NAN, 0.0).is_none());
+        assert!(WeatherLocation::new(0.0, f64::INFINITY).is_none());
+        assert!(WeatherLocation::new(91.0, 0.0).is_none());
+        assert!(WeatherLocation::new(0.0, -181.0).is_none());
+        let mut chosen = defaults;
+        chosen.clock = Clock { time_format: 1, date_format: 2, ..Default::default() };
+        chosen.weather_location = WeatherLocation::new(22.5726, 88.3639);
+        let text = serde_json::to_string(&chosen).unwrap();
+        assert_eq!(serde_json::from_str::<Settings>(&text).unwrap().sanitize(), chosen);
+        chosen.weather_location = Some(WeatherLocation { latitude: 999.0, longitude: 0.0 });
+        assert_eq!(chosen.sanitize().weather_location, None);
+    }
+
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {

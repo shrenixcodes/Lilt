@@ -11,13 +11,13 @@ use std::sync::Arc;
 
 use slint::fontique_011::fontique;
 
-/// DM Sans (interface), Space Grotesk (Midnight headings), Instrument Serif (Smoked
-/// Glass headings), Allura (Liquid Glass headings) and JetBrains Mono (code).
+/// DM Sans (interface), Space Grotesk (Midnight headings), Newsreader (Smoked Glass
+/// headings, italic), Unbounded (Liquid Glass headings) and JetBrains Mono (code).
 const FONTS: [&[u8]; 5] = [
     include_bytes!("../assets/fonts/DMSans-Variable.ttf"),
     include_bytes!("../assets/fonts/SpaceGrotesk-Variable.ttf"),
-    include_bytes!("../assets/fonts/InstrumentSerif-Regular.ttf"),
-    include_bytes!("../assets/fonts/Allura-Regular.ttf"),
+    include_bytes!("../assets/fonts/NewsreaderItalic-Variable.ttf"),
+    include_bytes!("../assets/fonts/Unbounded-Variable.ttf"),
     include_bytes!("../assets/fonts/JetBrainsMono-Variable.ttf"),
 ];
 
@@ -54,6 +54,6 @@ mod tests {
                 collection.family_name(*family).expect("a family name").to_owned()
             })
             .collect();
-        assert_eq!(names, ["DM Sans", "Space Grotesk", "Instrument Serif", "Allura", "JetBrains Mono"]);
+        assert_eq!(names, ["DM Sans", "Space Grotesk", "Newsreader", "Unbounded", "JetBrains Mono"]);
     }
 }

@@ -9,6 +9,7 @@ export global AppState {
     in property <length> compact-width: 196px;
     in property <length> expanded-width: 460px;
     in property <bool> allow-drag: true;
+    in property <bool> center-snapped;
 
     // Widgets enabled in Settings.
     in property <bool> show-media: true;
@@ -25,9 +26,13 @@ export global AppState {
     in property <string> time;
     in property <string> weekday;
     in property <string> date;
+    in property <string> weather;
+    in property <int> idle-index;
+    in property <bool> idle-visible: true;
 
     // Media
     in property <MediaInfo> media;
+    in property <bool> media-grace;
     in property <image> artwork;
     in property <bool> has-artwork;
     in property <float> progress;
@@ -52,6 +57,9 @@ export global AppState {
     in property <bool> pointer-inside;
     // The island is shown (not hidden by the user or for a full-screen application).
     in property <bool> on-screen: true;
+    // Auto-hide: the island is tucked away above the top edge and reveals only when the
+    // pointer reaches the top centre of the screen.
+    in property <bool> tucked: false;
     in property <bool> update-checking;
     in property <bool> update-available;
     in property <string> update-message: "Check for updates";
@@ -234,6 +242,15 @@ export global ControlsState {
     in property <float> volume;
     in property <bool> muted;
     in property <string> output-name;
+    in property <[string]> output-names;
+    in property <[string]> output-ids;
+    in property <int> output-index: -1;
+    in property <[string]> input-names;
+    in property <[string]> input-ids;
+    in property <int> input-index: -1;
+    in property <bool> input-available;
+    in property <float> input-volume;
+    in property <bool> input-muted;
     // The per-app mixer. Empty when nothing is playing on the default output.
     in property <[SessionRow]> sessions;
 
@@ -248,6 +265,9 @@ export global ControlsActions {
     callback join(string, string);
     callback disconnect-wifi();
     callback connect-device(string, string, bool);
+    callback select-endpoint(string);
+    callback set-input-volume(float);
+    callback set-input-muted(bool);
     callback set-volume(float);
     callback set-muted(bool);
     callback set-session-volume(string, float);
@@ -266,6 +286,7 @@ export global AppActions {
     /// Downloads and runs the latest installer.
     callback install-update();
     callback start-drag();
+    callback idle-changed(bool);
     callback toggle-expanded();
     callback collapse();
     callback toggle-play();

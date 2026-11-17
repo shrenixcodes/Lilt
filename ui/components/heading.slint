@@ -52,3 +52,15 @@ export component Title inherits Text {
     font-size: root.size * Theme.title-scale;
     font-weight: Theme.title-weight;
 }
+
+// A small, tracked functional label for settings groups and other utilitarian headers.
+// It always uses the interface face, so the appearance's expressive display face stays
+// reserved for prominent titles and never lands on a list of technical words.
+export component SectionLabel inherits Text {
+    in property <length> size: Theme.font-sm;
+    font-family: Theme.font;
+    font-size: root.size;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    color: Theme.text-secondary;
+}

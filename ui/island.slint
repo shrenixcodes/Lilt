@@ -69,14 +69,17 @@ export component Island inherits Window {
         + (AppState.show-media && root.tiles ? 10px : 0)
         + (root.tiles ? 108px : 0)
         + (!AppState.show-media && !root.tiles ? 64px : 0);
-    property <length> panel-height: max(AppState.page == Page.sound ? 380px : 250px, root.dashboard-height);
+    property <length> panel-height: max(AppState.page == Page.sound ? 460px : 250px, root.dashboard-height);
     // Quick-control pop-ups need room for a short list.
     out property <length> expanded-height: AppState.page == Page.dashboard ? root.dashboard-height
         : AppState.page == Page.calendar || AppState.page == Page.system ? max(root.dashboard-height, 214px)
-        : AppState.page == Page.sound ? 380px : 250px;
+        : AppState.page == Page.sound ? 460px : 250px;
     property <length> activity-width: 340px;
 
-    property <bool> media-mode: AppState.show-media && AppState.media.availability == MediaAvailability.active;
+    property <bool> media-mode: AppState.show-media && (AppState.media-grace || (AppState.media.availability == MediaAvailability.active
+        && (AppState.media.playing || AppState.pointer-inside)));
+    property <bool> idle-active: AppState.on-screen && !AppState.expanded && !root.media-mode;
+    changed idle-active => { AppActions.idle-changed(root.idle-active); }
     property <bool> showing-activity: AppState.activity && !AppState.expanded && root.media-mode;
     property <bool> compact-progress: root.media-mode && !AppState.expanded && !root.showing-activity
         && AppState.show-progress && AppState.media.has-timeline;
@@ -95,9 +98,10 @@ export component Island inherits Window {
     property <bool> dragging: false;
 
     // The outlines of the island and the tasks box, read by the application after each
-    // frame to shape the live blur beneath them.
+    // frame to shape the live blur beneath them. The body follows the auto-hide slide so
+    // the blur lifts away with the island instead of being left behind at the top edge.
     out property <length> body-x: island.x;
-    out property <length> body-y: island.y;
+    out property <length> body-y: keys.y + island.y;
     out property <length> body-width: island.width;
     out property <length> body-height: island.height;
     out property <length> body-radius: island.border-radius;
@@ -118,9 +122,18 @@ export component Island inherits Window {
         }
     }
 
+    // How far the island lifts above the top edge when auto-hidden, enough to clear the
+    // compact pill and its shadow margin.
+    property <length> tuck-shift: Theme.compact-height + 2 * Theme.margin + 12px;
+
     // Keyboard handling for the whole island. Keys that a field or row inside does not
-    // use arrive here.
+    // use arrive here. The whole island slides up and fades out when auto-hidden.
     keys := FocusScope {
+        y: AppState.tucked ? -root.tuck-shift : 0px;
+        opacity: AppState.tucked ? 0 : 1;
+        animate y { duration: Theme.resize-duration; easing: cubic-bezier(0.32, 0.72, 0, 1); }
+        animate opacity { duration: Theme.fade-duration; }
+
         key-pressed(event) => {
             if !AppState.expanded {
                 return reject;
@@ -195,8 +208,9 @@ export component Island inherits Window {
             animate background { duration: Theme.ambient-duration; easing: ease-in-out; }
             // On glass appearances GlassRim draws the lit rounded edge; a second 1 px
             // border stacked on top produced stepped corners during animation.
-            border-width: Theme.reflections ? 0px : 1px;
-            border-color: Theme.border;
+            border-width: AppState.center-snapped ? 2px : Theme.reflections ? 0px : 1px;
+            border-color: AppState.center-snapped ? Theme.accent : Theme.border;
+            animate border-color { duration: Theme.fade-duration; }
             clip: true;
             animate x, width, height, border-radius { duration: Theme.resize-duration; easing: cubic-bezier(0.32, 0.72, 0, 1); }
 
@@ -204,6 +218,24 @@ export component Island inherits Window {
                 width: parent.width;
                 height: parent.height;
                 radius: island.border-radius;
+            }
+
+            // The lit edges: soft light gathering along the top and bottom and easing off
+            // inward and around the corners. Drawn beneath the content so text stays crisp.
+            if Theme.reflections : GlassRim {
+                width: parent.width;
+                height: parent.height;
+                radius: island.border-radius;
+                strength: Theme.rim-strength;
+            }
+
+            if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
+                width: parent.width;
+                height: parent.height;
+                radius: island.border-radius;
+                lower: true;
+                rim: Theme.lower-rim;
+                strength: Theme.rim-strength;
             }
 
             touch := TouchArea {
@@ -275,23 +307,7 @@ export component Island inherits Window {
                     self.opacity = 1;
                 }
             }
-        }
 
-        if Theme.reflections : GlassRim {
-            x: island.x;
-            y: island.y;
-            width: island.width;
-            full-height: island.height;
-            radius: island.border-radius;
-        }
-
-        if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
-            x: island.x;
-            y: island.y + island.height - 1px;
-            width: island.width;
-            full-height: island.height;
-            radius: island.border-radius;
-            rim: Theme.lower-rim;
         }
 
         // The tasks box, created only while expanded. It fades in beside or below the
@@ -327,6 +343,22 @@ export component Island inherits Window {
                     radius: Theme.expanded-radius;
                 }
 
+                if Theme.reflections : GlassRim {
+                    width: parent.width;
+                    height: parent.height;
+                    radius: Theme.expanded-radius;
+                    strength: Theme.rim-strength;
+                }
+
+                if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
+                    width: parent.width;
+                    height: parent.height;
+                    radius: Theme.expanded-radius;
+                    lower: true;
+                    rim: Theme.lower-rim;
+                    strength: Theme.rim-strength;
+                }
+
                 if !root.clipboard-panel : TasksView {
                     width: parent.width;
                     height: parent.height;
@@ -336,23 +368,6 @@ export component Island inherits Window {
                     width: parent.width;
                     height: parent.height;
                 }
-            }
-
-            if Theme.reflections : GlassRim {
-                x: 0;
-                y: 0;
-                width: parent.width;
-                full-height: parent.height;
-                radius: Theme.expanded-radius;
-            }
-
-            if Theme.reflections && Theme.lower-rim.alpha > 0 : GlassRim {
-                x: 0;
-                y: parent.height - 1px;
-                width: parent.width;
-                full-height: parent.height;
-                radius: Theme.expanded-radius;
-                rim: Theme.lower-rim;
             }
         }
     }

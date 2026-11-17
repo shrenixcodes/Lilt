@@ -6,6 +6,89 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Sound output and microphone device selectors, microphone volume and mute controls.
+- Configurable 12/24-hour time and date formats, with an idle clock/date carousel
+  and independently adjustable clock and item durations.
+- Named-place weather search and optional current weather in the idle carousel.
+
+### Changed
+
+- The Sound mixer uses aligned rows and pages for additional application sessions.
+- Expanded media uses larger artwork and scrolling long titles and artist names.
+- Paused media yields to the idle display after a grace period.
+
+### Fixed
+
+- Development builds no longer automatically install production updates at startup.
+- Center snapping retains the drag anchor so the island can be dragged away again.
+- Native dragging starts outside Slint pointer and timer callbacks.
+- Invalid weather coordinates and idle timing values are sanitized; unavailable
+  weather falls back to clock and date.
+
+
+## [0.4.12] - 2026-11-17
+
+### Changed
+
+- Liquid Glass transparency has been redesigned to be distinctly clearer and set apart
+  from Smoked Glass, with a 30 % baseline opacity (down from 36 %) and a crisper 11 px
+  liquid blur that keeps background shapes and colors recognizable.
+- Dashboard tiles in Liquid Glass use a lighter, airy 5 % translucent fill framed by a
+  fine 1 px specular glass border, allowing wallpaper to flow seamlessly through them.
+- Liquid Glass edge reflections have been brightened with a more radiant upper rim and
+  clearer caustic lower glow.
+- Liquid Glass text luminance has been tuned to ensure WCAG AA contrast across any
+  desktop wallpaper without turning the surface into an opaque dark slab.
+
+### Fixed
+
+- Development install script now detects non-standard Cargo home paths and ensures the
+  MinGW compiler tools are prioritized in PATH.
+
+### Added
+
+- The brightness control's sun turns as the slider is dragged.
+
+### Changed
+
+- The glass appearances' lit edge is a soft radial glow that eases around the rounded
+  corners and fades inward, and it tracks the transparency slider: brighter and more
+  defined as the glass clears, softer as it frosts.
+
+### Fixed
+
+- Auto-hide no longer leaves a blurred patch at the top of the screen; the live blur now
+  lifts away with the island.
+- A tucked island only reappears when the pointer reaches the very top edge of the screen.
+- The Appearance settings page keeps its controls in place when the appearance is changed,
+  rather than shifting the layout.
+- The Brightness quick action shows a sun instead of a monitor, and the skip-track buttons
+  show their bar so they no longer look like a play button.
+- The clipboard entries show their Pin and Delete buttons again.
+- The Tasks and Clipboard quick action closes the shelf when its button is tapped a second
+  time.
+
+## [0.4.8] - 2026-11-17
+
+### Added
+
+- An auto-hide option that tucks the island away above the top edge and reveals it when
+  the pointer reaches the top centre of the screen, with a smooth slide and fade.
+
+### Changed
+
+- Each appearance keeps its own heading face, chosen to stay legible: Midnight uses Space
+  Grotesk, Smoked Glass uses Newsreader italic and Liquid Glass uses Unbounded. Settings
+  section headers use a clean tracked label so the display face is reserved for prominent
+  titles.
+
+### Fixed
+
+- The settings window no longer resizes or overlaps its content when the Appearance page
+  opens; it stays wide enough for the appearance cards.
+
 ## [0.4.7] - 2026-11-16
 
 ### Added

@@ -1,0 +1,43 @@
+import { Theme } from "../theme.slint";
+import { AppState } from "../state.slint";
+
+export component MarqueeText inherits Rectangle {
+    in property <string> text;
+    in property <brush> tint: Theme.text-secondary;
+    in property <length> font-size: Theme.font-sm;
+    in property <int> font-weight: 400;
+    in property <string> font-family: Theme.font;
+    in property <bool> centered;
+    in property <bool> live: true;
+    clip: true;
+    horizontal-stretch: 1;
+    min-width: 0px;
+    preferred-height: root.font-size * 1.5;
+    min-height: root.font-size * 1.5;
+    accessible-role: AccessibleRole.text;
+    accessible-label: root.text;
+
+    property <length> travel: max(0px, label.preferred-width - root.width);
+    property <duration> journey: max(1ms, root.travel / 1px * 32ms);
+    property <duration> started;
+    property <bool> moving: root.travel > 0px && root.live && AppState.on-screen && Theme.motion > 0;
+    property <duration> phase: root.moving ? mod(animation-tick() - root.started, root.journey * 2 + 2400ms) : 0ms;
+    property <float> fraction: root.phase <= root.journey + 1200ms
+        ? clamp((root.phase - 1200ms) / root.journey, 0, 1)
+        : 1 - clamp((root.phase - root.journey - 2400ms) / root.journey, 0, 1);
+    changed text => { root.started = animation-tick(); }
+    changed width => { root.started = animation-tick(); }
+    changed moving => { root.started = animation-tick(); }
+    label := Text {
+        x: root.moving ? -root.travel * root.fraction : root.centered && root.travel == 0px ? (parent.width - self.width) / 2 : 0px;
+        width: self.preferred-width;
+        height: parent.height;
+        vertical-alignment: center;
+        text: root.text;
+        color: root.tint;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        font-family: root.font-family;
+        accessible-role: none;
+    }
+}

@@ -1,13 +1,14 @@
 import { Theme } from "../theme.slint";
 
-// Light on glass: a soft sheen falling from above and a lit rim along the upper edge.
+// Light on glass: a soft sheen falling from above and a lit edge along the top and bottom.
 //
 // The software renderer draws gradients as plain rectangles, ignoring corner radii, and
-// draws a clipping rectangle's border over its children. So the sheen is a circle
-// centred above the shape that fades out before it can reach the rounded corners, placed
-// inside the surface beneath its content; the rim is the shape's own rounded outline,
-// antialiased exactly like the surface's border, drawn over the surface as a sibling and
-// clipped to the band above where the straight sides begin.
+// clips children only to the bounding box, not the radius. So every glow here is a disc of
+// light (a radial gradient) centred just beyond the edge: it is brightest along the edge,
+// eases off inward and toward the corners, and fades to nothing before it reaches the
+// rounded corner, so the light curves around the corner with no hard line to alias and
+// never spills outside the shape. Radial gradients are antialiased, so the edges stay
+// smooth at every display scale.
 
 // Place inside a rounded surface, before its content, filling it.
 export component GlassSheen inherits Rectangle {
@@ -26,20 +27,30 @@ export component GlassSheen inherits Rectangle {
         root.sheen 0%, root.sheen 60%, root.sheen.transparentize(0.6) 78%, transparent 100%);
 }
 
-// Place after the rounded surface, with the same position and size. The software
-// renderer's 1 px rounded border aliases visibly over a live backdrop, so this is an
-// inset straight-edge highlight instead of a second rounded perimeter.
+// A soft lit edge for glass. Light gathers along the top edge (or the bottom, with `lower`)
+// and falls away gently inward and toward the corners, with no hard line. Place it over the
+// surface, filling it, with the surface's corner radius.
 export component GlassRim inherits Rectangle {
-    in property <length> radius;
     in property <color> rim: Theme.rim;
-    in property <length> full-height;
-    height: 1px;
+    in property <length> radius;
+    // The lower edge, lit more faintly from below, rather than the upper edge.
+    in property <bool> lower: false;
+    // Scales the light with the transparency slider: above 1 brightens it as the glass
+    // clears, below 1 softens it as the glass frosts.
+    in property <float> strength: 1.0;
 
-    Rectangle {
-        // Start after the rounded corner so no anti-aliased rim is drawn around it.
-        x: min(root.radius, parent.width / 2);
-        width: max(0px, parent.width - 2 * self.x);
-        height: parent.height;
-        background: root.rim;
-    }
+    // The rim, its opacity scaled by `strength` so the glow tracks the transparency slider.
+    property <color> tint: root.rim.with-alpha(min(1.0, root.rim.alpha * root.strength / 255));
+
+    // A disc of light centred just beyond the edge. `spread` reaches the corners so the
+    // edge is lit its whole width; `lift` keeps the centre close enough that the edge sits
+    // in the bright part of the disc while the corners fall in its faded tail.
+    property <length> reach: max(0px, root.width / 2 - root.radius);
+    property <length> spread: root.reach + root.radius * 1.4;
+    property <length> lift: root.spread * 0.42;
+    property <length> cx: root.width / 2;
+    property <length> cy: root.lower ? root.height + root.lift : 0px - root.lift;
+
+    background: @radial-gradient(circle root.spread at root.cx root.cy,
+        root.tint 0%, root.tint 44%, root.tint.transparentize(0.58) 66%, transparent 84%);
 }

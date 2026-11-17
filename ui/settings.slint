@@ -2,13 +2,28 @@ import { Switch, Slider, ComboBox, Button, LineEdit, ScrollView, AboutSlint, Pal
 import { Theme, AppearanceTokens } from "theme.slint";
 import { Icon, Icons } from "components/icon.slint";
 import { GlassSheen, GlassRim } from "components/glass.slint";
-import { Heading } from "components/heading.slint";
+import { Heading, SectionLabel } from "components/heading.slint";
 
 // Settings as edited in the window. Converted to and from the Rust settings model.
+
+export struct WeatherPlace {
+    name: string,
+    latitude: float,
+    longitude: float,
+}
 
 export struct SettingsData {
     // 0 = Midnight, 1 = Smoked Glass, 2 = Liquid Glass
     appearance: int,
+    time-format: int,
+    date-format: int,
+    idle-cycle: bool,
+    clock-seconds: int,
+    item-seconds: int,
+    weather-location-name: string,
+    weather-selected: bool,
+    weather-latitude: float,
+    weather-longitude: float,
     reduce-transparency: bool,
     // 0..100; 50 is each glass appearance as designed.
     glass-transparency: int,
@@ -16,6 +31,7 @@ export struct SettingsData {
     auto-collapse-seconds: int,
     collapse-on-outside-click: bool,
     activity-banners: bool,
+    auto-hide: bool,
     compact-width: int,
     expanded-width: int,
     // 0 = follow Windows, 1 = reduced, 2 = full
@@ -58,11 +74,12 @@ component Section inherits VerticalLayout {
     spacing: 2px;
     padding-bottom: 18px;
 
-    Heading {
+    SectionLabel {
         text: root.title;
-        size: 15px;
-        color: Palette.foreground;
+        size: 13px;
+        color: Theme.window-text;
         height: 32px;
+        vertical-alignment: center;
     }
 
     Rectangle {
@@ -71,12 +88,14 @@ component Section inherits VerticalLayout {
         border-width: Theme.group-radius > 0 ? 1px : 0px;
         border-color: Theme.group-border;
 
+        // Dimensions stay the same for every appearance so switching material never
+        // moves a control; only the background, border and corners change.
         VerticalLayout {
             spacing: 2px;
-            padding-left: Theme.group-padding;
-            padding-right: Theme.group-padding;
-            padding-top: Theme.group-padding / 3;
-            padding-bottom: Theme.group-padding / 3;
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 5px;
+            padding-bottom: 5px;
 
             @children
         }
@@ -86,6 +105,8 @@ component Section inherits VerticalLayout {
 component Row inherits HorizontalLayout {
     in property <string> label;
     in property <string> description;
+    // When false the row reads as inactive: the label dims and any control is disabled.
+    in property <bool> enabled: true;
     spacing: 16px;
     padding-top: 6px;
     padding-bottom: 6px;
@@ -98,7 +119,7 @@ component Row inherits HorizontalLayout {
 
         Text {
             text: root.label;
-            color: Palette.foreground;
+            color: root.enabled ? Palette.foreground : Theme.window-text-secondary;
             font-size: 13px;
             wrap: word-wrap;
         }
@@ -123,6 +144,7 @@ component SliderRow inherits Row {
 
     Slider {
         width: 180px;
+        enabled: root.enabled;
         minimum: root.minimum;
         maximum: root.maximum;
         value: root.value;
@@ -136,6 +158,7 @@ component SliderRow inherits Row {
         text: root.value + root.unit;
         color: Theme.window-text-secondary;
         font-size: 12px;
+        opacity: root.enabled ? 1.0 : 0.5;
     }
 }
 
@@ -242,6 +265,7 @@ component AppearancePreview inherits Rectangle {
         background: root.panel;
         border-width: 1px;
         border-color: root.tokens.border;
+        clip: true;
 
         if root.tokens.reflections : GlassSheen {
             width: parent.width;
@@ -256,15 +280,14 @@ component AppearancePreview inherits Rectangle {
             font-size: 9px;
             font-weight: 600;
         }
-    }
 
-    if root.tokens.reflections : GlassRim {
-        x: pill.x;
-        y: pill.y;
-        width: pill.width;
-        full-height: pill.height;
-        radius: pill.border-radius;
-        rim: root.tokens.rim;
+        if root.tokens.reflections : GlassRim {
+            width: parent.width;
+            height: parent.height;
+            radius: parent.border-radius;
+            rim: root.tokens.rim;
+            strength: Theme.rim-strength;
+        }
     }
 
     panel-rect := Rectangle {
@@ -276,6 +299,7 @@ component AppearancePreview inherits Rectangle {
         background: root.panel;
         border-width: 1px;
         border-color: root.tokens.border;
+        clip: true;
 
         if root.tokens.reflections : GlassSheen {
             width: parent.width;
@@ -336,15 +360,14 @@ component AppearancePreview inherits Rectangle {
             border-radius: 9px;
             background: root.tokens.tile;
         }
-    }
 
-    if root.tokens.reflections : GlassRim {
-        x: panel-rect.x;
-        y: panel-rect.y;
-        width: panel-rect.width;
-        full-height: panel-rect.height;
-        radius: panel-rect.border-radius;
-        rim: root.tokens.rim;
+        if root.tokens.reflections : GlassRim {
+            width: parent.width;
+            height: parent.height;
+            radius: parent.border-radius;
+            rim: root.tokens.rim;
+            strength: Theme.rim-strength;
+        }
     }
 }
 
@@ -476,9 +499,12 @@ component AppearanceCard inherits Rectangle {
 export component SettingsWindow inherits Window {
     title: "Lilt Settings";
     icon: @image-url("../assets/icons/lilt.png");
-    preferred-width: 760px;
+    preferred-width: 780px;
     preferred-height: 540px;
-    min-width: 620px;
+    // Wide enough that the three Appearance cards (min 150px each, plus the sidebar,
+    // padding and scrollbar) always fit. A narrower window forced a resize when that
+    // page opened and let the cards overflow, which read as the window jumping.
+    min-width: 760px;
     min-height: 420px;
     background: Theme.window-background;
     default-font-family: Theme.font;
@@ -509,6 +535,14 @@ export component SettingsWindow inherits Window {
     callback edited();
     callback reset();
     callback choose-calendar();
+    callback search-weather(string);
+    callback select-weather(int);
+    in-out property <[WeatherPlace]> weather-results;
+    in-out property <bool> weather-searching;
+    in-out property <string> weather-query;
+    in-out property <int> weather-search-id;
+    callback clear-weather();
+    in-out property <string> weather-message;
     callback clear-calendar();
     callback record-shortcut(int);
     callback clear-shortcut(int);
@@ -525,7 +559,7 @@ export component SettingsWindow inherits Window {
     // Restores the defaults of the Appearance & position page only.
     callback reset-appearance();
 
-    property <[string]> sections: ["General", "Appearance & position", "Widgets", "Clipboard", "Music", "Ambient visuals", "Performance", "Startup", "Keyboard shortcuts", "About"];
+    property <[string]> sections: ["General", "Appearance & position", "Widgets", "Clipboard", "Music", "Ambient visuals", "Performance", "Startup", "Keyboard shortcuts", "About", "Clock & weather"];
 
     HorizontalLayout {
         Rectangle {
@@ -595,12 +629,108 @@ export component SettingsWindow inherits Window {
                         }
                     }
                     Row {
+                        label: "Hide until pointed at";
+                        description: "Tuck the island away and reveal it when the pointer reaches the top centre of the screen.";
+                        Switch {
+                            checked: root.data.auto-hide;
+                            toggled => { root.data.auto-hide = self.checked; root.edited(); }
+                        }
+                    }
+                    Row {
                         label: "Reset all settings";
                         description: "Restore the defaults. The calendar file choice and shortcut are reset too.";
                         Button {
                             text: "Reset";
                             clicked => { root.reset(); }
                         }
+                    }
+                }
+
+                if root.section == 10 : Section {
+                    title: "Clock & weather";
+                    Row {
+                        label: "Time format";
+                        ComboBox {
+                            width: 180px;
+                            model: ["Follow Windows", "12-hour", "24-hour"];
+                            current-index: root.data.time-format;
+                            selected => { root.data.time-format = self.current-index; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Date format";
+                        ComboBox {
+                            width: 180px;
+                            model: ["17 Nov", "Nov 17", "2026-11-17"];
+                            current-index: root.data.date-format;
+                            selected => { root.data.date-format = self.current-index; root.edited(); }
+                        }
+                    }
+                    Row {
+                        label: "Cycle idle information";
+                        description: "Show time first, followed by date and weather.";
+                        Switch {
+                            checked: root.data.idle-cycle;
+                            toggled => { root.data.idle-cycle = self.checked; root.edited(); }
+                        }
+                    }
+                    if root.data.idle-cycle : SliderRow {
+                        label: "Clock display time";
+                        description: "Hold the clock when entering idle and on each cycle.";
+                        value: root.data.clock-seconds;
+                        minimum: 3;
+                        maximum: 60;
+                        unit: " s";
+                        edited(v) => { root.data.clock-seconds = v; root.edited(); }
+                    }
+                    if root.data.idle-cycle : SliderRow {
+                        label: "Date and weather display time";
+                        value: root.data.item-seconds;
+                        minimum: 3;
+                        maximum: 60;
+                        unit: " s";
+                        edited(v) => { root.data.item-seconds = v; root.edited(); }
+                    }
+                    Text {
+                        text: root.data.weather-selected ? "Weather location: " + (root.data.weather-location-name == "" ? "Previously selected location" : root.data.weather-location-name) : "No weather location selected.";
+                        color: Theme.window-text-secondary;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        location-search := LineEdit {
+                            placeholder-text: "City or place, e.g. Kolkata";
+                            text <=> root.weather-query;
+                            edited => { root.weather-search-id += 1; root.weather-searching = false; root.weather-results = []; root.weather-message = ""; }
+                            accepted => { root.search-weather(self.text); }
+                        }
+                        Button {
+                            text: root.weather-searching ? "Searching..." : "Search";
+                            enabled: !root.weather-searching;
+                            clicked => { root.search-weather(location-search.text); }
+                        }
+                    }
+                    for place[i] in root.weather-results : Button {
+                        text: place.name;
+                        clicked => { root.select-weather(i); }
+                    }
+                    Button {
+                        text: "Clear location";
+                        enabled: root.data.weather-selected;
+                        clicked => { root.clear-weather(); }
+                    }
+
+                    if root.weather-message != "" : Text {
+                        text: root.weather-message;
+                        color: Theme.window-text-secondary;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: "Weather: Open-Meteo.com (CC BY 4.0); place search: GeoNames. Search text and the place you choose are sent to Open-Meteo. Your device location is never detected.";
+                        wrap: word-wrap;
+                        color: Theme.window-text-secondary;
+                        font-size: 11px;
                     }
                 }
 
@@ -639,23 +769,37 @@ export component SettingsWindow inherits Window {
                             select => { root.data.appearance = 2; root.edited(); }
                         }
                     }
-                    if root.data.appearance >= 1 && root.appearance-note != "" : Text {
-                        text: root.appearance-note;
-                        color: Theme.window-text-secondary;
-                        font-size: 11.5px;
-                        wrap: word-wrap;
+                    // The note's space is always reserved (every explanation fits two lines)
+                    // so showing or hiding it never shifts the controls below.
+                    Rectangle {
+                        height: 34px;
+                        Text {
+                            x: 0;
+                            width: parent.width;
+                            y: 0;
+                            text: root.data.appearance >= 1 ? root.appearance-note : "";
+                            color: Theme.window-text-secondary;
+                            font-size: 11.5px;
+                            wrap: word-wrap;
+                            vertical-alignment: top;
+                        }
                     }
-                    if root.data.appearance >= 1 : Row {
+                    // The glass controls stay in place for every appearance and only turn
+                    // inactive under Midnight, so selecting an appearance never shifts the page.
+                    Row {
                         label: "Reduce transparency";
                         description: "Use frosted surfaces instead of blurring the desktop behind Lilt.";
+                        enabled: root.data.appearance >= 1;
                         Switch {
+                            enabled: root.data.appearance >= 1;
                             checked: root.data.reduce-transparency;
                             toggled => { root.data.reduce-transparency = self.checked; root.edited(); }
                         }
                     }
-                    if root.data.appearance >= 1 && !root.data.reduce-transparency : SliderRow {
+                    SliderRow {
                         label: "Glass transparency";
                         description: "From a heavy blur at 0 % to clear glass at 100 %.";
+                        enabled: root.data.appearance >= 1 && !root.data.reduce-transparency;
                         value: root.data.glass-transparency;
                         minimum: 0;
                         maximum: 100;

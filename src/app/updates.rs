@@ -44,7 +44,7 @@ impl App {
                 App::check_updates(&app, false);
             }
         });
-        App::check_updates(app, true);
+        App::check_updates(app, !cfg!(feature = "dev-build"));
     }
 
     pub(super) fn connect_settings_updates(app: &Rc<Self>, window: &SettingsWindow) {
