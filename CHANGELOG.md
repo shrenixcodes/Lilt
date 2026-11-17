@@ -6,7 +6,27 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.4.13] - 2026-11-17
+## [0.5.1] - 2026-11-18
+
+### Added
+
+- Collapsed island quick application launcher with mouse wheel scroll selection and animated item transitions.
+- Application shortcut management in Settings with automatic icon extraction (up to 7 items).
+- Dynamic rotating sun icon with 16 vector frames that spins smoothly while dragging the brightness slider, with a live percentage readout.
+- Configurable "UI hue gradient" slider under Settings > Appearance (0–100 %, default 0 %) that restores subtle edge sheen and radial rim disc glow without coupling to transparency.
+- Clipboard image thumbnail previews, hex color swatches, and web link domain badges in the clipboard history shelf.
+
+### Changed
+
+- Expanded dashboard control deck combines CPU and RAM telemetry meters, up/down network rates, and the 8-button quick actions strip into a unified tile.
+- Peek auto-hide toggle is repositioned to the quick actions strip with open/closed eyelash eye icons.
+- CPU and RAM telemetry meter bars stretch seamlessly across the telemetry deck and dynamically adapt their accent fill color to the playing music artwork.
+
+### Fixed
+
+- Resolved meter bar layout collapsing when horizontal layout alignment was centered.
+- Corrected peek auto-hide icon state inversion to accurately reflect island visibility.
+- Prevented CPU/RAM meter bar default color from showing purple, aligning with the default UI theme accent.
 
 ### Added
 
