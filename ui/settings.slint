@@ -119,6 +119,7 @@ component Row inherits HorizontalLayout {
     VerticalLayout {
         alignment: center;
         horizontal-stretch: 1;
+        min-width: 160px;
         spacing: 2px;
 
         Text {
@@ -505,8 +506,8 @@ component AppearanceCard inherits Rectangle {
 export component SettingsWindow inherits Window {
     title: "Lilt Settings";
     icon: @image-url("../assets/icons/lilt.png");
-    preferred-width: 780px;
-    preferred-height: 540px;
+    preferred-width: 840px;
+    preferred-height: 580px;
     // Wide enough that the three Appearance cards (min 150px each, plus the sidebar,
     // padding and scrollbar) always fit. A narrower window forced a resize when that
     // page opened and let the cards overflow, which read as the window jumping.
@@ -606,12 +607,19 @@ export component SettingsWindow inherits Window {
         ScrollView {
             horizontal-stretch: 1;
 
-            VerticalLayout {
-                padding: 28px;
-                padding-top: 24px;
+            HorizontalLayout {
                 alignment: start;
+                padding-left: 28px;
+                padding-right: 28px;
+                padding-top: 24px;
+                padding-bottom: 28px;
 
-                if root.section == 0 : Section {
+                VerticalLayout {
+                    max-width: 840px;
+                    horizontal-stretch: 1;
+                    alignment: start;
+
+                    if root.section == 0 : Section {
                     title: "General";
                     Row {
                         label: "Collapse automatically";
@@ -1096,29 +1104,40 @@ export component SettingsWindow inherits Window {
                         }
                     }
 
-                    if root.launcher-custom-apps.length < 7 : Row {
-                        label: "Add shortcut";
-                        description: "Select an app (.exe) or shortcut (.lnk). Name and icon are fetched automatically.";
-                        path-input := LineEdit {
-                            width: 170px;
-                            placeholder-text: "Exe or shortcut path";
-                            accepted => {
-                                if path-input.text != "" {
-                                    root.add-custom-app(path-input.text);
-                                    path-input.text = "";
-                                }
+                    if root.launcher-custom-apps.length < 7 : VerticalLayout {
+                        spacing: 6px;
+                        padding-top: 4px;
+                        padding-bottom: 6px;
+
+                        Row {
+                            label: "Add shortcut";
+                            description: "Select an app (.exe) or shortcut (.lnk). Name and icon are fetched automatically.";
+                            Button {
+                                text: "Browse…";
+                                clicked => { root.browse-custom-app(); }
                             }
                         }
-                        Button {
-                            text: "Browse…";
-                            clicked => { root.browse-custom-app(); }
-                        }
-                        Button {
-                            text: "Add";
-                            clicked => {
-                                if path-input.text != "" {
-                                    root.add-custom-app(path-input.text);
-                                    path-input.text = "";
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            path-input := LineEdit {
+                                horizontal-stretch: 1;
+                                placeholder-text: "Or enter executable or shortcut path…";
+                                accepted => {
+                                    if path-input.text != "" {
+                                        root.add-custom-app(path-input.text);
+                                        path-input.text = "";
+                                    }
+                                }
+                            }
+                            Button {
+                                text: "Add";
+                                enabled: path-input.text != "";
+                                clicked => {
+                                    if path-input.text != "" {
+                                        root.add-custom-app(path-input.text);
+                                        path-input.text = "";
+                                    }
                                 }
                             }
                         }
@@ -1183,7 +1202,7 @@ export component SettingsWindow inherits Window {
                         label: "Exclude another app";
                         description: "The program's file name, for example KeePass.exe.";
                         exclude-input := LineEdit {
-                            width: 170px;
+                            width: 130px;
                             placeholder-text: "App.exe";
                             accepted(text) => {
                                 root.add-excluded-app(text);
@@ -1398,7 +1417,7 @@ export component SettingsWindow inherits Window {
                     Row {
                         label: "Updates";
                         description: root.update-message;
-                        Button {
+                        if !root.update-available : Button {
                             text: root.update-checking ? "Checking…" : "Check for updates";
                             enabled: !root.update-checking;
                             clicked => { root.check-for-updates(); }
@@ -1435,4 +1454,5 @@ export component SettingsWindow inherits Window {
             }
         }
     }
+}
 }
