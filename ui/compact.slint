@@ -48,76 +48,84 @@ component AppLauncherView inherits Rectangle {
     animate slide-y { duration: 160ms; easing: cubic-bezier(0.16, 1, 0.3, 1); }
     animate item-opacity { duration: 140ms; easing: ease-out; }
 
-    HorizontalLayout {
+    VerticalLayout {
         alignment: center;
 
-        // Click target covers ONLY the icon and the name
-        launch-target := Rectangle {
-            border-radius: 8px;
-            background: target-touch.has-hover ? Theme.tile-hover : transparent;
-            animate background { duration: Theme.hover-duration; }
+        HorizontalLayout {
+            alignment: center;
 
-            HorizontalLayout {
-                padding-left: 8px;
-                padding-right: 10px;
-                padding-top: 3px;
-                padding-bottom: 3px;
-                spacing: 8px;
-                alignment: center;
+            // Click target covers ONLY the icon and the name
+            launch-target := Rectangle {
+                border-radius: 8px;
+                background: target-touch.has-hover ? Theme.tile-hover : transparent;
+                animate background { duration: Theme.hover-duration; }
 
-                // App Icon directly - NO bubble/border/tile wrapper
-                Rectangle {
-                    width: 18px;
-                    height: 18px;
-                    y: (parent.height - self.height) / 2 + root.slide-y;
-                    opacity: root.item-opacity;
-
-                    if root.current.has-icon : Image {
-                        width: 18px;
-                        height: 18px;
-                        source: root.current.icon;
-                    }
-
-                    if !root.current.has-icon : Icon {
-                        size: 16px;
-                        color: Theme.accent;
-                        data: root.current.icon-kind == "code" ? Icons.cpu
-                            : root.current.icon-kind == "game" ? Icons.disc
-                            : root.current.icon-kind == "art" ? Icons.picture
-                            : root.current.icon-kind == "terminal" ? Icons.activity
-                            : root.current.icon-kind == "browser" ? Icons.globe
-                            : Icons.folder;
-                    }
-                }
-
-                // App Name
-                VerticalLayout {
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 10px;
+                    padding-top: 3px;
+                    padding-bottom: 3px;
+                    spacing: 8px;
                     alignment: center;
-                    spacing: 1px;
-                    y: root.slide-y;
-                    opacity: root.item-opacity;
 
-                    Text {
-                        text: root.current.name;
-                        font-size: 11.5px;
-                        font-weight: 600;
-                        color: Theme.text;
-                        overflow: elide;
+                    // App Icon directly - NO bubble/border/tile wrapper
+                    VerticalLayout {
+                        alignment: center;
+                        y: root.slide-y;
+                        opacity: root.item-opacity;
+
+                        Rectangle {
+                            width: 18px;
+                            height: 18px;
+
+                            if root.current.has-icon : Image {
+                                width: 18px;
+                                height: 18px;
+                                source: root.current.icon;
+                            }
+
+                            if !root.current.has-icon : Icon {
+                                size: 16px;
+                                color: Theme.accent;
+                                data: root.current.icon-kind == "code" ? Icons.cpu
+                                    : root.current.icon-kind == "game" ? Icons.disc
+                                    : root.current.icon-kind == "art" ? Icons.picture
+                                    : root.current.icon-kind == "terminal" ? Icons.activity
+                                    : root.current.icon-kind == "browser" ? Icons.globe
+                                    : Icons.folder;
+                            }
+                        }
                     }
 
-                    Text {
-                        text: root.total > 0 ? ((root.idx + 1) + " of " + root.total + " · Click to launch") : "Configure in Settings";
-                        font-size: 8.5px;
-                        color: Theme.text-tertiary;
-                        overflow: elide;
+                    // App Name
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 1px;
+                        y: root.slide-y;
+                        opacity: root.item-opacity;
+
+                        Text {
+                            text: root.current.name;
+                            font-size: 11.5px;
+                            font-weight: 600;
+                            color: Theme.text;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: root.total > 0 ? ((root.idx + 1) + " of " + root.total) : "Configure in Settings";
+                            font-size: 8.5px;
+                            color: Theme.text-tertiary;
+                            overflow: elide;
+                        }
                     }
                 }
-            }
 
-            target-touch := TouchArea {
-                mouse-cursor: pointer;
-                clicked => {
-                    AppActions.launch-app(AppState.launcher-index);
+                target-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        AppActions.launch-app(AppState.launcher-index);
+                    }
                 }
             }
         }
