@@ -497,11 +497,13 @@ impl App {
                 let mut settings = app.settings.borrow_mut();
                 settings.launcher.initialized = true;
                 let apps = &mut settings.launcher.custom_apps;
-                if let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to)) {
-                    if from < apps.len() && to < apps.len() && from != to {
-                        let item = apps.remove(from);
-                        apps.insert(to, item);
-                    }
+                if let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to))
+                    && from < apps.len()
+                    && to < apps.len()
+                    && from != to
+                {
+                    let item = apps.remove(from);
+                    apps.insert(to, item);
                 }
             }
             app.launcher.detect_apps(&app.settings.borrow());
