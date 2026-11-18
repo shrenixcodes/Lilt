@@ -209,15 +209,59 @@ pub fn sessions() -> Vec<Session> {
             out.push(session);
         }
     }
-    // One entry per process: the first (usually the main window's) wins. This mirrors
-    // Windows' own volume mixer, which collapses several streams of an app.
+    let mut browser_counts: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
     let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
-    out.retain(|s| seen.insert(s.process_id.max(1) + if s.is_system { 1 << 30 } else { 0 }));
+    let mut filtered = Vec::new();
+
+    for mut s in out {
+        if s.is_system {
+            filtered.push(s);
+        } else if is_browser_process(s.process_id) {
+            let count = browser_counts.entry(s.process_id).or_insert(0);
+            *count += 1;
+            if *count == 1 {
+                let mut tab = s.clone();
+                tab.id = format!("{}_tab", s.id);
+                tab.name = format!("{} (Music tab)", s.name);
+                filtered.push(tab);
+
+                s.id = format!("pid_browser_{}", s.process_id);
+                s.name = format!("{} (Whole browser)", s.name);
+                filtered.push(s);
+            } else {
+                s.name = format!("{} (Tab {})", s.name, *count);
+                filtered.push(s);
+            }
+        } else if seen.insert(s.process_id) {
+            filtered.push(s);
+        }
+    }
+
     // System sounds last; otherwise alphabetical.
-    out.sort_by(|a, b| {
+    filtered.sort_by(|a, b| {
         a.is_system.cmp(&b.is_system).then_with(|| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()))
     });
-    out
+    filtered
+}
+
+fn is_browser_process(pid: u32) -> bool {
+    let Some(path) = process_path(pid) else { return false };
+    let lower = path.to_ascii_lowercase();
+    let base = lower.rsplit(['\\', '/']).next().unwrap_or(&lower);
+    matches!(
+        base,
+        "chrome.exe"
+            | "msedge.exe"
+            | "firefox.exe"
+            | "brave.exe"
+            | "opera.exe"
+            | "opera_gx.exe"
+            | "vivaldi.exe"
+            | "arc.exe"
+            | "zen.exe"
+            | "waterfox.exe"
+            | "librewolf.exe"
+    )
 }
 
 fn describe(control: &IAudioSessionControl) -> Option<Session> {
@@ -370,19 +414,34 @@ fn with_session<F>(id: &str, then: F) -> bool
 where
     F: Fn(&IAudioSessionControl) -> bool,
 {
+    let target_id = id.strip_suffix("_tab").unwrap_or(id);
+    let target_pid: Option<u32> = if id.starts_with("pid_browser_") {
+        id.strip_prefix("pid_browser_").and_then(|s| s.parse().ok())
+    } else {
+        None
+    };
+
     let Some(manager) = session_manager() else { return false };
     let Ok(enumerator) = (unsafe { manager.GetSessionEnumerator() }) else { return false };
     let count = unsafe { enumerator.GetCount() }.unwrap_or(0);
+    let mut any = false;
     for index in 0..count {
         let Ok(control) = (unsafe { enumerator.GetSession(index) }) else { continue };
         let Ok(control2) = control.cast::<IAudioSessionControl2>() else { continue };
-        let Ok(session_id) = (unsafe { control2.GetSessionInstanceIdentifier() }) else { continue };
-        let Ok(session_id) = (unsafe { session_id.to_string() }) else { continue };
-        if session_id == id {
-            return then(&control);
+        if let Some(pid) = target_pid {
+            let session_pid = unsafe { control2.GetProcessId() }.unwrap_or(0);
+            if session_pid == pid {
+                any |= then(&control);
+            }
+        } else {
+            let Ok(session_id) = (unsafe { control2.GetSessionInstanceIdentifier() }) else { continue };
+            let Ok(session_id) = (unsafe { session_id.to_string() }) else { continue };
+            if session_id == target_id {
+                return then(&control);
+            }
         }
     }
-    false
+    any
 }
 
 pub fn set_session_volume(id: &str, level: f32) -> bool {
