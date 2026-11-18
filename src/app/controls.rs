@@ -305,15 +305,7 @@ impl App {
                     state.set_muted(output.muted);
                     state.set_output_name(output.name.into());
                 }
-                let media = app.island.global::<AppState>().get_media();
-                let mut next = session_rows(&sessions);
-                if media.availability == crate::ui::MediaAvailability::Active && !media.title.is_empty() {
-                    for row in &mut next {
-                        if row.name.contains("(Music tab)") {
-                            row.name = format!("Music: {}", media.title).into();
-                        }
-                    }
-                }
+                let next = session_rows(&sessions);
                 let current = state.get_sessions();
                 if current.row_count() == next.len() && current.iter().zip(&next).all(|(old, new)| old.id == new.id) {
                     for (index, row) in next.into_iter().enumerate() {
