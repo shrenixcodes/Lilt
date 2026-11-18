@@ -490,6 +490,26 @@ impl App {
             App::schedule_save(&app);
             app.refresh_settings_window();
         });
+        let weak_move_custom = weak.clone();
+        window.on_move_custom_app(move |from, to| {
+            let Some(app) = weak_move_custom.upgrade() else { return };
+            {
+                let mut settings = app.settings.borrow_mut();
+                settings.launcher.initialized = true;
+                let apps = &mut settings.launcher.custom_apps;
+                if let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to)) {
+                    if from < apps.len() && to < apps.len() && from != to {
+                        let item = apps.remove(from);
+                        apps.insert(to, item);
+                    }
+                }
+            }
+            app.launcher.detect_apps(&app.settings.borrow());
+            app.launcher.publish(&app.island);
+            App::apply_settings(&app);
+            App::schedule_save(&app);
+            app.refresh_settings_window();
+        });
         let weak_clear_custom = weak.clone();
         window.on_clear_custom_apps(move || {
             let Some(app) = weak_clear_custom.upgrade() else { return };

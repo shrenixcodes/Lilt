@@ -1,6 +1,7 @@
 import { Switch, Slider, ComboBox, Button, LineEdit, ScrollView, AboutSlint, Palette } from "std-widgets.slint";
 import { Theme, AppearanceTokens } from "theme.slint";
 import { Icon, Icons } from "components/icon.slint";
+import { IconButton } from "components/controls.slint";
 import { GlassSheen, GlassRim } from "components/glass.slint";
 import { Heading, SectionLabel } from "components/heading.slint";
 
@@ -558,6 +559,10 @@ export component SettingsWindow inherits Window {
     callback remove-custom-app(int);
     callback clear-custom-apps();
     callback reset-custom-apps();
+    callback move-custom-app(int, int);
+    in-out property <int> dragging-index: -1;
+    in-out property <length> drag-start-y: 0px;
+    in-out property <length> drag-offset-y: 0px;
     in property <[string]> launcher-custom-apps;
     // Clears copied text, or with `true` everything including pinned entries and snippets.
     callback clear-clipboard(bool);
@@ -992,11 +997,100 @@ export component SettingsWindow inherits Window {
                         }
                     }
 
-                    for app[i] in root.launcher-custom-apps : Row {
-                        label: app;
-                        Button {
-                            text: "Remove";
-                            clicked => { root.remove-custom-app(i); }
+                    for app[i] in root.launcher-custom-apps : Rectangle {
+                        border-radius: 6px;
+                        background: root.dragging-index == i ? Theme.tile-hover : transparent;
+                        animate background { duration: Theme.hover-duration; }
+
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            spacing: 10px;
+                            alignment: center;
+
+                            // Drag grip handle
+                            Rectangle {
+                                width: 22px;
+                                height: 32px;
+                                border-radius: 4px;
+                                background: drag-touch.has-hover ? Theme.tile-hover : transparent;
+                                animate background { duration: Theme.hover-duration; }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 3px;
+                                    for _ in [0, 1, 2] : Rectangle {
+                                        width: 14px;
+                                        height: 2px;
+                                        border-radius: 1px;
+                                        background: drag-touch.has-hover || root.dragging-index == i ? Palette.foreground : Theme.window-text-secondary;
+                                        animate background { duration: Theme.hover-duration; }
+                                    }
+                                }
+
+                                drag-touch := TouchArea {
+                                    mouse-cursor: self.pressed ? grabbing : grab;
+                                    pointer-event(event) => {
+                                        if event.kind == PointerEventKind.down {
+                                            root.dragging-index = i;
+                                            root.drag-start-y = self.mouse-y;
+                                            root.drag-offset-y = 0px;
+                                        } else if event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel {
+                                            root.dragging-index = -1;
+                                            root.drag-offset-y = 0px;
+                                        }
+                                    }
+                                    moved => {
+                                        if self.pressed && root.dragging-index == i {
+                                            root.drag-offset-y = self.mouse-y - root.drag-start-y;
+                                            if root.drag-offset-y > 28px && i + 1 < root.launcher-custom-apps.length {
+                                                root.move-custom-app(i, i + 1);
+                                                root.drag-start-y = self.mouse-y;
+                                                root.drag-offset-y = 0px;
+                                            } else if root.drag-offset-y < -28px && i > 0 {
+                                                root.move-custom-app(i, i - 1);
+                                                root.drag-start-y = self.mouse-y;
+                                                root.drag-offset-y = 0px;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // App name and path
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                spacing: 2px;
+                                min-height: 44px;
+
+                                Text {
+                                    text: app;
+                                    color: Palette.foreground;
+                                    font-size: 13px;
+                                    wrap: word-wrap;
+                                }
+                            }
+
+                            // Quick move up / down buttons
+                            if i > 0 : IconButton {
+                                icon: Icons.chevron-up;
+                                tooltip: "Move up";
+                                clicked => { root.move-custom-app(i, i - 1); }
+                            }
+                            if i == 0 : Rectangle { width: 28px; }
+
+                            if i + 1 < root.launcher-custom-apps.length : IconButton {
+                                icon: Icons.chevron-down;
+                                tooltip: "Move down";
+                                clicked => { root.move-custom-app(i, i + 1); }
+                            }
+                            if i + 1 >= root.launcher-custom-apps.length : Rectangle { width: 28px; }
+
+                            Button {
+                                text: "Remove";
+                                clicked => { root.remove-custom-app(i); }
+                            }
                         }
                     }
 
