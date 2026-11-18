@@ -998,6 +998,7 @@ export component SettingsWindow inherits Window {
                     }
 
                     for app[i] in root.launcher-custom-apps : Rectangle {
+                        min-height: 44px;
                         border-radius: 6px;
                         background: root.dragging-index == i ? Theme.tile-hover : transparent;
                         animate background { duration: Theme.hover-duration; }
@@ -1005,8 +1006,9 @@ export component SettingsWindow inherits Window {
                         HorizontalLayout {
                             padding-left: 6px;
                             padding-right: 6px;
+                            padding-top: 4px;
+                            padding-bottom: 4px;
                             spacing: 10px;
-                            alignment: center;
 
                             // Drag grip handle
                             Rectangle {
@@ -1062,30 +1064,30 @@ export component SettingsWindow inherits Window {
                                 horizontal-stretch: 1;
                                 alignment: center;
                                 spacing: 2px;
-                                min-height: 44px;
+                                min-width: 0;
 
                                 Text {
                                     text: app;
                                     color: Palette.foreground;
                                     font-size: 13px;
-                                    wrap: word-wrap;
+                                    overflow: elide;
                                 }
                             }
 
                             // Quick move up / down buttons
-                            if i > 0 : IconButton {
+                            IconButton {
                                 icon: Icons.chevron-up;
                                 tooltip: "Move up";
+                                enabled: i > 0;
                                 clicked => { root.move-custom-app(i, i - 1); }
                             }
-                            if i == 0 : Rectangle { width: 28px; }
 
-                            if i + 1 < root.launcher-custom-apps.length : IconButton {
+                            IconButton {
                                 icon: Icons.chevron-down;
                                 tooltip: "Move down";
+                                enabled: i + 1 < root.launcher-custom-apps.length;
                                 clicked => { root.move-custom-app(i, i + 1); }
                             }
-                            if i + 1 >= root.launcher-custom-apps.length : Rectangle { width: 28px; }
 
                             Button {
                                 text: "Remove";
