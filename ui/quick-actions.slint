@@ -46,15 +46,15 @@ component DeckMeter inherits HorizontalLayout {
     animate shown-fill { duration: Theme.ambient-duration; easing: ease-in-out; }
 
     spacing: 8px;
-    height: 18px;
+    height: 16px;
 
     Text {
-        width: 30px;
+        width: 28px;
         vertical-alignment: center;
         text: root.label;
         color: Theme.text-secondary;
-        font-size: 13px;
-        font-weight: 400;
+        font-size: 11px;
+        font-weight: 600;
     }
 
     VerticalLayout {
@@ -62,8 +62,8 @@ component DeckMeter inherits HorizontalLayout {
         horizontal-stretch: 1;
 
         Rectangle {
-            height: 9px;
-            border-radius: 4.5px;
+            height: 4px;
+            border-radius: 2px;
             background: Theme.track;
             clip: true;
 
@@ -71,7 +71,7 @@ component DeckMeter inherits HorizontalLayout {
                 x: 0;
                 width: max(0px, parent.width * clamp(root.value, 0, 1));
                 height: 100%;
-                border-radius: 4.5px;
+                border-radius: 2px;
                 background: root.shown-fill;
                 animate width { duration: Theme.fade-duration * 2; easing: ease-out; }
             }
@@ -79,27 +79,27 @@ component DeckMeter inherits HorizontalLayout {
     }
 
     Text {
-        width: 34px;
+        width: 32px;
         vertical-alignment: center;
         horizontal-alignment: right;
         text: root.value-text;
         color: Theme.text;
-        font-size: 13px;
-        font-weight: 400;
+        font-size: 11px;
+        font-weight: 600;
     }
 }
 
 component DeckRate inherits HorizontalLayout {
     in property <string> icon;
     in property <string> text;
-    spacing: 6px;
-    height: 18px;
+    spacing: 5px;
+    height: 16px;
 
     VerticalLayout {
         alignment: center;
         Icon {
             data: root.icon;
-            size: 12px;
+            size: 11px;
             color: Theme.text-secondary;
         }
     }
@@ -108,8 +108,8 @@ component DeckRate inherits HorizontalLayout {
         vertical-alignment: center;
         text: root.text;
         color: Theme.text;
-        font-size: 13px;
-        font-weight: 400;
+        font-size: 11.5px;
+        font-weight: 500;
         overflow: elide;
     }
 }
@@ -157,7 +157,7 @@ export component ControlDeck inherits Tile {
             HorizontalLayout {
                 width: 100%;
                 height: 100%;
-                spacing: 12px;
+                spacing: 14px;
 
                 // CPU and RAM meters
                 VerticalLayout {
