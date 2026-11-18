@@ -6,6 +6,24 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-11-18
+
+### Added
+
+- Drag grip handles and reorder controls (move up and down) for collapsed island shortcuts in Settings.
+- Responsive layout constraint (`max-width: 840px`) for Settings cards to prevent excessive stretching on widescreen and full-screen displays.
+- Streamlined two-tier shortcut addition UI in Settings with an expansive path input bar and quick browse button.
+
+### Changed
+
+- Refined CPU and RAM telemetry meters into slender 4px rounded capsule tracks with matching subtle fills and clean typography.
+- Vertically centered the compact island app launcher item and removed the redundant click-to-launch hint.
+- Protected Settings row labels with guaranteed minimum widths to eliminate text squeezing on narrow viewports.
+
+### Fixed
+
+- Resolved jagged alignment and floating center-cluster in the collapsed island shortcuts settings list.
+
 ## [0.5.4] - 2026-11-18
 
 ### Added
