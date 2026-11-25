@@ -41,6 +41,8 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX entries_order ON entries(pinned, manual, updated_at);",
     // 2: image thumbnails
     "ALTER TABLE entries ADD COLUMN thumbnail BLOB;",
+    // 3: full-resolution image data for copy-back (keeping `thumbnail` lightweight for the list)
+    "ALTER TABLE entries ADD COLUMN image BLOB;",
 ];
 
 /// Columns of a [`Summary`]; the text is cut to the preview in SQL.
@@ -128,12 +130,13 @@ impl ClipboardStore {
         Ok(())
     }
 
-    /// Remembers a captured image. Returns the entry's id.
-    pub fn capture_image(&self, thumbnail: &[u8], source: Option<&str>, now: i64) -> Result<i64> {
-        // Use a hash of the thumbnail bytes for deduplication.
+    /// Remembers a captured image (lightweight list thumbnail + full-resolution PNG).
+    /// Returns the entry's id.
+    pub fn capture_image(&self, thumbnail: &[u8], full_image: &[u8], source: Option<&str>, now: i64) -> Result<i64> {
+        // Use a hash of the full image bytes for deduplication.
         let fingerprint = {
             let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-            for &byte in thumbnail {
+            for &byte in full_image {
                 hash ^= byte as u64;
                 hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
             }
@@ -155,16 +158,20 @@ impl ClipboardStore {
             return Ok(id);
         }
         self.conn.execute(
-            "INSERT INTO entries (text, kind, created_at, updated_at, source, fingerprint, chars, lines, thumbnail)
-             VALUES ('', 6, ?1, ?1, ?2, ?3, 0, 0, ?4)",
-            params![now, source, fingerprint, thumbnail],
+            "INSERT INTO entries (text, kind, created_at, updated_at, source, fingerprint, chars, lines, thumbnail, image)
+             VALUES ('', 6, ?1, ?1, ?2, ?3, 0, 0, ?4, ?5)",
+            params![now, source, fingerprint, thumbnail, full_image],
         )?;
         Ok(self.conn.last_insert_rowid())
     }
 
-    /// The thumbnail bytes of an image entry.
-    pub fn thumbnail(&self, id: i64) -> Result<Option<Vec<u8>>> {
-        Ok(self.conn.query_row("SELECT thumbnail FROM entries WHERE id = ?1", [id], |r| r.get(0)).optional()?)
+    /// Full-resolution image PNG bytes of an entry (falling back to the stored thumbnail on pre-v3 rows).
+    pub fn image(&self, id: i64) -> Result<Option<Vec<u8>>> {
+        Ok(self
+            .conn
+            .query_row("SELECT COALESCE(image, thumbnail) FROM entries WHERE id = ?1 AND kind = 6", [id], |r| r.get(0))
+            .optional()?
+            .flatten())
     }
 
     /// Remembers copied text. A repeat of captured text moves that entry to the top
@@ -264,7 +271,7 @@ impl ClipboardStore {
     pub fn snippet(&self, id: i64) -> Result<Option<Snippet>> {
         Ok(self
             .conn
-            .query_row("SELECT id, title, text, description FROM entries WHERE id = ?1", [id], |r| {
+            .query_row("SELECT id, title, text, description FROM entries WHERE id = ?1 AND kind != 6", [id], |r| {
                 Ok(Snippet { id: Some(r.get(0)?), title: r.get(1)?, text: r.get(2)?, description: r.get(3)? })
             })
             .optional()?)
@@ -556,5 +563,28 @@ mod tests {
         assert_eq!(listing.matched, 1);
         // About 3 MB of text compared in Rust; generous for slow CI machines.
         assert!(elapsed < Duration::from_millis(500), "search took {elapsed:?}");
+    }
+
+    #[test]
+    fn image_copy_back_keeps_full_resolution_while_listing_keeps_thumbnail() {
+        let s = store();
+        let thumb = vec![1u8, 2, 3];
+        let full = vec![4u8, 5, 6, 7, 8];
+        let id = s.capture_image(&thumb, &full, Some("mspaint.exe"), 10).unwrap();
+        let listing = s.list("", Filter::Images, 10).unwrap();
+        assert_eq!(listing.entries[0].thumbnail.as_deref(), Some(thumb.as_slice()));
+        assert_eq!(s.image(id).unwrap().as_deref(), Some(full.as_slice()));
+        assert_eq!(s.snippet(id).unwrap(), None);
+
+        // Pre-v3 rows that only had `thumbnail` still copy back cleanly.
+        s.conn
+            .execute(
+                "INSERT INTO entries (text, kind, created_at, updated_at, fingerprint, chars, lines, thumbnail)
+                 VALUES ('', 6, 11, 11, 99, 0, 0, ?1)",
+                [&thumb],
+            )
+            .unwrap();
+        let legacy_id = s.conn.last_insert_rowid();
+        assert_eq!(s.image(legacy_id).unwrap().as_deref(), Some(thumb.as_slice()));
     }
 }

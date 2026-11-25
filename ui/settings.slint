@@ -1194,8 +1194,8 @@ export component SettingsWindow inherits Window {
                         }
                     }
                     if root.data.show-clipboard : Row {
-                        label: "Remember copied text";
-                        description: "Off unless you turn it on. Only text is kept, never images or files.";
+                        label: "Remember copied text and images";
+                        description: "Off unless you turn it on. Copied text and images stay on this PC; files are never kept.";
                         Switch {
                             checked: root.data.clipboard-capture;
                             toggled => { root.data.clipboard-capture = self.checked; root.edited(); }

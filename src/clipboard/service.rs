@@ -186,8 +186,8 @@ impl Worker<'_> {
                 return true;
             }
             Command::Copy(id) => {
-                if let Ok(Some(thumbnail)) = self.store.thumbnail(id) {
-                    match capture::write_image(&thumbnail) {
+                if let Ok(Some(image_bytes)) = self.store.image(id) {
+                    match capture::write_image(&image_bytes) {
                         Some(sequence) => {
                             self.seen = sequence;
                             (self.publish)(Update::Copied(id));
@@ -253,8 +253,13 @@ impl Worker<'_> {
         });
         match copied {
             Ok(copied) => {
-                if let Some(image_bytes) = copied.image {
-                    if let Err(err) = self.store.capture_image(&image_bytes, copied.source.as_deref(), now_unix()) {
+                if let Some(image) = copied.image {
+                    if let Err(err) = self.store.capture_image(
+                        &image.thumbnail_png,
+                        &image.full_png,
+                        copied.source.as_deref(),
+                        now_unix(),
+                    ) {
                         tracing::warn!(%err, "could not remember copied image");
                         return false;
                     }
