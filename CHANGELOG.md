@@ -6,6 +6,23 @@ All notable changes to Lilt are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-25
+
+### Changed
+
+- Reordered Settings sections so `Clock & weather` sits before `About`, wrapped clipboard filter chips onto two rows, and allowed vertical scrolling in the expanded Calendar agenda.
+- Toggling the Brightness sun icon switches between dimmed (`15 %`) and previous brightness levels, and media progress bars support continuous drag-to-seek scrubbing.
+
+### Fixed
+
+- Preserved `1 px` glass borders when UI hue gradient is disabled and scaled live backdrop compositing with window fade opacity to eliminate opaque fade pops.
+- Enforced the Compact App Launcher toggle across middle-clicks, wheel scrolling, and launches; resolved `Code.exe` and quoted launch targets cleanly; smoothed precision touchpad launcher scrolling; and allowed dragging across the compact pill without inner targets swallowing gestures.
+- Fixed Settings drag-and-drop shortcut reordering breaking mid-drag, blocked `Alt`/`F10` system-key activation during shortcut capture alongside `F13..F24` and punctuation support, aligned Settings label text contrast tokens, and made native file pickers modal to Settings.
+- Preserved full-resolution PNG captures for clipboard image re-pasting, cached decoded thumbnails, corrected `CF_DIBV5` pixel data offsets, prevented snippet editor activation on images, debounced clipboard search filtering, and updated clipboard privacy copy in Settings, intro, and `SECURITY.md`.
+- Split audio commands onto a dedicated worker thread so slow Bluetooth/Wi-Fi/WMI scans never stall volume or mute updates, cached mixer app icons, resolved indirect audio endpoint/session names, preserved in-progress Wi-Fi passwords across network refreshes, and cleaned up superseded temporary Wi-Fi profiles.
+- Fixed expanded view padding clicks collapsing the island, Escape/arrow/Enter key hijacking across inputs and overlays, click-outside dismissal on Tasks priority filters, Archive search/volume box focus tracking, and compact progress bar edge clearance.
+- Scoped full-screen hiding to Lilt's active monitor, aligned auto-hide wake zones and tuck travel with top-docked taskbars, paused off-screen visualizers, marquees, and disabled System monitor polling, kept ended media visible during grace in Expanded View, cycled individual browser tab media sessions, fixed cross-timezone ICS event durations and midnight task counters, removed unnecessary elevation on per-user auto-updates, and refused updates when checksum download or parsing fails.
+
 ## [0.5.5] - 2026-11-18
 
 ### Added
