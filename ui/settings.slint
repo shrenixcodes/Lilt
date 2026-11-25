@@ -1,4 +1,4 @@
-import { Switch, Slider, ComboBox, Button, LineEdit, ScrollView, AboutSlint, Palette } from "std-widgets.slint";
+import { Switch, Slider, ComboBox, Button, LineEdit, ScrollView, AboutSlint } from "std-widgets.slint";
 import { Theme, AppearanceTokens } from "theme.slint";
 import { Icon, Icons } from "components/icon.slint";
 import { IconButton } from "components/controls.slint";
@@ -124,7 +124,7 @@ component Row inherits HorizontalLayout {
 
         Text {
             text: root.label;
-            color: root.enabled ? Palette.foreground : Theme.window-text-secondary;
+            color: root.enabled ? Theme.window-text : Theme.window-text-secondary;
             font-size: 13px;
             wrap: word-wrap;
         }
@@ -562,6 +562,7 @@ export component SettingsWindow inherits Window {
     callback reset-custom-apps();
     callback move-custom-app(int, int);
     in-out property <int> dragging-index: -1;
+    in-out property <int> drag-target-index: -1;
     in-out property <length> drag-start-y: 0px;
     in-out property <length> drag-offset-y: 0px;
     in property <[string]> launcher-custom-apps;
@@ -576,7 +577,7 @@ export component SettingsWindow inherits Window {
     // Restores the defaults of the Appearance & position page only.
     callback reset-appearance();
 
-    property <[string]> sections: ["General", "Appearance & position", "Widgets", "Clipboard", "Music", "Ambient visuals", "Performance", "Startup", "Keyboard shortcuts", "About", "Clock & weather"];
+    property <[string]> sections: ["General", "Appearance & position", "Widgets", "Clipboard", "Music", "Ambient visuals", "Performance", "Startup", "Keyboard shortcuts", "Clock & weather", "About"];
 
     HorizontalLayout {
         Rectangle {
@@ -599,7 +600,17 @@ export component SettingsWindow inherits Window {
                 for name[i] in root.sections : NavItem {
                     text: name;
                     selected: root.section == i;
-                    clicked => { root.section = i; }
+                    clicked => {
+                        if root.dragging-index >= 0 {
+                            root.dragging-index = -1;
+                            root.drag-target-index = -1;
+                            root.drag-offset-y = 0px;
+                        }
+                        if root.recording-shortcut {
+                            root.record-shortcut(-1);
+                        }
+                        root.section = i;
+                    }
                 }
             }
         }
@@ -670,7 +681,7 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 10 : Section {
+                if root.section == 9 : Section {
                     title: "Clock & weather";
                     Row {
                         label: "Time format";
@@ -1005,101 +1016,124 @@ export component SettingsWindow inherits Window {
                         }
                     }
 
-                    for app[i] in root.launcher-custom-apps : Rectangle {
-                        min-height: 44px;
-                        border-radius: 6px;
-                        background: root.dragging-index == i ? Theme.tile-hover : transparent;
-                        animate background { duration: Theme.hover-duration; }
+                    VerticalLayout {
+                        spacing: 4px;
 
-                        HorizontalLayout {
-                            padding-left: 6px;
-                            padding-right: 6px;
-                            padding-top: 4px;
-                            padding-bottom: 4px;
-                            spacing: 10px;
+                        for app[i] in root.launcher-custom-apps : Rectangle {
+                            height: 44px;
 
-                            // Drag grip handle
-                            Rectangle {
-                                width: 22px;
-                                height: 32px;
-                                border-radius: 4px;
-                                background: drag-touch.has-hover ? Theme.tile-hover : transparent;
+                            row-card := Rectangle {
+                                width: parent.width;
+                                height: 44px;
+                                border-radius: 6px;
+                                background: root.dragging-index == i ? Theme.tile-hover : transparent;
+                                y: root.dragging-index == i
+                                    ? clamp(root.drag-offset-y, -i * 48px, (root.launcher-custom-apps.length - 1 - i) * 48px)
+                                    : root.dragging-index >= 0 && root.drag-target-index > root.dragging-index && i > root.dragging-index && i <= root.drag-target-index
+                                        ? -48px
+                                        : root.dragging-index >= 0 && root.drag-target-index < root.dragging-index && i >= root.drag-target-index && i < root.dragging-index
+                                            ? 48px
+                                            : 0px;
                                 animate background { duration: Theme.hover-duration; }
+                                animate y { duration: root.dragging-index == i ? 0ms : Theme.hover-duration; easing: ease-out-quad; }
 
-                                VerticalLayout {
-                                    alignment: center;
-                                    spacing: 3px;
-                                    for _ in [0, 1, 2] : Rectangle {
-                                        width: 14px;
-                                        height: 2px;
-                                        border-radius: 1px;
-                                        background: drag-touch.has-hover || root.dragging-index == i ? Palette.foreground : Theme.window-text-secondary;
+                                HorizontalLayout {
+                                    padding-left: 6px;
+                                    padding-right: 6px;
+                                    padding-top: 4px;
+                                    padding-bottom: 4px;
+                                    spacing: 10px;
+
+                                    // Drag grip handle; hit area lives in outer `drag-touch` so coordinates don't drift during drag.
+                                    Rectangle {
+                                        width: 22px;
+                                        height: 36px;
+                                        border-radius: 4px;
+                                        background: drag-touch.has-hover || root.dragging-index == i ? Theme.tile-hover : transparent;
                                         animate background { duration: Theme.hover-duration; }
-                                    }
-                                }
 
-                                drag-touch := TouchArea {
-                                    mouse-cursor: self.pressed ? grabbing : grab;
-                                    pointer-event(event) => {
-                                        if event.kind == PointerEventKind.down {
-                                            root.dragging-index = i;
-                                            root.drag-start-y = self.mouse-y;
-                                            root.drag-offset-y = 0px;
-                                        } else if event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel {
-                                            root.dragging-index = -1;
-                                            root.drag-offset-y = 0px;
-                                        }
-                                    }
-                                    moved => {
-                                        if self.pressed && root.dragging-index == i {
-                                            root.drag-offset-y = self.mouse-y - root.drag-start-y;
-                                            if root.drag-offset-y > 28px && i + 1 < root.launcher-custom-apps.length {
-                                                root.move-custom-app(i, i + 1);
-                                                root.drag-start-y = self.mouse-y;
-                                                root.drag-offset-y = 0px;
-                                            } else if root.drag-offset-y < -28px && i > 0 {
-                                                root.move-custom-app(i, i - 1);
-                                                root.drag-start-y = self.mouse-y;
-                                                root.drag-offset-y = 0px;
+                                        VerticalLayout {
+                                            alignment: center;
+                                            spacing: 3px;
+                                            for _ in [0, 1, 2] : Rectangle {
+                                                width: 14px;
+                                                height: 2px;
+                                                border-radius: 1px;
+                                                background: drag-touch.has-hover || root.dragging-index == i ? Theme.window-text : Theme.window-text-secondary;
+                                                animate background { duration: Theme.hover-duration; }
                                             }
                                         }
                                     }
+
+                                    // App name and path
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        alignment: center;
+                                        spacing: 2px;
+                                        min-width: 0;
+
+                                        Text {
+                                            text: app;
+                                            color: Theme.window-text;
+                                            font-size: 13px;
+                                            overflow: elide;
+                                        }
+                                    }
+
+                                    // Quick move up / down buttons
+                                    IconButton {
+                                        icon: Icons.chevron-up;
+                                        tooltip: "Move up";
+                                        enabled: i > 0;
+                                        clicked => { root.move-custom-app(i, i - 1); }
+                                    }
+
+                                    IconButton {
+                                        icon: Icons.chevron-down;
+                                        tooltip: "Move down";
+                                        enabled: i + 1 < root.launcher-custom-apps.length;
+                                        clicked => { root.move-custom-app(i, i + 1); }
+                                    }
+
+                                    Button {
+                                        text: "Remove";
+                                        clicked => { root.remove-custom-app(i); }
+                                    }
                                 }
                             }
 
-                            // App name and path
-                            VerticalLayout {
-                                horizontal-stretch: 1;
-                                alignment: center;
-                                spacing: 2px;
-                                min-width: 0;
-
-                                Text {
-                                    text: app;
-                                    color: Palette.foreground;
-                                    font-size: 13px;
-                                    overflow: elide;
+                            drag-touch := TouchArea {
+                                x: 6px;
+                                y: 4px;
+                                width: 22px;
+                                height: 36px;
+                                mouse-cursor: self.pressed ? grabbing : grab;
+                                pointer-event(event) => {
+                                    if event.kind == PointerEventKind.down {
+                                        root.dragging-index = i;
+                                        root.drag-target-index = i;
+                                        root.drag-start-y = self.mouse-y;
+                                        root.drag-offset-y = 0px;
+                                    } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) && root.dragging-index == i {
+                                        let target = root.drag-target-index;
+                                        root.dragging-index = -1;
+                                        root.drag-target-index = -1;
+                                        root.drag-offset-y = 0px;
+                                        if event.kind == PointerEventKind.up && target >= 0 && target != i {
+                                            root.move-custom-app(i, target);
+                                        }
+                                    }
                                 }
-                            }
-
-                            // Quick move up / down buttons
-                            IconButton {
-                                icon: Icons.chevron-up;
-                                tooltip: "Move up";
-                                enabled: i > 0;
-                                clicked => { root.move-custom-app(i, i - 1); }
-                            }
-
-                            IconButton {
-                                icon: Icons.chevron-down;
-                                tooltip: "Move down";
-                                enabled: i + 1 < root.launcher-custom-apps.length;
-                                clicked => { root.move-custom-app(i, i + 1); }
-                            }
-
-                            Button {
-                                text: "Remove";
-                                clicked => { root.remove-custom-app(i); }
+                                moved => {
+                                    if self.pressed && root.dragging-index == i {
+                                        root.drag-offset-y = self.mouse-y - root.drag-start-y;
+                                        root.drag-target-index = clamp(
+                                            i + round(root.drag-offset-y / 48px),
+                                            0,
+                                            root.launcher-custom-apps.length - 1,
+                                        );
+                                    }
+                                }
                             }
                         }
                     }
@@ -1401,7 +1435,7 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                if root.section == 9 : Section {
+                if root.section == 10 : Section {
                     title: "About";
                     Text {
                         text: "Lilt " + root.version;

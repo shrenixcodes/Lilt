@@ -15,7 +15,7 @@ use crate::appearance::{self, Fallback, Material};
 use crate::hotkey::{self, Shortcut};
 use crate::settings::{self, AppearanceMode, ClipboardRetention, LoadStatus, MotionPreference, Settings};
 use crate::ui::{AppActions, AppState, Appearance, SettingsData, SettingsWindow, Theme};
-use crate::window::{self, WindowKind, placement};
+use crate::window::{self, Notice, WindowKind, placement};
 use crate::{dialogs, paths, startup};
 
 /// The Clipboard page of the settings window.
@@ -289,11 +289,11 @@ impl App {
         let monitors = placement::monitors();
         let mut labels: Vec<SharedString> = vec!["Primary display".into()];
         labels.extend(monitors.iter().enumerate().map(|(i, m)| m.label(i).into()));
-        window.set_monitors(ModelRc::new(VecModel::from(labels)));
+        sync_string_model(window.get_monitors(), labels, |m| window.set_monitors(m));
         window.set_data(to_data(&self.settings.borrow(), &monitors));
         let excluded: Vec<SharedString> =
             self.settings.borrow().clipboard.excluded_apps.iter().map(|a| a.as_str().into()).collect();
-        window.set_clipboard_excluded(ModelRc::new(VecModel::from(excluded)));
+        sync_string_model(window.get_clipboard_excluded(), excluded, |m| window.set_clipboard_excluded(m));
         let custom_apps: Vec<SharedString> = self
             .settings
             .borrow()
@@ -302,7 +302,7 @@ impl App {
             .iter()
             .map(|a| format!("{} ({})", a.name, a.path).into())
             .collect();
-        window.set_launcher_custom_apps(ModelRc::new(VecModel::from(custom_apps)));
+        sync_string_model(window.get_launcher_custom_apps(), custom_apps, |m| window.set_launcher_custom_apps(m));
         if !window.get_recording_shortcut() {
             let problems = self.shortcut_problem.borrow();
             window.set_shortcut_message(problems[0].clone().unwrap_or_default().into());
@@ -310,8 +310,52 @@ impl App {
         }
     }
 
+    fn settings_owner(&self) -> Option<windows::Win32::Foundation::HWND> {
+        self.settings_window.borrow().as_ref().and_then(|w| window::find(w.window())).and_then(|native| native.hwnd())
+    }
+
+    fn set_settings_sys_key_capture(&self, capture: bool) {
+        if let Some(native) = self.settings_window.borrow().as_ref().and_then(|w| window::find(w.window())) {
+            native.set_consume_sys_keys(capture);
+        }
+    }
+
+    fn stop_shortcut_recording(&self) {
+        let was_recording = self.settings_window.borrow().as_ref().is_some_and(|w| w.get_recording_shortcut());
+        self.set_settings_sys_key_capture(false);
+        if let Some(window) = self.settings_window.borrow().as_ref() {
+            window.set_recording_shortcut(false);
+        }
+        if was_recording {
+            self.register_shortcuts();
+            self.refresh_settings_window();
+        }
+    }
+
+    fn sync_custom_apps(app: &Rc<Self>, save_immediately: bool) {
+        app.launcher.detect_apps(&app.settings.borrow());
+        app.launcher.publish(&app.island);
+        App::apply_settings(app);
+        if save_immediately {
+            app.save_now();
+        } else {
+            App::schedule_save(app);
+        }
+        app.refresh_settings_window();
+    }
+
     fn connect_settings_window(app: &Rc<Self>, window: &SettingsWindow) {
         let weak = Rc::downgrade(app);
+        if let Some(native) = window::find(window.window()) {
+            let weak_notice = weak.clone();
+            native.set_notice_handler(move |notice| {
+                if matches!(notice, Notice::Activated(false))
+                    && let Some(app) = weak_notice.upgrade()
+                {
+                    app.stop_shortcut_recording();
+                }
+            });
+        }
         window.on_edited(super::with(&weak, |app| {
             let Some(data) = app.settings_window.borrow().as_ref().map(|w| w.get_data()) else { return };
             let monitors = placement::monitors();
@@ -379,7 +423,7 @@ impl App {
             // The file dialog runs a modal loop, which must not start inside UI dispatch.
             slint::Timer::single_shot(Duration::ZERO, move || {
                 let Some(app) = weak.upgrade() else { return };
-                if let Some(path) = dialogs::pick_calendar_file() {
+                if let Some(path) = dialogs::pick_calendar_file(app.settings_owner()) {
                     app.settings.borrow_mut().calendar.ics_path = Some(path);
                     App::apply_settings(&app);
                     app.save_now();
@@ -396,8 +440,15 @@ impl App {
         let weak_record = weak.clone();
         window.on_record_shortcut(move |target| {
             let Some(app) = weak_record.upgrade() else { return };
-            // While recording, the old shortcut must not fire.
+            if target < 0 {
+                app.stop_shortcut_recording();
+                return;
+            }
+            // Restore any previously paused shortcut before recording a new target, and while
+            // recording ensure the active target's old shortcut does not fire.
+            app.register_shortcuts();
             hotkey::unregister(window::control_window(), ShortcutKind::from_index(target).id());
+            app.set_settings_sys_key_capture(true);
             if let Some(window) = app.settings_window.borrow().as_ref() {
                 window.set_recording_target(target);
                 window.set_recording_shortcut(true);
@@ -413,6 +464,10 @@ impl App {
         let weak_clear = weak.clone();
         window.on_clear_shortcut(move |target| {
             let Some(app) = weak_clear.upgrade() else { return };
+            app.set_settings_sys_key_capture(false);
+            if let Some(window) = app.settings_window.borrow().as_ref() {
+                window.set_recording_shortcut(false);
+            }
             ShortcutKind::from_index(target).set(&mut app.settings.borrow_mut(), None);
             app.register_shortcuts();
             App::schedule_save(&app);
@@ -448,11 +503,7 @@ impl App {
                 settings.launcher.initialized = true;
                 settings.launcher.custom_apps.push(crate::settings::CustomApp { name, path });
             }
-            app.launcher.detect_apps(&app.settings.borrow());
-            app.launcher.publish(&app.island);
-            App::apply_settings(&app);
-            App::schedule_save(&app);
-            app.refresh_settings_window();
+            App::sync_custom_apps(&app, false);
         });
         window.on_browse_custom_app(super::with(&weak, |app| {
             let weak = Rc::downgrade(app);
@@ -461,7 +512,7 @@ impl App {
                 if app.settings.borrow().launcher.custom_apps.len() >= 7 {
                     return;
                 }
-                if let Some(path_buf) = dialogs::pick_app_file() {
+                if let Some(path_buf) = dialogs::pick_app_file(app.settings_owner()) {
                     let path = path_buf.to_string_lossy().into_owned();
                     let name = super::launcher::resolve_app_name(&path);
                     {
@@ -469,11 +520,7 @@ impl App {
                         settings.launcher.initialized = true;
                         settings.launcher.custom_apps.push(crate::settings::CustomApp { name, path });
                     }
-                    app.launcher.detect_apps(&app.settings.borrow());
-                    app.launcher.publish(&app.island);
-                    App::apply_settings(&app);
-                    app.save_now();
-                    app.refresh_settings_window();
+                    App::sync_custom_apps(&app, true);
                 }
             });
         }));
@@ -488,11 +535,7 @@ impl App {
                     apps.remove(i);
                 }
             }
-            app.launcher.detect_apps(&app.settings.borrow());
-            app.launcher.publish(&app.island);
-            App::apply_settings(&app);
-            App::schedule_save(&app);
-            app.refresh_settings_window();
+            App::sync_custom_apps(&app, false);
         });
         let weak_move_custom = weak.clone();
         window.on_move_custom_app(move |from, to| {
@@ -510,11 +553,7 @@ impl App {
                     apps.insert(to, item);
                 }
             }
-            app.launcher.detect_apps(&app.settings.borrow());
-            app.launcher.publish(&app.island);
-            App::apply_settings(&app);
-            App::schedule_save(&app);
-            app.refresh_settings_window();
+            App::sync_custom_apps(&app, false);
         });
         let weak_clear_custom = weak.clone();
         window.on_clear_custom_apps(move || {
@@ -524,11 +563,7 @@ impl App {
                 settings.launcher.initialized = true;
                 settings.launcher.custom_apps.clear();
             }
-            app.launcher.detect_apps(&app.settings.borrow());
-            app.launcher.publish(&app.island);
-            App::apply_settings(&app);
-            App::schedule_save(&app);
-            app.refresh_settings_window();
+            App::sync_custom_apps(&app, false);
         });
         let weak_reset_custom = weak.clone();
         window.on_reset_custom_apps(move || {
@@ -539,11 +574,7 @@ impl App {
                 settings.launcher.initialized = true;
                 settings.launcher.custom_apps = defaults;
             }
-            app.launcher.detect_apps(&app.settings.borrow());
-            app.launcher.publish(&app.island);
-            App::apply_settings(&app);
-            App::schedule_save(&app);
-            app.refresh_settings_window();
+            App::sync_custom_apps(&app, false);
         });
         let weak_remove = weak.clone();
         window.on_remove_excluded_app(move |index| {
@@ -614,9 +645,10 @@ impl App {
             }
         } else {
             app.register_shortcuts();
-            "Use Ctrl, Alt or Win together with a letter, a number, Space or F1 to F12. Win+V stays with Windows."
+            "Use Ctrl, Alt or Win together with a letter, a number, Space or F1 to F24. Win+V stays with Windows."
                 .into()
         };
+        app.set_settings_sys_key_capture(false);
         if let Some(window) = app.settings_window.borrow().as_ref() {
             window.set_recording_shortcut(false);
         }
@@ -632,12 +664,33 @@ impl App {
     /// Releases the settings window so it uses no memory while closed.
     pub(super) fn close_settings(&self) {
         if let Some(window) = self.settings_window.take() {
+            if let Some(native) = window::find(window.window()) {
+                native.set_consume_sys_keys(false);
+            }
             let _ = window.hide();
             // Dropped on the next turn of the event loop, outside the window's own
             // event handling.
             slint::Timer::single_shot(Duration::ZERO, move || drop(window));
         }
         self.register_shortcuts();
+    }
+}
+
+fn sync_string_model(
+    current: ModelRc<SharedString>,
+    next: Vec<SharedString>,
+    apply: impl FnOnce(ModelRc<SharedString>),
+) {
+    use slint::Model;
+    if current.row_count() == next.len()
+        && next.iter().enumerate().all(|(i, item)| current.row_data(i).as_ref() == Some(item))
+    {
+        return;
+    }
+    if let Some(model) = current.as_any().downcast_ref::<VecModel<SharedString>>() {
+        model.set_vec(next);
+    } else {
+        apply(ModelRc::new(VecModel::from(next)));
     }
 }
 
