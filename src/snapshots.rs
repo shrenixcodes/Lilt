@@ -412,7 +412,12 @@ fn compact_launcher_and_drag_interactions() {
     // Clicking outside the centered launch pill dismisses launcher instead of expanding.
     h.state().set_launcher_enabled(true);
     h.state().set_launcher_active(true);
-    h.render();
+    h.state().set_progress(0.5);
+    h.state().set_show_progress(false);
+    let launcher_no_progress = h.render();
+    h.state().set_show_progress(true);
+    let launcher_with_progress = h.render();
+    assert_eq!(launcher_no_progress, launcher_with_progress, "compact progress bar hides in launcher");
     let edge = LogicalPosition::new(h.island.get_body_x() + 10.0, 20.0);
     h.window.dispatch_event(slint::platform::WindowEvent::PointerMoved { position: edge });
     h.window.dispatch_event(slint::platform::WindowEvent::PointerPressed {
