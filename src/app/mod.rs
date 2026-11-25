@@ -810,11 +810,17 @@ pub(crate) fn window_covers_monitor(window: placement::Rect, monitor: placement:
         && window.bottom >= monitor.bottom
 }
 
+fn foreground_rect_covers_target(window: Option<placement::Rect>, monitor: Option<placement::Rect>) -> bool {
+    match (window, monitor) {
+        (Some(window), Some(monitor)) => window_covers_monitor(window, monitor),
+        _ => false,
+    }
+}
+
 fn foreground_covers_monitor(target: Option<&placement::Monitor>) -> bool {
-    let Some(monitor) = target else { return true };
     let fg = unsafe { GetForegroundWindow() };
     if fg.is_invalid() {
-        return true;
+        return false;
     }
     let shell = unsafe { GetShellWindow() };
     let desktop = unsafe { GetDesktopWindow() };
@@ -822,11 +828,13 @@ fn foreground_covers_monitor(target: Option<&placement::Monitor>) -> bool {
         return false;
     }
     let mut rect = RECT::default();
-    if unsafe { GetWindowRect(fg, &mut rect) }.is_err() {
-        return true;
-    }
-    let window = placement::Rect { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
-    window_covers_monitor(window, monitor.bounds)
+    let window = unsafe { GetWindowRect(fg, &mut rect) }.ok().map(|()| placement::Rect {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+    });
+    foreground_rect_covers_target(window, target.map(|m| m.bounds))
 }
 
 /// Whether a full-screen application, game or presentation currently owns Lilt's display.
@@ -897,5 +905,8 @@ mod tests {
         assert!(window_covers_monitor(secondary, secondary));
         assert!(!window_covers_monitor(secondary, primary));
         assert!(window_covers_monitor(placement::Rect { left: -8, top: -8, right: 1928, bottom: 1088 }, primary));
+        assert!(!foreground_rect_covers_target(None, Some(primary)));
+        assert!(!foreground_rect_covers_target(Some(primary), None));
+        assert!(foreground_rect_covers_target(Some(primary), Some(primary)));
     }
 }
