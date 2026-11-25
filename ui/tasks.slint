@@ -493,7 +493,7 @@ component QuickAdd inherits Rectangle {
             }
 
             HorizontalLayout {
-                spacing: 6px;
+                spacing: 5px;
                 alignment: start;
 
                 Stepper {
@@ -519,7 +519,7 @@ component QuickAdd inherits Rectangle {
                 }
 
                 if TasksState.draft-due != -10000 : Field {
-                    width: 58px;
+                    width: 56px;
                     placeholder: "Time";
                     text <=> TasksState.draft-time;
                     invalid: self.text != "" && !TasksActions.time-valid(self.text);
@@ -527,7 +527,8 @@ component QuickAdd inherits Rectangle {
                 }
 
                 Field {
-                    width: 86px;
+                    horizontal-stretch: 1;
+                    min-width: 60px;
                     placeholder: "Label";
                     text <=> TasksState.draft-category;
                     accepted => { root.submit(); }
@@ -822,11 +823,17 @@ component ArchiveItem inherits Rectangle {
 component Archive inherits Rectangle {
     property <int> confirm: 0;
     property <bool> confirm-clear;
+    property <bool> searching: search-field.has-focus-inside;
+    callback searching-changed(bool);
+
+    changed searching => {
+        root.searching-changed(self.searching);
+    }
 
     VerticalLayout {
         spacing: 6px;
 
-        Field {
+        search-field := Field {
             height: 26px;
             placeholder: "Search completed tasks";
             text <=> TasksState.search;
@@ -906,10 +913,18 @@ component Archive inherits Rectangle {
 
 export component TasksView inherits Rectangle {
     property <bool> list-view: TasksState.view != TaskView.done;
-    property <bool> busy: TasksState.adding || TasksState.editing;
-    property <bool> filter-open;
+    in-out property <bool> archive-searching;
+    property <bool> busy: TasksState.adding || TasksState.editing || (!root.list-view && root.archive-searching);
+    in-out property <bool> filter-open;
     changed busy => {
         TasksActions.busy(self.busy);
+    }
+    changed list-view => {
+        if root.list-view {
+            root.archive-searching = false;
+        } else {
+            root.filter-open = false;
+        }
     }
 
     init => {
@@ -1088,6 +1103,7 @@ export component TasksView inherits Rectangle {
 
         if !TasksState.editing && TasksState.ready && !root.list-view : Archive {
             vertical-stretch: 1;
+            searching-changed(searching) => { root.archive-searching = searching; }
         }
 
         if !TasksState.editing && TasksState.sync-status != SyncStatus.none : HorizontalLayout {
@@ -1123,8 +1139,12 @@ export component TasksView inherits Rectangle {
         }
     }
 
-    // Priority filter menu.
-    if root.filter-open && !TasksState.editing : Rectangle {
+    // Priority filter menu: click-outside backdrop plus menu card.
+    if root.filter-open && !TasksState.editing && root.list-view : TouchArea {
+        clicked => { root.filter-open = false; }
+    }
+
+    if root.filter-open && !TasksState.editing && root.list-view : Rectangle {
         x: parent.width - self.width - Theme.padding;
         y: Theme.padding + 32px + 8px + 24px + 4px;
         width: 136px;
@@ -1133,6 +1153,8 @@ export component TasksView inherits Rectangle {
         background: Theme.surface-hover;
         border-width: 1px;
         border-color: Theme.border;
+
+        TouchArea { }
 
         menu := VerticalLayout {
             padding: 4px;

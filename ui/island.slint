@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { MediaAvailability, Page, SidePanel, TasksLayout } from "types.slint";
-import { AppState, AppActions, ClipboardState, ClipboardActions, TasksState } from "state.slint";
+import { AppState, AppActions, ClipboardState, ClipboardActions, ControlsActions, ControlsState, TasksState } from "state.slint";
 import { CompactView, ActivityView } from "compact.slint";
 import { ExpandedView } from "expanded.slint";
 import { TasksView } from "tasks.slint";
@@ -124,11 +124,30 @@ export component Island inherits Window {
     out property <float> tasks-opacity: keys.opacity * root.tasks-fade;
 
     property <bool> expanded: AppState.expanded;
+    property <bool> modal-input: ClipboardState.editing || TasksState.editing || TasksState.adding || ControlsState.wifi-password-for != "";
+    property <bool> tasks-filter-open: false;
+    property <bool> tasks-archive-busy: false;
+    property <bool> clipboard-menu-open: false;
+    property <bool> clipboard-search-focused: false;
+
+    changed modal-input => {
+        if !self.modal-input && self.expanded {
+            keys.focus();
+        }
+    }
+
     changed expanded => {
         if self.expanded {
             keys.focus();
         } else {
             AppState.page = Page.dashboard;
+            root.tasks-filter-open = false;
+            root.tasks-archive-busy = false;
+            root.clipboard-menu-open = false;
+            root.clipboard-search-focused = false;
+            ControlsState.wifi-password = "";
+            ControlsState.wifi-password-for = "";
+            ControlsState.input-busy = false;
         }
     }
 
@@ -149,39 +168,62 @@ export component Island inherits Window {
                 return reject;
             }
             if event.text == Key.Escape {
-                if root.clipboard-panel && ClipboardState.editing {
+                if ControlsState.wifi-password-for != "" {
+                    ControlsState.wifi-password = "";
+                    ControlsState.wifi-password-for = "";
+                    ControlsState.input-busy = false;
+                    ControlsActions.busy(false);
+                    keys.focus();
+                } else if root.clipboard-panel && ClipboardState.editing {
                     ClipboardState.editing = false;
+                    keys.focus();
+                } else if root.clipboard-panel && root.clipboard-menu-open {
+                    root.clipboard-menu-open = false;
                 } else if TasksState.editing {
                     TasksState.editing = false;
+                    keys.focus();
                 } else if TasksState.adding {
                     TasksState.adding = false;
+                    keys.focus();
+                } else if !root.clipboard-panel && root.tasks-filter-open {
+                    root.tasks-filter-open = false;
                 } else {
                     AppActions.collapse();
                 }
                 return accept;
             }
             // The clipboard shelf: arrows choose an entry, Enter copies it and closes the
-            // island, Delete removes it, Ctrl+F or / searches.
+            // island, Delete removes it, Ctrl+F or / searches. Skip when typing into another panel.
             if root.tasks-box && root.clipboard-panel && !ClipboardState.editing && !ClipboardState.show-intro {
-                if event.text == Key.DownArrow || event.text == Key.UpArrow {
-                    ClipboardActions.move-selection(event.text == Key.DownArrow ? 1 : -1);
-                    return accept;
-                }
-                if event.text == Key.Return {
-                    ClipboardActions.copy-selected();
-                    return accept;
-                }
-                if event.text == Key.Delete {
-                    ClipboardActions.delete-selected();
-                    return accept;
-                }
-                if (event.modifiers.control && (event.text == "f" || event.text == "F")) || event.text == "/" {
+                if event.modifiers.control && (event.text == "f" || event.text == "F") {
                     ClipboardState.search-focus += 1;
                     return accept;
                 }
+                if (AppState.page == Page.dashboard || root.clipboard-search-focused)
+                    && !TasksState.adding && !TasksState.editing && !root.tasks-archive-busy && !ControlsState.input-busy
+                {
+                    if event.text == Key.DownArrow || event.text == Key.UpArrow {
+                        ClipboardActions.move-selection(event.text == Key.DownArrow ? 1 : -1);
+                        return accept;
+                    }
+                    if event.text == Key.Return {
+                        ClipboardActions.copy-selected();
+                        return accept;
+                    }
+                    if event.text == Key.Delete {
+                        ClipboardActions.delete-selected();
+                        return accept;
+                    }
+                    if event.text == "/" {
+                        ClipboardState.search-focus += 1;
+                        return accept;
+                    }
+                }
             }
             if root.tasks-box && !root.clipboard-panel && !TasksState.editing && !TasksState.adding
-                && (event.text == "n" || event.text == "N") && !event.modifiers.control && !event.modifiers.alt {
+                && !root.tasks-archive-busy && !ControlsState.input-busy && AppState.page == Page.dashboard
+                && (event.text == "n" || event.text == "N") && !event.modifiers.control && !event.modifiers.alt
+            {
                 TasksState.adding = true;
                 return accept;
             }
@@ -391,11 +433,15 @@ export component Island inherits Window {
                 if !root.clipboard-panel : TasksView {
                     width: parent.width;
                     height: parent.height;
+                    filter-open <=> root.tasks-filter-open;
+                    archive-searching <=> root.tasks-archive-busy;
                 }
 
                 if root.clipboard-panel : ClipboardView {
                     width: parent.width;
                     height: parent.height;
+                    menu-open <=> root.clipboard-menu-open;
+                    searching-changed(focused) => { root.clipboard-search-focused = focused; }
                 }
             }
         }

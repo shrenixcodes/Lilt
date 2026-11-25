@@ -5,6 +5,7 @@
 //! them); when it closes, the refresh timer stops.
 
 use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -24,7 +25,8 @@ pub(crate) struct ControlsController {
     refresh_timer: slint::Timer,
     message_timer: slint::Timer,
     open: Cell<Option<Panel>>,
-    /// A password is being typed.
+    session_icons: RefCell<HashMap<String, slint::Image>>,
+    /// A password or numeric input is being typed.
     pub busy: Cell<bool>,
 }
 
@@ -82,22 +84,36 @@ pub fn network_rows(view: &WifiView) -> Vec<NetworkRow> {
         .collect()
 }
 
-pub fn session_rows(sessions: &[audio::Session]) -> Vec<SessionRow> {
+pub fn session_rows_cached(
+    sessions: &[audio::Session],
+    icon_cache: &mut HashMap<String, slint::Image>,
+) -> Vec<SessionRow> {
+    let live_ids: HashSet<&str> = sessions.iter().map(|s| s.id.as_str()).collect();
+    icon_cache.retain(|id, _| live_ids.contains(id.as_str()));
     sessions
         .iter()
-        .map(|s| SessionRow {
-            id: s.id.as_str().into(),
-            name: s.name.as_str().into(),
-            icon: s.icon.as_ref().map_or_else(slint::Image::default, |pixels| {
-                slint::Image::from_rgba8(slint::SharedPixelBuffer::clone_from_slice(
+        .map(|s| {
+            let icon = if let Some(cached) = icon_cache.get(&s.id) {
+                cached.clone()
+            } else if let Some(pixels) = &s.icon {
+                let image = slint::Image::from_rgba8(slint::SharedPixelBuffer::clone_from_slice(
                     pixels,
                     audio::ICON_SIZE,
                     audio::ICON_SIZE,
-                ))
-            }),
-            volume: s.volume,
-            muted: s.muted,
-            is_system: s.is_system,
+                ));
+                icon_cache.insert(s.id.clone(), image.clone());
+                image
+            } else {
+                slint::Image::default()
+            };
+            SessionRow {
+                id: s.id.as_str().into(),
+                name: s.name.as_str().into(),
+                icon,
+                volume: s.volume,
+                muted: s.muted,
+                is_system: s.is_system,
+            }
         })
         .collect()
 }
@@ -244,6 +260,7 @@ impl App {
         let state = app.island.global::<ControlsState>();
         state.set_loading(true);
         state.set_message("".into());
+        state.set_wifi_password("".into());
         state.set_wifi_password_for("".into());
         app.controls.open.set(Some(panel));
         app.send_control(Command::Refresh(panel));
@@ -270,7 +287,7 @@ impl App {
                 state.set_wifi_available(view.available);
                 state.set_wifi_radio(radio(view.radio));
                 state.set_wifi_connecting(view.connecting.clone().unwrap_or_default().into());
-                state.set_networks(ModelRc::new(VecModel::from(network_rows(&view))));
+                sync_network_rows(state.get_networks(), network_rows(&view), |m| state.set_networks(m));
                 if open == Some(Panel::Wifi) {
                     state.set_loading(false);
                 }
@@ -305,7 +322,7 @@ impl App {
                     state.set_muted(output.muted);
                     state.set_output_name(output.name.into());
                 }
-                let next = session_rows(&sessions);
+                let next = session_rows_cached(&sessions, &mut app.controls.session_icons.borrow_mut());
                 let current = state.get_sessions();
                 if current.row_count() == next.len() && current.iter().zip(&next).all(|(old, new)| old.id == new.id) {
                     for (index, row) in next.into_iter().enumerate() {
@@ -345,6 +362,18 @@ impl App {
     pub(super) fn stop_controls(&self) {
         self.controls.refresh_timer.stop();
         self.controls.service.replace(None);
+    }
+}
+
+fn sync_network_rows(current: ModelRc<NetworkRow>, next: Vec<NetworkRow>, apply: impl FnOnce(ModelRc<NetworkRow>)) {
+    if current.row_count() == next.len() && current.iter().zip(&next).all(|(old, new)| old.ssid == new.ssid) {
+        for (index, row) in next.into_iter().enumerate() {
+            if current.row_data(index).as_ref() != Some(&row) {
+                current.set_row_data(index, row);
+            }
+        }
+    } else {
+        apply(ModelRc::new(VecModel::from(next)));
     }
 }
 

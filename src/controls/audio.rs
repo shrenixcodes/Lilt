@@ -7,6 +7,9 @@
 //! sends it to the driver behind the device's audio endpoint. Other Bluetooth devices,
 //! such as mice and keyboards, connect by themselves when used.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::Graphics::Gdi::{
@@ -28,7 +31,7 @@ use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree, S
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
-use windows::Win32::UI::Shell::ExtractIconExW;
+use windows::Win32::UI::Shell::{ExtractIconExW, SHLoadIndirectString};
 use windows::Win32::UI::WindowsAndMessaging::{DI_NORMAL, DestroyIcon, DrawIconEx, HICON, PrivateExtractIconsW};
 use windows::core::{GUID, HSTRING, Interface, PWSTR};
 
@@ -240,8 +243,8 @@ fn describe(control: &IAudioSessionControl) -> Option<Session> {
         unsafe { control2.GetDisplayName() }.ok().and_then(|p| unsafe { p.to_string().ok() }).unwrap_or_default();
     let name = if is_system {
         "System sounds".to_string()
-    } else if !display.is_empty() {
-        display
+    } else if let Some(resolved) = resolve_display_name(&display) {
+        resolved
     } else {
         process_name(process_id).unwrap_or_else(|| "Unknown".into())
     };
@@ -276,8 +279,47 @@ fn process_path(pid: u32) -> Option<String> {
 
 pub const ICON_SIZE: u32 = 64;
 
+thread_local! {
+    static PROCESS_ICONS: RefCell<HashMap<String, Option<Vec<u8>>>> = RefCell::new(HashMap::new());
+}
+
+fn resolve_display_name(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if !trimmed.starts_with('@') {
+        return Some(trimmed.to_owned());
+    }
+    let source = HSTRING::from(trimmed);
+    let mut buffer = [0u16; 256];
+    if unsafe { SHLoadIndirectString(&source, &mut buffer, None) }.is_ok() {
+        let len = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+        let resolved = String::from_utf16_lossy(&buffer[..len]).trim().to_owned();
+        if !resolved.is_empty() && !resolved.starts_with('@') {
+            return Some(resolved);
+        }
+    }
+    None
+}
+
 fn process_icon(pid: u32) -> Option<Vec<u8>> {
     let path = process_path(pid)?;
+    if let Some(cached) = PROCESS_ICONS.with(|cache| cache.borrow().get(&path).cloned()) {
+        return cached;
+    }
+    let pixels = extract_process_icon(&path);
+    PROCESS_ICONS.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.len() > 256 {
+            cache.clear();
+        }
+        cache.insert(path, pixels.clone());
+    });
+    pixels
+}
+
+fn extract_process_icon(path: &str) -> Option<Vec<u8>> {
     let mut icon = HICON::default();
     let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
     if wide.len() <= 260 {
@@ -352,6 +394,17 @@ fn extracts_a_high_resolution_process_icon() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/ui-snapshots/process-icon.png");
     std::fs::create_dir_all(path.parent().unwrap()).expect("create snapshot directory");
     image.save(path).expect("save extracted icon for visual review");
+}
+
+#[cfg(test)]
+#[test]
+fn indirect_display_names_resolve_or_fall_back_cleanly() {
+    assert_eq!(resolve_display_name(""), None);
+    assert_eq!(resolve_display_name("Firefox"), Some("Firefox".into()));
+    assert_eq!(resolve_display_name("@missing_nonexistent_library.dll,-9999"), None);
+    if let Some(resolved) = resolve_display_name("@%SystemRoot%\\System32\\AudioSrv.Dll,-202") {
+        assert!(!resolved.starts_with('@') && !resolved.is_empty());
+    }
 }
 
 /// Capitalises an executable stem without going out of its way.

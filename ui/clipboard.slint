@@ -441,12 +441,18 @@ component SnippetEditor inherits Rectangle {
 
 export component ClipboardView inherits Rectangle {
     property <bool> busy: ClipboardState.editing || search.has-focus-inside;
-    property <bool> menu-open;
+    in-out property <bool> menu-open;
     property <bool> confirm-clear;
     property <int> focus-token: ClipboardState.search-focus;
     property <int> selected: ClipboardState.selected;
     property <length> selected-top: ClipboardState.selected-top;
     property <int> scroll-token: ClipboardState.scroll-token;
+    property <bool> searching: search.has-focus-inside;
+    callback searching-changed(bool);
+
+    changed searching => {
+        root.searching-changed(self.searching);
+    }
 
     changed busy => {
         ClipboardActions.busy(self.busy);
