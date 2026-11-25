@@ -321,6 +321,9 @@ export global Theme {
     in-out property <float> ambient: 0.6;
     // UI hue gradient, 0..1 (0% to 100%). Stays 0 by default unless tweaked.
     in-out property <float> hue-gradient: 0.0;
+    // Active window DPI scale factor, kept in sync by the window host.
+    in property <float> scale: 1.0;
+    pure callback rounded-border(length, length, length, color, float) -> image;
 
     // Geometry
     out property <length> compact-height: 38px;

@@ -388,6 +388,10 @@ impl App {
             });
         });
 
+        let theme = app.island.global::<crate::ui::Theme>();
+        theme.set_scale(app.island.window().scale_factor());
+        install_border_callback(&theme);
+
         if let Some(native) = window::find(app.island.window()) {
             let island = app.island.as_weak();
             native.set_shape_source(move || island.upgrade().map(|i| island_shapes(&i)).unwrap_or_default());
@@ -397,7 +401,10 @@ impl App {
                 match notice {
                     Notice::CenterSnap(snapped) => app.island.global::<AppState>().set_center_snapped(snapped),
                     Notice::MoveFinished => App::finish_move(&app),
-                    Notice::ScaleChanged => app.place(),
+                    Notice::ScaleChanged => {
+                        app.island.global::<crate::ui::Theme>().set_scale(app.island.window().scale_factor());
+                        app.place();
+                    }
                     // A click elsewhere moved the focus away from the expanded island.
                     Notice::Activated(false)
                         if app.expanded() && app.settings.borrow().general.collapse_on_outside_click =>
@@ -740,6 +747,7 @@ impl App {
 
     /// Moves the island to its configured position on the chosen monitor.
     pub fn place(&self) {
+        self.island.global::<crate::ui::Theme>().set_scale(self.island.window().scale_factor());
         let monitors = placement::monitors();
         let settings = self.settings.borrow();
         let placement = &settings.position;
@@ -861,6 +869,42 @@ fn with_close(weak: &Weak<App>) -> impl Fn() -> slint::CloseRequestResponse + 's
         }
         slint::CloseRequestResponse::HideWindow
     }
+}
+
+/// Binds `Theme.rounded-border` to a small cached SDF rasterizer shared by runtime and tests.
+pub(crate) fn install_border_callback(theme: &crate::ui::Theme) {
+    type Key = (u32, u32, u32, [u8; 4], u32);
+    let cache: RefCell<Vec<(Key, slint::Image)>> = RefCell::new(Vec::new());
+    theme.on_rounded_border(move |width, height, radius, color, scale| {
+        let scale = scale.max(1.0);
+        let pw = (width * scale).round().max(0.0) as u32;
+        let ph = (height * scale).round().max(0.0) as u32;
+        let key: Key = (
+            pw,
+            ph,
+            (radius.max(0.0) * 16.0).round() as u32,
+            [color.red(), color.green(), color.blue(), color.alpha()],
+            (scale * 100.0).round() as u32,
+        );
+        let mut cache = cache.borrow_mut();
+        if let Some((_, image)) = cache.iter().find(|(k, _)| *k == key) {
+            return image.clone();
+        }
+        let image = window::glass::rounded_border_pixels(width, height, radius, key.3, scale)
+            .map(|(w, h, rgba)| {
+                let mut buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(w, h);
+                for (dst, &[r, g, b, a]) in buf.make_mut_slice().iter_mut().zip(rgba.as_chunks::<4>().0) {
+                    *dst = slint::Rgba8Pixel::new(r, g, b, a);
+                }
+                slint::Image::from_rgba8(buf)
+            })
+            .unwrap_or_default();
+        if cache.len() >= 8 {
+            cache.remove(0);
+        }
+        cache.push((key, image.clone()));
+        image
+    });
 }
 
 /// Logical surface outlines and borders of the island body and side box.

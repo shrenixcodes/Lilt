@@ -163,8 +163,8 @@ export component Tile inherits Rectangle {
     border-radius: Theme.tile-radius;
     background: interactive && touch.has-hover ? Theme.tile-hover : Theme.tile;
     animate background { duration: Theme.hover-duration; }
-    // Glass tile borders are drawn via an antialiased Path instead of Rectangle borders
-    // to avoid the software renderer's corner double-blending beads at 1x–2x DPI.
+    // Glass tile borders use a cached SDF texture rather than Path or Rectangle borders:
+    // Slint Rectangle double-blends diagonal corners, and Slint Path ignores dirty_region on ReusedBuffer.
     border-width: 0px;
     accessible-role: interactive ? button : groupbox;
     accessible-label: label;
@@ -174,28 +174,17 @@ export component Tile inherits Rectangle {
         clicked => { root.clicked(); }
     }
 
-    if Theme.reflections : tile-border := Path {
+    if Theme.reflections : Image {
         width: parent.width;
         height: parent.height;
-        viewbox-width: self.w;
-        viewbox-height: self.h;
-        fit: ImageFit.fill;
-        fill: transparent;
-        stroke: Theme.appearance == Appearance.liquid-glass ? #ffffff18 : #ffffff0a;
-        stroke-width: 1px;
-        property <float> w: max(2, (root.width - 1px) / 1px);
-        property <float> h: max(2, (root.height - 1px) / 1px);
-        property <float> r: max(0, min(Theme.tile-radius / 1px - 0.5, min(self.w, self.h) / 2));
-        MoveTo { x: tile-border.r; y: 0; }
-        LineTo { x: tile-border.w - tile-border.r; y: 0; }
-        ArcTo { radius-x: tile-border.r; radius-y: tile-border.r; x: tile-border.w; y: tile-border.r; sweep: true; }
-        LineTo { x: tile-border.w; y: tile-border.h - tile-border.r; }
-        ArcTo { radius-x: tile-border.r; radius-y: tile-border.r; x: tile-border.w - tile-border.r; y: tile-border.h; sweep: true; }
-        LineTo { x: tile-border.r; y: tile-border.h; }
-        ArcTo { radius-x: tile-border.r; radius-y: tile-border.r; x: 0; y: tile-border.h - tile-border.r; sweep: true; }
-        LineTo { x: 0; y: tile-border.r; }
-        ArcTo { radius-x: tile-border.r; radius-y: tile-border.r; x: tile-border.r; y: 0; sweep: true; }
-        Close { }
+        image-fit: ImageFit.fill;
+        source: Theme.rounded-border(
+            root.width,
+            root.height,
+            Theme.tile-radius,
+            Theme.appearance == Appearance.liquid-glass ? #ffffff18 : #ffffff0a,
+            Theme.scale,
+        );
     }
 
     @children
