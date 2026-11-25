@@ -289,6 +289,8 @@ fn compact_progress_starts_at_the_left_and_stays_inside_the_pill() {
     h.state().set_progress(1.0);
     let full = h.render();
     assert_ne!(empty.get_pixel(right - 20, y), full.get_pixel(right - 20, y));
+    assert_eq!(empty.get_pixel(left + 11, y), full.get_pixel(left + 11, y));
+    assert_eq!(empty.get_pixel(right - 11, y), full.get_pixel(right - 11, y));
     assert_eq!(empty.get_pixel(left + 2, y), full.get_pixel(left + 2, y));
     assert_eq!(empty.get_pixel(right - 2, y), full.get_pixel(right - 2, y));
 }

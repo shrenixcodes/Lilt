@@ -23,16 +23,16 @@ Lilt keeps your personal data on your PC.
   island is visible and are not recorded.
 - **Calendar files** you import are read from the location you chose; Lilt stores only
   the path. Events are not copied elsewhere.
-- **Clipboard text** is read only if you turn on *Remember copied text* (off by
-  default), and only while capture is on and not paused. Windows notifies Lilt of each
-  clipboard change (`AddClipboardFormatListener`); Lilt does not poll. Before reading
-  anything it checks whether the copying app marked the copy as private
+- **Clipboard history** is captured only if you turn on *Remember copied text and images*
+  (off by default), and only while capture is on and not paused. Windows notifies Lilt
+  of each clipboard change (`AddClipboardFormatListener`); Lilt does not poll. Before
+  reading anything it checks whether the copying app marked the copy as private
   (`ExcludeClipboardContentFromMonitorProcessing`, `Clipboard Viewer Ignore`, or
   `CanIncludeInClipboardHistory` set to zero) and whether the app is excluded; only
-  then is the text read. Text that looks like a password, private key or access token
-  is discarded. Only plain text is kept, never images or files. Entries are stored in
+  then is plain text or an image read. Text that looks like a password, private key or
+  access token is discarded; files are never kept. Entries are stored in
   `clipboard.sqlite3` and are never logged, uploaded, synced or sent to any service; the
-  log records only why a copy was skipped (for example "looks secret"), never its text
+  log records only why a copy was skipped (for example "looks secret"), never its content
   or app. The app's name comes from Windows (the process that owns the clipboard);
   when Windows does not report one, the entry says "Unknown app".
 - **Deleting clipboard entries** removes them from the database and overwrites their
@@ -54,7 +54,7 @@ Lilt keeps your personal data on your PC.
 | --- | --- |
 | Settings | `%APPDATA%\Lilt\settings.json` |
 | Tasks | `%LOCALAPPDATA%\Lilt\tasks.sqlite3` (your tasks; never sent anywhere) |
-| Clipboard shelf | `%LOCALAPPDATA%\Lilt\clipboard.sqlite3` (snippets, and copied text if capture is on; never sent anywhere) |
+| Clipboard shelf | `%LOCALAPPDATA%\Lilt\clipboard.sqlite3` (snippets, and copied text or images if capture is on; never sent anywhere) |
 | Logs | `%LOCALAPPDATA%\Lilt\logs\` (application events only, no media or calendar content) |
 | Start with Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `Lilt` |
 | Installation (installer) | `%LOCALAPPDATA%\Programs\Lilt` by default, and its uninstall entry under `HKCU` |

@@ -3,7 +3,7 @@
 //! The installed version is `CARGO_PKG_VERSION`. The repository's latest release is
 //! read from `/releases/latest`; the installer asset (produced by `installer/lilt.nsi`)
 //! and its `.sha256` sidecar are what Lilt downloads. The installer is NSIS, run with
-//! `/S` for a silent, non-interactive install; Windows still shows the UAC prompt.
+//! `/S` for a silent, non-interactive per-user install without elevation.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
