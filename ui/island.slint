@@ -207,15 +207,15 @@ export component Island inherits Window {
             // show outside the rounded corners; a solid tint keeps the shape exact.
             background: self.washed ? self.base.mix(self.wash, 1 - 0.16 * Theme.ambient) : self.base;
             animate background { duration: Theme.ambient-duration; easing: ease-in-out; }
-            // On glass appearances GlassRim draws the lit rounded edge; a second 1 px
-            // border stacked on top produced stepped corners during animation.
-            border-width: AppState.center-snapped ? 2px : Theme.reflections ? 0px : 1px;
+            // On glass appearances GlassRim draws the lit rounded edge when UI hue gradient is active;
+            // keep the subtle 1 px outline when hue gradient is zero.
+            border-width: AppState.center-snapped ? 2px : (Theme.reflections && Theme.hue-gradient > 0) ? 0px : 1px;
             border-color: AppState.center-snapped ? Theme.accent : Theme.border;
             animate border-color { duration: Theme.fade-duration; }
             clip: true;
             animate x, width, height, border-radius { duration: Theme.resize-duration; easing: cubic-bezier(0.32, 0.72, 0, 1); }
 
-            if (Theme.reflections || Theme.hue-gradient > 0) && Theme.sheen.alpha > 0 && Theme.hue-gradient > 0 : GlassSheen {
+            if Theme.hue-gradient > 0 && Theme.sheen.alpha > 0 : GlassSheen {
                 width: parent.width;
                 height: parent.height;
                 radius: island.border-radius;
@@ -224,14 +224,14 @@ export component Island inherits Window {
 
             // The lit edges: soft light gathering along the top and bottom and easing off
             // inward and around the corners. Drawn beneath the content so text stays crisp.
-            if (Theme.reflections || Theme.hue-gradient > 0) && Theme.rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
+            if Theme.hue-gradient > 0 && Theme.rim.alpha > 0 : GlassRim {
                 width: parent.width;
                 height: parent.height;
                 radius: island.border-radius;
                 strength: Theme.hue-gradient;
             }
 
-            if (Theme.reflections || Theme.hue-gradient > 0) && Theme.lower-rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
+            if Theme.hue-gradient > 0 && Theme.lower-rim.alpha > 0 : GlassRim {
                 width: parent.width;
                 height: parent.height;
                 radius: island.border-radius;
@@ -344,26 +344,26 @@ export component Island inherits Window {
             Rectangle {
                 border-radius: Theme.expanded-radius;
                 background: Theme.surface;
-                // See the island surface: GlassRim draws the visible edge on glass.
-                border-width: Theme.reflections ? 0px : 1px;
+                // See the island surface: GlassRim draws the visible edge when UI hue gradient is active.
+                border-width: (Theme.reflections && Theme.hue-gradient > 0) ? 0px : 1px;
                 border-color: Theme.border;
                 clip: true;
 
-                if (Theme.reflections || Theme.hue-gradient > 0) && Theme.sheen.alpha > 0 && Theme.hue-gradient > 0 : GlassSheen {
+                if Theme.hue-gradient > 0 && Theme.sheen.alpha > 0 : GlassSheen {
                     width: parent.width;
                     height: parent.height;
                     radius: Theme.expanded-radius;
                     strength: Theme.hue-gradient;
                 }
 
-                if (Theme.reflections || Theme.hue-gradient > 0) && Theme.rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
+                if Theme.hue-gradient > 0 && Theme.rim.alpha > 0 : GlassRim {
                     width: parent.width;
                     height: parent.height;
                     radius: Theme.expanded-radius;
                     strength: Theme.hue-gradient;
                 }
 
-                if (Theme.reflections || Theme.hue-gradient > 0) && Theme.lower-rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
+                if Theme.hue-gradient > 0 && Theme.lower-rim.alpha > 0 : GlassRim {
                     width: parent.width;
                     height: parent.height;
                     radius: Theme.expanded-radius;
