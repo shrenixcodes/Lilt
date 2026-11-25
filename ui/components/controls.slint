@@ -93,9 +93,11 @@ export component ProgressBar inherits Rectangle {
     // Animated locally because globals cannot animate.
     property <color> shown-fill: root.fill;
     animate shown-fill { duration: Theme.ambient-duration; easing: ease-in-out; }
+    property <float> shown-value: touch.pressed && root.seekable
+        ? clamp(touch.mouse-x / max(1px, root.width), 0, 1) : root.value;
 
     height: 12px;
-    property <length> track-height: touch.has-hover && seekable ? 5px : 3px;
+    property <length> track-height: (touch.has-hover || touch.pressed) && root.seekable ? 5px : 3px;
 
     Rectangle {
         y: (parent.height - self.height) / 2;
@@ -106,7 +108,7 @@ export component ProgressBar inherits Rectangle {
 
         Rectangle {
             x: 0;
-            width: parent.width * clamp(root.value, 0, 1);
+            width: parent.width * clamp(root.shown-value, 0, 1);
             border-radius: parent.border-radius;
             background: root.shown-fill;
         }
@@ -115,7 +117,24 @@ export component ProgressBar inherits Rectangle {
     touch := TouchArea {
         enabled: root.seekable;
         mouse-cursor: root.seekable ? pointer : default;
-        clicked => { root.seek(clamp(self.mouse-x / root.width, 0, 1)); }
+        property <bool> dragged: false;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                self.dragged = false;
+            } else if event.kind == PointerEventKind.up && self.dragged {
+                root.seek(clamp(self.mouse-x / max(1px, root.width), 0, 1));
+            }
+        }
+        moved => {
+            if self.pressed {
+                self.dragged = true;
+            }
+        }
+        clicked => {
+            if !self.dragged {
+                root.seek(clamp(self.mouse-x / max(1px, root.width), 0, 1));
+            }
+        }
     }
 }
 

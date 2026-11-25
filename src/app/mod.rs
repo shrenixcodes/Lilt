@@ -18,7 +18,7 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use slint::ComponentHandle;
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::System::Com::{
     COINIT_APARTMENTTHREADED, CoInitializeEx, CoInitializeSecurity, EOAC_NONE, RPC_C_AUTHN_LEVEL_DEFAULT,
     RPC_C_IMP_LEVEL_IMPERSONATE,
@@ -29,9 +29,9 @@ use windows::Win32::UI::Shell::{
     QUNS_RUNNING_D3D_FULL_SCREEN, SHAppBarMessage, SHQueryUserNotificationState,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, PBT_APMPOWERSTATUSCHANGE, PBT_APMRESUMEAUTOMATIC, SPI_SETCLIENTAREAANIMATION, SPI_SETDESKWALLPAPER,
-    SPI_SETWORKAREA, SetForegroundWindow, WM_CLOSE, WM_DISPLAYCHANGE, WM_HOTKEY, WM_POWERBROADCAST, WM_SETTINGCHANGE,
-    WM_TIMECHANGE,
+    GetCursorPos, GetDesktopWindow, GetForegroundWindow, GetShellWindow, GetWindowRect, PBT_APMPOWERSTATUSCHANGE,
+    PBT_APMRESUMEAUTOMATIC, SPI_SETCLIENTAREAANIMATION, SPI_SETDESKWALLPAPER, SPI_SETWORKAREA, SetForegroundWindow,
+    WM_CLOSE, WM_DISPLAYCHANGE, WM_HOTKEY, WM_POWERBROADCAST, WM_SETTINGCHANGE, WM_TIMECHANGE,
 };
 use windows::core::w;
 
@@ -249,7 +249,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
 
     // The shell reports full-screen changes only as they happen, so ask once whether one
     // is already in progress before showing the island.
-    app.fullscreen_active.set(full_screen_app_active());
+    app.refresh_fullscreen_state();
     App::apply_settings(&app);
     app.tray.show()?;
     let _app_bar = AppBar::register();
@@ -469,8 +469,10 @@ impl App {
             // Battery saver may have been switched, which turns the live blur off.
             WM_POWERBROADCAST if wparam.0 as u32 == PBT_APMPOWERSTATUSCHANGE => App::apply_appearance(app),
             WM_APP_APPBAR if wparam.0 as u32 == ABN_FULLSCREENAPP => {
-                let fullscreen = lparam.0 != 0;
-                tracing::debug!(fullscreen, "full-screen application state changed");
+                let reported = lparam.0 != 0;
+                let target = self.target_monitor();
+                let fullscreen = reported && foreground_covers_monitor(target.as_ref());
+                tracing::debug!(reported, fullscreen, "full-screen application state changed");
                 self.fullscreen_active.set(fullscreen);
                 App::update_visibility(app);
             }
@@ -506,10 +508,25 @@ impl App {
         self.island.global::<AppState>().get_expanded()
     }
 
+    fn target_monitor(&self) -> Option<placement::Monitor> {
+        let monitors = placement::monitors();
+        placement::choose(&monitors, self.settings.borrow().position.monitor.as_deref()).cloned()
+    }
+
+    pub(super) fn refresh_fullscreen_state(&self) {
+        let target = self.target_monitor();
+        self.fullscreen_active.set(full_screen_app_active(target.as_ref()));
+    }
+
     fn island_visible(&self) -> bool {
         let hidden_for_fullscreen =
             self.fullscreen_active.get() && self.settings.borrow().performance.hide_in_fullscreen;
         !self.hidden_by_user.get() && !hidden_for_fullscreen
+    }
+
+    /// Whether the island is visible to the user on screen (neither hidden nor tucked).
+    pub(super) fn is_on_screen(&self) -> bool {
+        self.island_visible() && !self.island.global::<AppState>().get_tucked()
     }
 
     fn set_expanded(app: &Rc<Self>, expanded: bool) {
@@ -600,7 +617,6 @@ impl App {
         if !visible {
             App::set_expanded(app, false);
         }
-        app.island.global::<AppState>().set_on_screen(visible);
         let result = if visible { app.island.show() } else { app.island.hide() };
         if let Err(err) = result {
             tracing::warn!(%err, visible, "could not change island visibility");
@@ -613,6 +629,7 @@ impl App {
             app.auto_hide_revealed.set(true);
         }
         App::apply_peek(app);
+        app.island.global::<AppState>().set_on_screen(app.is_on_screen());
         App::update_progress_timer(app);
         App::update_sampling(app);
         App::update_glass_sampling(app);
@@ -624,7 +641,10 @@ impl App {
         let governed = app.settings.borrow().general.auto_hide && app.island_visible();
         let revealed = !governed || app.expanded() || app.auto_hide_revealed.get();
         let tucked = governed && !revealed;
-        app.island.global::<AppState>().set_tucked(tucked);
+        let state = app.island.global::<AppState>();
+        let changed = state.get_tucked() != tucked;
+        state.set_tucked(tucked);
+        state.set_on_screen(app.is_on_screen());
         if tucked {
             if !app.peek_timer.running() {
                 let weak = Rc::downgrade(app);
@@ -640,6 +660,10 @@ impl App {
         if !governed {
             app.peek_hide_timer.stop();
             app.auto_hide_revealed.set(false);
+        }
+        if changed {
+            App::update_progress_timer(app);
+            App::update_glass_sampling(app);
         }
     }
 
@@ -706,10 +730,9 @@ impl App {
         Some(placement::Rect {
             left: centre - half_width - pad,
             right: centre + half_width + pad,
-            // Only a thin strip at the very top edge, so the island stays tucked until the
-            // cursor reaches the top of the screen.
-            top: monitor.bounds.top,
-            bottom: monitor.bounds.top + (PEEK_BAND_HEIGHT * scale).round() as i32,
+            // Align with the work-area top edge so a top-docked taskbar doesn't trap the trigger above it.
+            top: monitor.work.top,
+            bottom: monitor.work.top + (PEEK_BAND_HEIGHT * scale).round() as i32,
         })
     }
 
@@ -779,12 +802,40 @@ impl App {
     }
 }
 
-/// Whether a full-screen application, game or presentation currently owns the display.
-fn full_screen_app_active() -> bool {
-    matches!(
+/// Returns true if `window` covers the full bounds of `monitor`.
+pub(crate) fn window_covers_monitor(window: placement::Rect, monitor: placement::Rect) -> bool {
+    window.left <= monitor.left
+        && window.top <= monitor.top
+        && window.right >= monitor.right
+        && window.bottom >= monitor.bottom
+}
+
+fn foreground_covers_monitor(target: Option<&placement::Monitor>) -> bool {
+    let Some(monitor) = target else { return true };
+    let fg = unsafe { GetForegroundWindow() };
+    if fg.is_invalid() {
+        return true;
+    }
+    let shell = unsafe { GetShellWindow() };
+    let desktop = unsafe { GetDesktopWindow() };
+    if fg == shell || fg == desktop {
+        return false;
+    }
+    let mut rect = RECT::default();
+    if unsafe { GetWindowRect(fg, &mut rect) }.is_err() {
+        return true;
+    }
+    let window = placement::Rect { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+    window_covers_monitor(window, monitor.bounds)
+}
+
+/// Whether a full-screen application, game or presentation currently owns Lilt's display.
+fn full_screen_app_active(target: Option<&placement::Monitor>) -> bool {
+    let busy = matches!(
         unsafe { SHQueryUserNotificationState() },
         Ok(QUNS_BUSY | QUNS_RUNNING_D3D_FULL_SCREEN | QUNS_PRESENTATION_MODE)
-    )
+    );
+    busy && foreground_covers_monitor(target)
 }
 
 /// The setting name broadcast with `WM_SETTINGCHANGE`, if any.
@@ -832,5 +883,19 @@ fn with(weak: &Weak<App>, f: impl Fn(&Rc<App>) + 'static) -> impl Fn() + 'static
         if let Some(app) = weak.upgrade() {
             f(&app);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fullscreen_detection_checks_target_monitor_bounds() {
+        let primary = placement::Rect { left: 0, top: 0, right: 1920, bottom: 1080 };
+        let secondary = placement::Rect { left: 1920, top: 0, right: 3840, bottom: 1080 };
+        assert!(window_covers_monitor(secondary, secondary));
+        assert!(!window_covers_monitor(secondary, primary));
+        assert!(window_covers_monitor(placement::Rect { left: -8, top: -8, right: 1928, bottom: 1088 }, primary));
     }
 }

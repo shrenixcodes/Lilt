@@ -152,8 +152,8 @@ export component Island inherits Window {
     }
 
     // How far the island lifts above the top edge when auto-hidden, enough to clear the
-    // compact pill and its shadow margin.
-    property <length> tuck-shift: Theme.compact-height + 2 * Theme.margin + 12px;
+    // compact or activity pill plus its shadow margin.
+    property <length> tuck-shift: max(Theme.compact-height, Theme.activity-height) + 2 * Theme.margin + 24px;
 
     // Keyboard handling for the whole island. Keys that a field or row inside does not
     // use arrive here. The whole island slides up and fades out when auto-hidden.

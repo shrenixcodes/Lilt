@@ -69,6 +69,7 @@ pub struct Event {
     pub summary: String,
     pub location: Option<String>,
     pub start: Stamp,
+    pub end: Option<Stamp>,
     /// Length of each occurrence in minutes.
     pub duration: i64,
     pub recurrence: Option<Recurrence>,
@@ -210,8 +211,11 @@ fn build_event(props: &[(String, String, String)]) -> Option<Event> {
     let (_, params, value) = get("DTSTART")?;
     let start = parse_stamp(params, value)?;
 
-    let duration = if let Some((p, v)) = get("DTEND").map(|(_, p, v)| (p, v)) {
-        let end = parse_stamp(p, v)?;
+    let end = match get("DTEND").map(|(_, p, v)| (p, v)) {
+        Some((p, v)) => Some(parse_stamp(p, v)?),
+        None => None,
+    };
+    let duration = if let Some(ref end) = end {
         end.wall() - start.wall()
     } else if let Some((_, _, v)) = get("DURATION") {
         parse_duration(v)?
@@ -235,6 +239,7 @@ fn build_event(props: &[(String, String, String)]) -> Option<Event> {
         location: get("LOCATION").map(|(_, _, v)| unescape(v)).filter(|s| !s.trim().is_empty()),
         recurrence: get("RRULE").and_then(|(_, _, v)| parse_rule(v)),
         start,
+        end,
         duration: duration.max(0),
         exdates,
     })
@@ -377,14 +382,37 @@ fn parse_rule(value: &str) -> Option<Recurrence> {
     Some(rule)
 }
 
+fn stamp_utc(stamp: &Stamp, zones: &dyn TimeZones) -> Option<i64> {
+    match stamp {
+        Stamp::Utc(m) => Some(*m),
+        Stamp::Zoned { wall, tzid } => zones.zoned_to_utc(tzid, *wall),
+        Stamp::Floating(_) | Stamp::Date(_) => None,
+    }
+}
+
 /// Expands events into local occurrences overlapping `[from, to)`, sorted by start.
 pub fn occurrences(events: &[Event], zones: &dyn TimeZones, from: i64, to: i64) -> Vec<Occurrence> {
     let mut out = Vec::new();
     for event in events {
+        let duration = match &event.end {
+            Some(end) => {
+                if let (Some(su), Some(eu)) = (stamp_utc(&event.start, zones), stamp_utc(end, zones)) {
+                    (eu - su).max(0)
+                } else {
+                    (zones.to_local(end) - zones.to_local(&event.start)).max(0)
+                }
+            }
+            None => event.duration,
+        }
+        .max(if event.all_day() { DAY } else { 0 });
         let excluded: Vec<i64> = event.exdates.iter().map(|s| zones.to_local(s)).collect();
         let mut emit = |stamp: &Stamp| {
             let start = zones.to_local(stamp);
-            let end = start + event.duration.max(if event.all_day() { DAY } else { 0 });
+            let end = if event.recurrence.is_none() {
+                event.end.as_ref().map_or(start + duration, |e| zones.to_local(e).max(start))
+            } else {
+                start + duration
+            };
             if end > from && start < to && !excluded.contains(&start) {
                 out.push(Occurrence {
                     summary: event.summary.clone(),
@@ -589,5 +617,19 @@ mod tests {
         let occ =
             occurrences(&parse(&text).unwrap(), &TestZones, day(2026, 11, 16).at(0, 0), day(2026, 11, 23).at(0, 0));
         assert_eq!(occ.len(), 7);
+    }
+
+    #[test]
+    fn dtend_across_zones_computes_true_duration() {
+        // DTSTART is 10:00 in Fixed/+2 (= 08:00 UTC = 09:00 local TestZones);
+        // DTEND is 09:30Z (= 10:30 local TestZones) -> true duration is 90 minutes, not negative wall delta.
+        let text = cal(
+            "BEGIN:VEVENT\r\nSUMMARY:Cross-zone\r\nDTSTART;TZID=Fixed/+2:20261116T100000\r\nDTEND:20261116T093000Z\r\nEND:VEVENT\r\n",
+        );
+        let occ =
+            occurrences(&parse(&text).unwrap(), &TestZones, day(2026, 11, 16).at(0, 0), day(2026, 11, 17).at(0, 0));
+        assert_eq!(occ.len(), 1);
+        assert_eq!(occ[0].start, day(2026, 11, 16).at(9, 0));
+        assert_eq!(occ[0].end, day(2026, 11, 16).at(10, 30));
     }
 }

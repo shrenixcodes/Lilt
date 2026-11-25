@@ -191,7 +191,7 @@ export component CompactView inherits Rectangle {
         animate opacity { duration: Theme.fade-duration; }
 
         MarqueeText {
-            live: !root.media-mode && !AppState.expanded && !root.show-launcher;
+            live: AppState.on-screen && !root.media-mode && !AppState.expanded && !root.show-launcher;
             centered: true;
             x: 12px;
             width: parent.width - 24px;
@@ -223,7 +223,7 @@ export component CompactView inherits Rectangle {
         }
 
         MarqueeText {
-            live: !AppState.expanded && !AppState.activity;
+            live: AppState.on-screen && root.media-mode && !AppState.expanded && !AppState.activity && !root.show-launcher;
             text: AppState.media.title;
             tint: Theme.text-secondary;
             font-size: Theme.font-sm;

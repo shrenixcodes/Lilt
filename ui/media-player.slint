@@ -37,7 +37,8 @@ component PlayButton inherits Rectangle {
 
 // Now-playing view with transport controls, or an explanation when nothing plays.
 export component MediaPlayer inherits Rectangle {
-    property <bool> active: AppState.media.availability == MediaAvailability.active;
+    property <bool> active: AppState.media.availability == MediaAvailability.active
+        || (AppState.media-grace && AppState.media.title != "");
     property <color> glow: Theme.glow;
     animate glow { duration: Theme.ambient-duration; easing: ease-in-out; }
 

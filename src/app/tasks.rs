@@ -16,7 +16,7 @@ use crate::calendar::date::{DAY, Date};
 use crate::calendar::now_local;
 use crate::settings::{TaskLayout, TaskOrder};
 use crate::tasks::store::TaskStore;
-use crate::tasks::time::{local_minutes, now_unix};
+use crate::tasks::time::{local_midnight_unix, local_minutes, now_unix};
 use crate::tasks::{self, Draft, Priority, SortMode, Source, SyncState, Task, View};
 use crate::ui::{
     ArchiveRow, ArchiveRowKind, Island, TaskForm, TaskRow, TaskRowKind, TaskView, TasksActions, TasksState,
@@ -389,7 +389,7 @@ impl TasksController {
         state.set_upcoming_count(upcoming);
         state.set_custom_order(mode == SortMode::Custom);
         state.set_date_label(tasks::date_label(today).into());
-        let since = now_unix() - (now - today.to_days() * DAY) * 60;
+        let since = local_midnight_unix(now_unix());
         let done_today = self.store.borrow().as_ref().and_then(|s| s.completed_since(since).ok()).unwrap_or(0);
         state.set_done_today(done_today as i32);
         state.set_left_today(due_today);
@@ -715,7 +715,7 @@ impl App {
     pub(super) fn tick_tasks(&self) {
         let state = self.island.global::<crate::ui::AppState>();
         self.tasks.h24.set(self.h24.get());
-        if state.get_expanded() && state.get_show_tasks() {
+        if state.get_expanded() && state.get_effective_tasks() {
             self.tasks.tick();
         }
     }

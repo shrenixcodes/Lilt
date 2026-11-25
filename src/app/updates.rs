@@ -190,32 +190,59 @@ fn install_in_background(
     target: &std::path::Path,
 ) -> Result<(), String> {
     updates::download(url, target)?;
-    if sha_url.is_none() && asset_sha256.is_none() {
+    let cleanup = |err: String| -> Result<(), String> {
         let _ = std::fs::remove_file(target);
-        return Err("This release has no SHA-256 checksum; install cancelled.".into());
+        Err(err)
+    };
+    if sha_url.is_none() && asset_sha256.is_none() {
+        return cleanup("This release has no SHA-256 checksum; install cancelled.".into());
     }
     if let Some(sha_url) = sha_url {
         let sha_target = target.with_extension("exe.sha256");
-        // Failing to fetch the checksum is non-fatal; without it we still trust the
-        // host verification above.
-        if let Ok(()) = updates::download(sha_url, &sha_target) {
-            let text = std::fs::read_to_string(&sha_target).map_err(|e| e.to_string())?;
-            if let Some(expected) = updates::sha256_from_text(&text) {
-                let actual = updates::sha256_of(target)?;
-                if !actual.eq_ignore_ascii_case(&expected) {
-                    let _ = std::fs::remove_file(target);
-                    return Err("checksum mismatch — install cancelled.".into());
-                }
+        if let Err(err) = updates::download(sha_url, &sha_target) {
+            return cleanup(format!("Could not verify checksum: {err}"));
+        }
+        let text = match std::fs::read_to_string(&sha_target) {
+            Ok(text) => text,
+            Err(err) => {
+                let _ = std::fs::remove_file(&sha_target);
+                return cleanup(format!("Could not read checksum: {err}"));
             }
-            let _ = std::fs::remove_file(&sha_target);
+        };
+        let _ = std::fs::remove_file(&sha_target);
+        let Some(expected) = updates::sha256_from_text(&text) else {
+            return cleanup("Invalid checksum file — install cancelled.".into());
+        };
+        let actual = updates::sha256_of(target)?;
+        if !actual.eq_ignore_ascii_case(&expected) {
+            return cleanup("checksum mismatch — install cancelled.".into());
         }
     }
     if let Some(expected) = asset_sha256 {
         let actual = updates::sha256_of(target)?;
         if !actual.eq_ignore_ascii_case(expected) {
-            let _ = std::fs::remove_file(target);
-            return Err("checksum mismatch - install cancelled.".into());
+            return cleanup("checksum mismatch - install cancelled.".into());
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn install_rejects_missing_or_unreachable_checksum() {
+        let dir = std::env::temp_dir().join(format!("lilt-update-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("setup.exe");
+
+        // Local missing source URL: installer download itself fails cleanly.
+        let err = install_in_background("http://127.0.0.1:9/setup.exe", Some("http://127.0.0.1:9/sha"), None, &target);
+        assert!(err.is_err());
+        assert!(!target.exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

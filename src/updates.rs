@@ -203,8 +203,7 @@ pub fn installer_target(version: &str) -> PathBuf {
     std::env::temp_dir().join(format!("Lilt-{safe}-x64-setup.exe"))
 }
 
-/// Launches the installer silently; Windows still shows the UAC prompt before any file
-/// is replaced.
+/// Launches the per-user installer silently without requesting unnecessary elevation.
 pub fn run_installer(path: &Path) -> Result<(), String> {
     use windows::Win32::UI::Shell::ShellExecuteW;
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
@@ -213,7 +212,7 @@ pub fn run_installer(path: &Path) -> Result<(), String> {
     // `/S` is NSIS's silent-install switch.
     let args = HSTRING::from("/S");
     let result =
-        unsafe { ShellExecuteW(None, w!("runas"), &target, PCWSTR(args.as_ptr()), PCWSTR::null(), SW_SHOWNORMAL) };
+        unsafe { ShellExecuteW(None, w!("open"), &target, PCWSTR(args.as_ptr()), PCWSTR::null(), SW_SHOWNORMAL) };
     if result.0 as isize > 32 { Ok(()) } else { Err(format!("ShellExecuteW returned {}", result.0 as isize)) }
 }
 

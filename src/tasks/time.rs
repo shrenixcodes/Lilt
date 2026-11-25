@@ -31,6 +31,23 @@ pub fn local_minutes(unix: i64) -> i64 {
         .map_or(unix.div_euclid(60), |d| d.at(local.wHour as u32, local.wMinute as u32))
 }
 
+/// Unix timestamp (seconds) of the start of the local day (00:00:00) containing `unix`.
+pub fn local_midnight_unix(unix: i64) -> i64 {
+    let ticks = (unix + EPOCH_DIFFERENCE).max(0) as u64 * 10_000_000;
+    let file = FILETIME { dwLowDateTime: ticks as u32, dwHighDateTime: (ticks >> 32) as u32 };
+    let mut utc = SYSTEMTIME::default();
+    let mut local = SYSTEMTIME::default();
+    unsafe {
+        if FileTimeToSystemTime(&file, &mut utc).is_err()
+            || SystemTimeToTzSpecificLocalTime(None, &utc, &mut local).is_err()
+        {
+            return unix - unix.rem_euclid(86_400);
+        }
+    }
+    let elapsed_secs = i64::from(local.wHour) * 3600 + i64::from(local.wMinute) * 60 + i64::from(local.wSecond);
+    unix - elapsed_secs
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -47,5 +64,12 @@ mod tests {
     fn matches_the_calendar_clock() {
         let difference = local_minutes(now_unix()) - crate::calendar::now_local();
         assert!(difference.abs() <= 1, "difference {difference}");
+    }
+
+    #[test]
+    fn local_midnight_is_within_one_day_before_now() {
+        let now = now_unix();
+        let midnight = local_midnight_unix(now);
+        assert!((0..86_400).contains(&(now - midnight)));
     }
 }
