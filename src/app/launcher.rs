@@ -272,7 +272,7 @@ fn classify_icon(name: &str, path: &str) -> String {
 }
 
 pub const COMMON_APPS: &[(&str, &str, &str)] = &[
-    ("VS Code", "code.cmd", "code"),
+    ("VS Code", "Code.exe", "code"),
     ("Terminal", "wt.exe", "terminal"),
     ("Discord", "Discord.exe", "app"),
     ("Spotify", "spotify.exe", "app"),
@@ -284,9 +284,58 @@ pub const COMMON_APPS: &[(&str, &str, &str)] = &[
     ("Calculator", "calc.exe", "app"),
 ];
 
+const LAUNCH_EXTENSIONS: &[&str] = &[".exe", ".cmd", ".bat", ".lnk", ".url", ".com", ".msc"];
+
+/// Splits a launch target into its unquoted executable/shortcut path and optional CLI arguments.
+pub(crate) fn split_launch_target(target: &str) -> (&str, Option<&str>) {
+    let trimmed = target.trim();
+    if trimmed.is_empty() {
+        return ("", None);
+    }
+    if let Some(after_quote) = trimmed.strip_prefix('"') {
+        return match after_quote.find('"') {
+            Some(end) => {
+                let program = after_quote[..end].trim();
+                let args = after_quote[end + 1..].trim();
+                (program, (!args.is_empty()).then_some(args))
+            }
+            None => (after_quote.trim(), None),
+        };
+    }
+    let Some(first_ws) = trimmed.find(char::is_whitespace) else {
+        return (trimmed, None);
+    };
+    if Path::new(trimmed).exists() {
+        return (trimmed, None);
+    }
+
+    let bytes = trimmed.as_bytes();
+    for (idx, ch) in trimmed.char_indices() {
+        if !ch.is_whitespace() || (idx > 0 && bytes[idx - 1].is_ascii_whitespace()) {
+            continue;
+        }
+        let candidate = &trimmed[..idx];
+        let lower = candidate.to_ascii_lowercase();
+        if LAUNCH_EXTENSIONS.iter().any(|ext| lower.ends_with(ext)) || Path::new(candidate).is_file() {
+            let args = trimmed[idx..].trim();
+            return (candidate, (!args.is_empty()).then_some(args));
+        }
+    }
+
+    let first = &trimmed[..first_ws];
+    if !first.contains(['\\', '/', ':']) {
+        let args = trimmed[first_ws..].trim();
+        return (first, (!args.is_empty()).then_some(args));
+    }
+    (trimmed, None)
+}
+
 /// Resolves a friendly display name for an executable or shortcut target.
 pub fn resolve_app_name(target: &str) -> String {
-    let clean_target = target.trim().trim_matches('"');
+    let (clean_target, _) = split_launch_target(target);
+    if clean_target.is_empty() {
+        return String::new();
+    }
     let path = Path::new(clean_target);
 
     // 1. If it's a shortcut (.lnk/.url), the filename stem is already the friendly name.
@@ -301,8 +350,11 @@ pub fn resolve_app_name(target: &str) -> String {
         }
     }
 
-    // 2. Check well-known common app binary names
+    // 2. Check well-known common app binary names (and legacy VS Code CLI shim name).
     let filename = path.file_name().and_then(|f| f.to_str()).unwrap_or(clean_target);
+    if filename.eq_ignore_ascii_case("code.cmd") || clean_target.eq_ignore_ascii_case("code.cmd") {
+        return "VS Code".to_owned();
+    }
     for &(name, binary, _) in COMMON_APPS {
         if filename.eq_ignore_ascii_case(binary) || clean_target.eq_ignore_ascii_case(binary) {
             return name.to_owned();
@@ -511,31 +563,70 @@ pub fn extract_file_icon(target: &str) -> Option<slint::Image> {
     None
 }
 
-/// Resolves an executable or shortcut target from PATH or known system directories.
-fn resolve_executable_path(target: &str) -> Option<PathBuf> {
-    let p = Path::new(target);
+fn vscode_exe_from_cmd(cmd_path: &Path) -> Option<PathBuf> {
+    let is_code_cmd = cmd_path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.eq_ignore_ascii_case("code.cmd"));
+    if !is_code_cmd {
+        return None;
+    }
+    let parent = cmd_path.parent()?;
+    [parent.parent().map(|root| root.join("Code.exe")), Some(parent.join("Code.exe"))]
+        .into_iter()
+        .flatten()
+        .find(|candidate| candidate.is_file())
+}
+
+fn find_direct_executable(program: &str) -> Option<PathBuf> {
+    let p = Path::new(program);
     if p.exists() {
         return Some(p.to_path_buf());
     }
     if let Some(paths) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&paths) {
-            let full = dir.join(target);
+            let full = dir.join(program);
             if full.exists() {
                 return Some(full);
             }
         }
     }
     if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-        let full = PathBuf::from(local).join("Programs").join(target);
+        let programs = PathBuf::from(local).join("Programs");
+        for candidate in [programs.join(program), programs.join("Microsoft VS Code").join(program)] {
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+    for env_key in ["ProgramFiles", "ProgramFiles(x86)"] {
+        if let Some(base) = std::env::var_os(env_key) {
+            let candidate = PathBuf::from(base).join("Microsoft VS Code").join(program);
+            if program.eq_ignore_ascii_case("Code.exe") && candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+    if let Some(windir) = std::env::var_os("WINDIR") {
+        let full = PathBuf::from(windir).join("System32").join(program);
         if full.exists() {
             return Some(full);
         }
     }
-    if let Some(windir) = std::env::var_os("WINDIR") {
-        let full = PathBuf::from(windir).join("System32").join(target);
-        if full.exists() {
-            return Some(full);
-        }
+    None
+}
+
+/// Resolves an executable or shortcut target from PATH or known system directories.
+fn resolve_executable_path(target: &str) -> Option<PathBuf> {
+    let (program, _) = split_launch_target(target);
+    if program.is_empty() {
+        return None;
+    }
+    if let Some(found) = find_direct_executable(program) {
+        return Some(vscode_exe_from_cmd(&found).unwrap_or(found));
+    }
+    if program.eq_ignore_ascii_case("Code.exe")
+        && let Some(cmd) = find_direct_executable("code.cmd")
+        && let Some(exe) = vscode_exe_from_cmd(&cmd)
+    {
+        return Some(exe);
     }
     None
 }
@@ -547,9 +638,22 @@ fn is_available(target: &str) -> bool {
 
 /// Executes an application, game, or shortcut via Windows ShellExecute.
 fn launch_process(target: &str) {
-    let wide: Vec<u16> = target.encode_utf16().chain(Some(0)).collect();
-    unsafe {
-        let _ = ShellExecuteW(None, w!("open"), PCWSTR(wide.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL);
+    let (program, args) = split_launch_target(target);
+    if program.is_empty() {
+        return;
+    }
+    let is_vscode_target = program.eq_ignore_ascii_case("Code.exe")
+        || Path::new(program).file_name().and_then(|n| n.to_str()).is_some_and(|n| n.eq_ignore_ascii_case("code.cmd"));
+    let resolved_vscode = if is_vscode_target { resolve_executable_path(program) } else { None };
+    let file = resolved_vscode.as_deref().and_then(|p| p.to_str()).unwrap_or(program);
+    let wide_file: Vec<u16> = file.encode_utf16().chain(Some(0)).collect();
+    let wide_args: Option<Vec<u16>> = args.map(|a| a.encode_utf16().chain(Some(0)).collect());
+    let params_ptr = wide_args.as_ref().map_or(PCWSTR::null(), |v| PCWSTR(v.as_ptr()));
+    let result = unsafe {
+        ShellExecuteW(None, w!("open"), PCWSTR(wide_file.as_ptr()), params_ptr, PCWSTR::null(), SW_SHOWNORMAL)
+    };
+    if (result.0 as isize) <= 32 {
+        tracing::warn!(target, file, code = result.0 as isize, "failed to launch application");
     }
 }
 
@@ -602,8 +706,48 @@ mod tests {
     #[test]
     fn test_resolve_app_name() {
         assert_eq!(resolve_app_name("wt.exe"), "Terminal");
+        assert_eq!(resolve_app_name("Code.exe"), "VS Code");
         assert_eq!(resolve_app_name("code.cmd"), "VS Code");
+        assert_eq!(resolve_app_name("\"C:\\Program Files\\Microsoft VS Code\\Code.exe\" --new-window"), "VS Code");
         assert_eq!(resolve_app_name("notepad.exe"), "Notepad");
         assert_eq!(resolve_app_name("C:\\Users\\test\\Desktop\\Discord.lnk"), "Discord");
+    }
+
+    #[test]
+    fn test_split_launch_target_handles_quotes_spaces_and_args() {
+        assert_eq!(split_launch_target(""), ("", None));
+        assert_eq!(
+            split_launch_target("  \"C:\\Program Files\\Microsoft VS Code\\Code.exe\" --new-window \"dir\"  "),
+            ("C:\\Program Files\\Microsoft VS Code\\Code.exe", Some("--new-window \"dir\""))
+        );
+        assert_eq!(
+            split_launch_target("\"C:\\Program Files\\App\\app.exe\""),
+            ("C:\\Program Files\\App\\app.exe", None)
+        );
+        assert_eq!(
+            split_launch_target("C:\\Program Files\\App\\app.exe --profile dev"),
+            ("C:\\Program Files\\App\\app.exe", Some("--profile dev"))
+        );
+        assert_eq!(
+            split_launch_target("C:\\Users\\test\\Desktop\\My App.lnk"),
+            ("C:\\Users\\test\\Desktop\\My App.lnk", None)
+        );
+        assert_eq!(split_launch_target("code --reuse-window"), ("code", Some("--reuse-window")));
+    }
+
+    #[test]
+    fn test_vscode_cmd_resolves_sibling_code_exe() {
+        let root = std::env::temp_dir().join(format!("lilt-launcher-test-{}", std::process::id()));
+        let bin = root.join("bin");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&bin).unwrap();
+        let cmd = bin.join("code.cmd");
+        let exe = root.join("Code.exe");
+        std::fs::write(&cmd, "@echo off\n").unwrap();
+        std::fs::write(&exe, b"MZ").unwrap();
+
+        assert_eq!(resolve_executable_path(cmd.to_str().unwrap()), Some(exe));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
