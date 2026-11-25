@@ -560,6 +560,9 @@ pub fn relative_time(then: i64, now: i64) -> String {
 /// Keeps the database lean even with many captured screenshots.
 pub const MAX_THUMBNAIL_BYTES: usize = 512 * 1024;
 
+/// Maximum size of a full-resolution captured PNG image stored in the database.
+pub const MAX_IMAGE_BYTES: usize = 16 * 1024 * 1024;
+
 /// Maximum dimensions for a thumbnail. Larger images are scaled down.
 pub const THUMBNAIL_MAX_SIDE: u32 = 256;
 

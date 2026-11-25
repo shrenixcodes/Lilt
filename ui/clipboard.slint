@@ -45,9 +45,9 @@ component ClipItem inherits Rectangle {
     property <bool> active: touch.has-hover || root.selected;
     property <bool> copied: ClipboardState.copied-id == root.entry.id;
     property <bool> confirming;
-    // Pin and delete are always visible; hover adds edit and copy.
+    // Pin and delete are always visible; hover adds edit (text only) and copy.
     property <length> idle-actions-width: 56px;
-    property <length> active-actions-width: 112px;
+    property <length> active-actions-width: root.entry.has-thumbnail ? 84px : 112px;
 
     border-radius: Theme.control-radius + 2px;
     background: root.active ? Theme.tile : transparent;
@@ -182,8 +182,8 @@ component ClipItem inherits Rectangle {
             height: parent.height;
             alignment: center;
 
-            // Edit and Copy fade in on hover or keyboard selection.
-            if root.active && !root.confirming : IconButton {
+            // Edit (for text/snippets) and Copy fade in on hover or keyboard selection.
+            if root.active && !root.confirming && !root.entry.has-thumbnail : IconButton {
                 width: 26px;
                 height: 26px;
                 icon: Icons.pencil;
@@ -278,7 +278,7 @@ component Intro inherits VerticalLayout {
 
     Text {
         horizontal-alignment: center;
-        text: "Lilt can remember copied text locally so you can find and reuse it later. Clipboard capture is optional and can be paused or disabled anytime.";
+        text: "Lilt can remember copied text and images locally so you can find and reuse them later. Clipboard capture is optional and can be paused or disabled anytime.";
         font-size: 11.5px;
         color: Theme.text-secondary;
         wrap: word-wrap;
@@ -286,7 +286,7 @@ component Intro inherits VerticalLayout {
 
     Text {
         horizontal-alignment: center;
-        text: "Only text is kept, on this PC. Passwords, keys and copies from password managers are skipped.";
+        text: "Copied text and images stay on this PC. Passwords, keys and copies from password managers are skipped.";
         font-size: 10.5px;
         color: Theme.text-tertiary;
         wrap: word-wrap;
@@ -445,6 +445,8 @@ export component ClipboardView inherits Rectangle {
     property <bool> confirm-clear;
     property <int> focus-token: ClipboardState.search-focus;
     property <int> selected: ClipboardState.selected;
+    property <length> selected-top: ClipboardState.selected-top;
+    property <int> scroll-token: ClipboardState.scroll-token;
 
     changed busy => {
         ClipboardActions.busy(self.busy);
@@ -452,8 +454,7 @@ export component ClipboardView inherits Rectangle {
     changed focus-token => {
         search.focus-input();
     }
-    // Keeps the entry chosen with the keyboard in view.
-    changed selected => {
+    function scroll-to-selection() {
         if self.selected < 0 {
             return;
         }
@@ -464,6 +465,10 @@ export component ClipboardView inherits Rectangle {
             list.content-y = -(top + ClipMetrics.entry - list.visible-height);
         }
     }
+    // Keeps the entry chosen with the keyboard in view, even if only its position changed.
+    changed selected => { self.scroll-to-selection(); }
+    changed selected-top => { self.scroll-to-selection(); }
+    changed scroll-token => { self.scroll-to-selection(); }
 
     init => {
         ClipboardActions.opened();
@@ -526,33 +531,53 @@ export component ClipboardView inherits Rectangle {
         search := Field {
             visible: !ClipboardState.editing && !ClipboardState.show-intro;
             height: ClipboardState.editing || ClipboardState.show-intro ? 0px : 26px;
-            placeholder: "Search copied text and snippets";
+            placeholder: "Search clipboard history and snippets";
             text <=> ClipboardState.search;
             font-size: 11.5px;
             edited(text) => { ClipboardActions.search-changed(text); }
             accepted => { ClipboardActions.copy-selected(); }
         }
 
-        if !ClipboardState.editing && !ClipboardState.show-intro : HorizontalLayout {
-            height: 24px;
+        if !ClipboardState.editing && !ClipboardState.show-intro : VerticalLayout {
             spacing: 4px;
 
-            for chip in [
-                { label: "All", filter: ClipFilter.all },
-                { label: "Pinned", filter: ClipFilter.pinned },
-                { label: "Recent", filter: ClipFilter.recent },
-                { label: "Snippets", filter: ClipFilter.snippets },
-                { label: "Links", filter: ClipFilter.links },
-                { label: "Code", filter: ClipFilter.code },
-                { label: "Images", filter: ClipFilter.images },
-                { label: "Other", filter: ClipFilter.other },
-            ] : Chip {
-                inset: 7px;
-                text: chip.label;
-                selected: ClipboardState.filter == chip.filter;
-                clicked => {
-                    ClipboardState.filter = chip.filter;
-                    ClipboardActions.filter-changed();
+            HorizontalLayout {
+                height: 24px;
+                spacing: 4px;
+
+                for chip in [
+                    { label: "All", filter: ClipFilter.all },
+                    { label: "Pinned", filter: ClipFilter.pinned },
+                    { label: "Recent", filter: ClipFilter.recent },
+                    { label: "Snippets", filter: ClipFilter.snippets },
+                ] : Chip {
+                    inset: 7px;
+                    text: chip.label;
+                    selected: ClipboardState.filter == chip.filter;
+                    clicked => {
+                        ClipboardState.filter = chip.filter;
+                        ClipboardActions.filter-changed();
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                height: 24px;
+                spacing: 4px;
+
+                for chip in [
+                    { label: "Links", filter: ClipFilter.links },
+                    { label: "Code", filter: ClipFilter.code },
+                    { label: "Images", filter: ClipFilter.images },
+                    { label: "Other", filter: ClipFilter.other },
+                ] : Chip {
+                    inset: 7px;
+                    text: chip.label;
+                    selected: ClipboardState.filter == chip.filter;
+                    clicked => {
+                        ClipboardState.filter = chip.filter;
+                        ClipboardActions.filter-changed();
+                    }
                 }
             }
         }

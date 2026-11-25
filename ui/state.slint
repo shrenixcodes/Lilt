@@ -115,6 +115,8 @@ export global ClipboardState {
     in-out property <int> search-focus;
     // The y of the selected entry within the list, to keep it in view.
     in property <length> selected-top;
+    // Incremented on backend selection updates so the list still scrolls when the row index stays unchanged.
+    in property <int> scroll-token;
 
     in-out property <string> search;
     in-out property <ClipFilter> filter: ClipFilter.all;

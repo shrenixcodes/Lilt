@@ -1782,6 +1782,26 @@ fn clipboard_rows_scale_with_the_display() {
     assert_eq!((image.width(), image.height()), (1335, 570));
 }
 
+#[test]
+fn clipboard_selection_scrolls_when_position_changes_at_same_index() {
+    use crate::ui::ClipboardState;
+    let h = clipboard_harness(Appearance::Midnight);
+    let clip = h.island.global::<ClipboardState>();
+    let at_top = h.render_on(wallpaper);
+
+    clip.set_selected_top(26.0 * 3.0 + 64.0 * 2.0);
+    clip.set_selected(5);
+    let scrolled_down = h.render_on(wallpaper);
+    assert_ne!(scrolled_down, at_top);
+
+    // Filtering/relisting can move the selected item back to index 0 (wait: keep index 5 but shift selected-top up to 0.0).
+    clip.set_selected_top(0.0);
+    clip.set_scroll_token(clip.get_scroll_token().wrapping_add(1));
+    let scrolled_back = h.render_on(wallpaper);
+    save(&scrolled_back, "clipboard-scroll-token");
+    assert_ne!(scrolled_back, scrolled_down);
+}
+
 // --- Quick-control pop-ups -----------------------------------------------------------
 
 fn fill_controls(h: &Harness) {

@@ -48,11 +48,17 @@ pub struct Policy {
     pub skip_unknown_sources: bool,
 }
 
-/// Copied text and the executable name of the app that copied it, when Windows says.
+#[derive(Debug, PartialEq)]
+pub struct CopiedImage {
+    pub full_png: Vec<u8>,
+    pub thumbnail_png: Vec<u8>,
+}
+
+/// Copied text or image and the executable name of the app that copied it, when Windows says.
 #[derive(Debug, PartialEq)]
 pub struct Copied {
     pub text: String,
-    pub image: Option<Vec<u8>>,
+    pub image: Option<CopiedImage>,
     pub source: Option<String>,
 }
 
@@ -143,7 +149,7 @@ unsafe fn open_text(history: u32) -> Result<String, Skip> {
     }
 }
 
-unsafe fn open_image(png_fmt: u32, history: u32) -> Result<Vec<u8>, Skip> {
+unsafe fn open_image(png_fmt: u32, history: u32) -> Result<CopiedImage, Skip> {
     unsafe {
         if available(history)
             && let Ok(handle) = GetClipboardData(history)
@@ -157,7 +163,7 @@ unsafe fn open_image(png_fmt: u32, history: u32) -> Result<Vec<u8>, Skip> {
             }
         }
 
-        // Try PNG format first
+        // Try PNG format first so screenshots preserve full original quality when within limits.
         if available(png_fmt)
             && let Ok(handle) = GetClipboardData(png_fmt)
         {
@@ -166,10 +172,25 @@ unsafe fn open_image(png_fmt: u32, history: u32) -> Result<Vec<u8>, Skip> {
             let data = GlobalLock(memory) as *const u8;
             if !data.is_null() && size > 0 {
                 let slice = std::slice::from_raw_parts(data, size);
-                let loaded = image::load_from_memory(slice);
+                let png_len = slice.len();
+                let loaded = (png_len <= super::MAX_IMAGE_BYTES).then(|| image::load_from_memory(slice));
+                let full_png = (loaded.as_ref().is_some_and(Result::is_ok)).then(|| slice.to_vec());
                 let _ = GlobalUnlock(memory);
-                if let Ok(img) = loaded {
-                    return compress_thumbnail(img);
+                if let Some(Ok(img)) = loaded
+                    && let Some(full_png) = full_png
+                {
+                    let thumbnail_png = if img.width() <= super::THUMBNAIL_MAX_SIDE
+                        && img.height() <= super::THUMBNAIL_MAX_SIDE
+                        && full_png.len() <= super::MAX_THUMBNAIL_BYTES
+                    {
+                        full_png.clone()
+                    } else {
+                        compress_thumbnail(&img)?
+                    };
+                    return Ok(CopiedImage { full_png, thumbnail_png });
+                }
+                if png_len > super::MAX_IMAGE_BYTES {
+                    return Err(Skip::TooLarge);
                 }
             } else {
                 let _ = GlobalUnlock(memory);
@@ -189,52 +210,81 @@ unsafe fn open_image(png_fmt: u32, history: u32) -> Result<Vec<u8>, Skip> {
             return Err(Skip::Unavailable);
         }
         let dib_slice = std::slice::from_raw_parts(data, size);
-
-        let bi_size = u32::from_le_bytes(dib_slice[0..4].try_into().unwrap_or_default()) as usize;
-        let bi_bit_count = u16::from_le_bytes(dib_slice[14..16].try_into().unwrap_or_default());
-        let bi_compression = u32::from_le_bytes(dib_slice[16..20].try_into().unwrap_or_default());
-        let bi_clr_used = if dib_slice.len() >= 36 {
-            u32::from_le_bytes(dib_slice[32..36].try_into().unwrap_or_default()) as usize
-        } else {
-            0
-        };
-        let palette_or_masks = if bi_compression == 3 {
-            12
-        } else if bi_clr_used > 0 {
-            bi_clr_used * 4
-        } else if bi_bit_count <= 8 && bi_bit_count > 0 {
-            (1 << bi_bit_count) * 4
-        } else {
-            0
-        };
-        let off_bits = (14 + bi_size + palette_or_masks) as u32;
-        let file_size = (14 + size) as u32;
-
-        let mut bmp = Vec::with_capacity(14 + size);
-        bmp.extend_from_slice(b"BM");
-        bmp.extend_from_slice(&file_size.to_le_bytes());
-        bmp.extend_from_slice(&[0u8; 4]);
-        bmp.extend_from_slice(&off_bits.to_le_bytes());
-        bmp.extend_from_slice(dib_slice);
+        let bmp = dib_to_bmp(dib_slice);
         let _ = GlobalUnlock(memory);
 
-        let img = image::load_from_memory(&bmp).map_err(|_| Skip::Unavailable)?;
-        compress_thumbnail(img)
+        let img = image::load_from_memory(&bmp?).map_err(|_| Skip::Unavailable)?;
+        let full_png = encode_png(&img, super::MAX_IMAGE_BYTES)?;
+        let thumbnail_png = if img.width() <= super::THUMBNAIL_MAX_SIDE
+            && img.height() <= super::THUMBNAIL_MAX_SIDE
+            && full_png.len() <= super::MAX_THUMBNAIL_BYTES
+        {
+            full_png.clone()
+        } else {
+            compress_thumbnail(&img)?
+        };
+        Ok(CopiedImage { full_png, thumbnail_png })
     }
 }
 
-fn compress_thumbnail(img: image::DynamicImage) -> Result<Vec<u8>, Skip> {
-    let thumb = if img.width() > super::THUMBNAIL_MAX_SIDE || img.height() > super::THUMBNAIL_MAX_SIDE {
-        img.thumbnail(super::THUMBNAIL_MAX_SIDE, super::THUMBNAIL_MAX_SIDE)
+/// Prepends a BMP file header onto a raw Windows CF_DIB / CF_DIBV5 payload.
+pub(crate) fn dib_to_bmp(dib_slice: &[u8]) -> Result<Vec<u8>, Skip> {
+    if dib_slice.len() < 40 {
+        return Err(Skip::Unavailable);
+    }
+    let bi_size = u32::from_le_bytes(dib_slice[0..4].try_into().unwrap_or_default()) as usize;
+    if bi_size < 40 || bi_size > dib_slice.len() {
+        return Err(Skip::Unavailable);
+    }
+    let bi_bit_count = u16::from_le_bytes(dib_slice[14..16].try_into().unwrap_or_default());
+    let bi_compression = u32::from_le_bytes(dib_slice[16..20].try_into().unwrap_or_default());
+    let bi_clr_used = u32::from_le_bytes(dib_slice[32..36].try_into().unwrap_or_default()) as usize;
+    // Only BITMAPINFOHEADER (40 bytes) places BI_BITFIELDS/BI_ALPHABITFIELDS masks after the header;
+    // BITMAPV4HEADER (108) and BITMAPV5HEADER (124) already include masks inside `biSize`.
+    let extra_masks = if bi_size == 40 {
+        match bi_compression {
+            3 => 12,
+            6 => 16,
+            _ => 0,
+        }
     } else {
-        img
+        0
     };
+    let palette = if bi_clr_used > 0 {
+        bi_clr_used.saturating_mul(4)
+    } else if bi_bit_count <= 8 && bi_bit_count > 0 {
+        (1usize << bi_bit_count) * 4
+    } else {
+        0
+    };
+    let off_bits = u32::try_from(14 + bi_size + extra_masks + palette).map_err(|_| Skip::TooLarge)?;
+    let file_size = u32::try_from(14 + dib_slice.len()).map_err(|_| Skip::TooLarge)?;
+
+    let mut bmp = Vec::with_capacity(14 + dib_slice.len());
+    bmp.extend_from_slice(b"BM");
+    bmp.extend_from_slice(&file_size.to_le_bytes());
+    bmp.extend_from_slice(&[0u8; 4]);
+    bmp.extend_from_slice(&off_bits.to_le_bytes());
+    bmp.extend_from_slice(dib_slice);
+    Ok(bmp)
+}
+
+fn encode_png(img: &image::DynamicImage, max_bytes: usize) -> Result<Vec<u8>, Skip> {
     let mut png = Vec::new();
-    thumb.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map_err(|_| Skip::Unavailable)?;
-    if png.len() > super::MAX_THUMBNAIL_BYTES {
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map_err(|_| Skip::Unavailable)?;
+    if png.len() > max_bytes {
         return Err(Skip::TooLarge);
     }
     Ok(png)
+}
+
+fn compress_thumbnail(img: &image::DynamicImage) -> Result<Vec<u8>, Skip> {
+    let thumb = if img.width() > super::THUMBNAIL_MAX_SIDE || img.height() > super::THUMBNAIL_MAX_SIDE {
+        img.thumbnail(super::THUMBNAIL_MAX_SIDE, super::THUMBNAIL_MAX_SIDE)
+    } else {
+        return encode_png(img, super::MAX_THUMBNAIL_BYTES);
+    };
+    encode_png(&thumb, super::MAX_THUMBNAIL_BYTES)
 }
 
 /// Puts image data on the clipboard in DIB and PNG formats.
@@ -421,5 +471,29 @@ mod tests {
         if let Some(saved) = saved {
             write(&saved);
         }
+    }
+
+    #[test]
+    fn dibv5_bitfields_header_does_not_shift_pixel_offset() {
+        // 1x1 BGRA pixel in BITMAPV5HEADER (124 bytes) with BI_BITFIELDS (3): masks live inside the header.
+        let mut dib = vec![0u8; 124 + 4];
+        dib[0..4].copy_from_slice(&124u32.to_le_bytes());
+        dib[4..8].copy_from_slice(&1i32.to_le_bytes());
+        dib[8..12].copy_from_slice(&1i32.to_le_bytes());
+        dib[12..14].copy_from_slice(&1u16.to_le_bytes());
+        dib[14..16].copy_from_slice(&32u16.to_le_bytes());
+        dib[16..20].copy_from_slice(&3u32.to_le_bytes()); // BI_BITFIELDS
+        dib[20..24].copy_from_slice(&4u32.to_le_bytes());
+        dib[40..44].copy_from_slice(&0x00FF_0000u32.to_le_bytes());
+        dib[44..48].copy_from_slice(&0x0000_FF00u32.to_le_bytes());
+        dib[48..52].copy_from_slice(&0x0000_00FFu32.to_le_bytes());
+        dib[52..56].copy_from_slice(&0xFF00_0000u32.to_le_bytes());
+        // Pixel: B=10, G=20, R=30, A=255
+        dib[124..128].copy_from_slice(&[10, 20, 30, 255]);
+
+        let bmp = dib_to_bmp(&dib).unwrap();
+        assert_eq!(u32::from_le_bytes(bmp[10..14].try_into().unwrap()), 14 + 124);
+        let decoded = image::load_from_memory(&bmp).unwrap().to_rgba8();
+        assert_eq!(decoded.get_pixel(0, 0).0, [30, 20, 10, 255]);
     }
 }

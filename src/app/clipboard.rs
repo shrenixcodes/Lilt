@@ -5,6 +5,7 @@
 //! notifications only while capture is on and not paused.
 
 use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
@@ -22,6 +23,7 @@ use crate::window;
 /// Row heights of the list, as in ui/clipboard.slint (`ClipMetrics`).
 const HEADER_HEIGHT: f32 = 26.0;
 const ENTRY_HEIGHT: f32 = 64.0;
+const SEARCH_DEBOUNCE: Duration = Duration::from_millis(100);
 const COPIED_TIME: Duration = Duration::from_millis(1600);
 const NOTICE_TIME: Duration = Duration::from_secs(4);
 
@@ -29,6 +31,7 @@ pub(crate) struct ClipboardController {
     path: PathBuf,
     service: RefCell<Option<ClipboardService>>,
     rows: Rc<VecModel<ClipRow>>,
+    thumbnails: RefCell<HashMap<i64, slint::Image>>,
     /// The id of the entry chosen with the keyboard.
     selected: Cell<Option<i64>>,
     /// Copy requested with Enter: collapse the island once it is on the clipboard.
@@ -40,6 +43,7 @@ pub(crate) struct ClipboardController {
     counts: Cell<(usize, usize)>,
     /// A search or snippet field is being edited.
     pub busy: Cell<bool>,
+    search_timer: slint::Timer,
     copied_timer: slint::Timer,
     notice_timer: slint::Timer,
 }
@@ -50,6 +54,7 @@ impl ClipboardController {
             path,
             service: RefCell::new(None),
             rows: Rc::new(VecModel::default()),
+            thumbnails: RefCell::new(HashMap::new()),
             selected: Cell::new(None),
             close_after_copy: Cell::new(None),
             listening: Cell::new(false),
@@ -57,6 +62,7 @@ impl ClipboardController {
             config: RefCell::new(None),
             counts: Cell::new((0, 0)),
             busy: Cell::new(false),
+            search_timer: slint::Timer::default(),
             copied_timer: slint::Timer::default(),
             notice_timer: slint::Timer::default(),
         }
@@ -70,6 +76,7 @@ impl ClipboardController {
 
     /// Stops listening and the worker, for shutdown.
     pub fn stop(&self) {
+        self.search_timer.stop();
         if self.listening.replace(false) {
             capture::stop_listening(window::control_window());
         }
@@ -118,7 +125,7 @@ fn meta(entry: &Summary, now: i64) -> String {
     parts.join(" · ")
 }
 
-fn entry_row(entry: &Summary, now: i64) -> ClipRow {
+fn entry_row(entry: &Summary, now: i64, thumbnails: &mut HashMap<i64, slint::Image>) -> ClipRow {
     let preview = if !entry.title.is_empty() {
         entry.preview.lines().next().unwrap_or_default().to_owned()
     } else if entry.kind == clipboard::Kind::Image {
@@ -141,12 +148,16 @@ fn entry_row(entry: &Summary, now: i64) -> ClipRow {
     } else {
         String::new()
     };
-    let thumbnail = if let Some(bytes) = &entry.thumbnail {
+    let thumbnail = if let Some(cached) = thumbnails.get(&entry.id) {
+        cached.clone()
+    } else if let Some(bytes) = &entry.thumbnail {
         if let Ok(img) = image::load_from_memory(bytes) {
             let rgba = img.to_rgba8();
             let (w, h) = rgba.dimensions();
             let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&rgba, w, h);
-            slint::Image::from_rgba8(buf)
+            let image = slint::Image::from_rgba8(buf);
+            thumbnails.insert(entry.id, image.clone());
+            image
         } else {
             slint::Image::default()
         }
@@ -177,13 +188,24 @@ fn header(title: &str, count: usize) -> ClipRow {
 }
 
 /// The rows of the list. Everything, unsearched, is grouped into pinned entries,
-/// snippets and copied text; a filter or search shows one list.
+/// snippets and copied items; a filter or search shows one list.
+#[cfg(test)]
 pub fn build_rows(entries: &[Summary], grouped: bool, now: i64) -> Vec<ClipRow> {
+    let mut cache = HashMap::new();
+    build_rows_cached(entries, grouped, now, &mut cache)
+}
+
+fn build_rows_cached(
+    entries: &[Summary],
+    grouped: bool,
+    now: i64,
+    thumbnails: &mut HashMap<i64, slint::Image>,
+) -> Vec<ClipRow> {
     if !grouped {
-        return entries.iter().map(|e| entry_row(e, now)).collect();
+        return entries.iter().map(|e| entry_row(e, now, thumbnails)).collect();
     }
     let mut rows = Vec::with_capacity(entries.len() + 3);
-    // Pinned entries first, then snippets, then copied text.
+    // Pinned entries first, then snippets, then recent copies.
     let section = |e: &Summary| {
         if e.pinned {
             0
@@ -197,7 +219,7 @@ pub fn build_rows(entries: &[Summary], grouped: bool, now: i64) -> Vec<ClipRow> 
         let members: Vec<&Summary> = entries.iter().filter(|e| section(e) == index).collect();
         if !members.is_empty() {
             rows.push(header(title, members.len()));
-            rows.extend(members.into_iter().map(|e| entry_row(e, now)));
+            rows.extend(members.into_iter().map(|e| entry_row(e, now, thumbnails)));
         }
     }
     rows
@@ -235,7 +257,7 @@ impl App {
         let w = weak.clone();
         actions.on_search_changed(move |_| {
             let Some(app) = w.upgrade() else { return };
-            app.request_listing();
+            App::schedule_search(&app);
         });
         actions.on_filter_changed(with(|app| app.request_listing()));
         let w = weak.clone();
@@ -253,6 +275,7 @@ impl App {
         let w = weak.clone();
         actions.on_delete(move |id| {
             let Some(app) = w.upgrade() else { return };
+            app.clipboard.thumbnails.borrow_mut().remove(&(id as i64));
             app.clipboard.send(Command::Delete(id as i64));
         });
         let w = weak.clone();
@@ -311,6 +334,7 @@ impl App {
             }
             let next = step(&rows, Some(index), 1).filter(|&i| i != index).or_else(|| step(&rows, Some(index), -1));
             app.clipboard.selected.set(next.filter(|&i| i != index).map(|i| rows[i].id as i64));
+            app.clipboard.thumbnails.borrow_mut().remove(&id);
             app.clipboard.send(Command::Delete(id));
         }));
         let w = weak.clone();
@@ -326,7 +350,7 @@ impl App {
             App::schedule_save(&app);
             app.refresh_settings_window();
             app.clipboard_notice(if on {
-                "Copied text is now remembered."
+                "Clipboard history is now remembered."
             } else {
                 "Capture is off. Saved entries stay."
             });
@@ -344,7 +368,7 @@ impl App {
             app.clipboard_notice(if paused {
                 "Paused until you resume or Lilt restarts."
             } else {
-                "Copied text is remembered again."
+                "Clipboard history is remembered again."
             });
         });
         actions.on_clear_history(with(|app| app.clipboard.send(Command::ClearHistory)));
@@ -442,7 +466,17 @@ impl App {
         });
     }
 
+    fn schedule_search(app: &Rc<Self>) {
+        let weak = Rc::downgrade(app);
+        app.clipboard.search_timer.start(slint::TimerMode::SingleShot, SEARCH_DEBOUNCE, move || {
+            if let Some(app) = weak.upgrade() {
+                app.request_listing();
+            }
+        });
+    }
+
     fn request_listing(&self) {
+        self.clipboard.search_timer.stop();
         let state = self.island.global::<ClipboardState>();
         self.clipboard.send(Command::List { search: state.get_search().to_string(), filter: filter(&state) });
     }
@@ -474,7 +508,7 @@ impl App {
             }
             Update::CopyFailed => app.clipboard_notice("The clipboard is busy. Try again."),
             Update::Skipped(Skip::LooksSecret) => app.clipboard_notice("Not kept: it looked like a password or key."),
-            Update::Skipped(Skip::TooLarge) => app.clipboard_notice("Not kept: longer than 200,000 characters."),
+            Update::Skipped(Skip::TooLarge) => app.clipboard_notice("Not kept: content is too large to store."),
             Update::Skipped(_) => {}
             Update::Editing(snippet) => {
                 state.set_form(SnippetForm {
@@ -503,7 +537,14 @@ impl App {
         let state = self.island.global::<ClipboardState>();
         let search = state.get_search().trim().to_string();
         let grouped = search.is_empty() && state.get_filter() == ClipFilter::All;
-        let rows = build_rows(&listing.entries, grouped, now_unix());
+        let rows = {
+            let mut cache = self.clipboard.thumbnails.borrow_mut();
+            if grouped {
+                let live_ids: HashSet<i64> = listing.entries.iter().map(|e| e.id).collect();
+                cache.retain(|id, _| live_ids.contains(id));
+            }
+            build_rows_cached(&listing.entries, grouped, now_unix(), &mut cache)
+        };
         // Keep the chosen entry; while searching, the best match is chosen.
         let keep = self.clipboard.selected.get().filter(|id| rows.iter().any(|r| r.id as i64 == *id));
         let selected =
@@ -525,11 +566,11 @@ impl App {
                     ("No snippets yet".into(), "Save text you use often with +, or edit a copied entry.".into())
                 }
                 ClipFilter::All if capture => {
-                    ("Nothing copied yet".into(), "Copy some text in any app and it appears here.".into())
+                    ("Nothing copied yet".into(), "Copy text or images in any app and they appear here.".into())
                 }
                 ClipFilter::All => (
                     "Nothing here yet".into(),
-                    "Save snippets with +. Turn on capture in the menu to remember copied text.".into(),
+                    "Save snippets with +. Turn on capture in the menu to remember clipboard history.".into(),
                 ),
                 _ => ("Nothing here".into(), "No entries of this kind.".into()),
             }
@@ -546,6 +587,9 @@ impl App {
         let index = self.clipboard.selected.get().and_then(|id| rows.iter().position(|r| r.id as i64 == id));
         state.set_selected_top(index.map_or(0.0, |i| row_top(rows, i)));
         state.set_selected(index.map_or(-1, |i| i as i32));
+        if index.is_some() {
+            state.set_scroll_token(state.get_scroll_token().wrapping_add(1));
+        }
     }
 
     fn update_clipboard_status(&self) {
@@ -557,7 +601,7 @@ impl App {
         } else if self.clipboard.paused.get() {
             format!("Paused · {items}")
         } else {
-            format!("Remembering copied text · {items}")
+            format!("Remembering clipboard · {items}")
         };
         self.island.global::<ClipboardState>().set_status(status.into());
     }
@@ -693,5 +737,27 @@ mod tests {
     fn storage_is_described_in_familiar_units() {
         assert_eq!(usage_text(1, 4096), "1 entry · 4 KB on disk");
         assert_eq!(usage_text(250, 3 * 1_048_576), "250 entries · 3.0 MB on disk");
+    }
+
+    #[test]
+    fn build_rows_cached_decodes_and_reuses_thumbnails() {
+        let img = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(2, 2, image::Rgba([20, 40, 60, 255])));
+        let mut png = Vec::new();
+        img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+
+        let mut entry = summary(42, false, false);
+        entry.kind = Kind::Image;
+        entry.has_thumbnail = true;
+        entry.thumbnail = Some(png);
+
+        let mut cache = HashMap::new();
+        let first = build_rows_cached(std::slice::from_ref(&entry), false, 0, &mut cache);
+        assert!(cache.contains_key(&42));
+        assert_eq!((first[0].thumbnail.size().width, first[0].thumbnail.size().height), (2, 2));
+
+        // Even if summary bytes are cleared locally, the cache still yields the decoded image.
+        entry.thumbnail = None;
+        let second = build_rows_cached(std::slice::from_ref(&entry), false, 0, &mut cache);
+        assert_eq!((second[0].thumbnail.size().width, second[0].thumbnail.size().height), (2, 2));
     }
 }
