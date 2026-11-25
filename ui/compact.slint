@@ -43,11 +43,6 @@ component AppLauncherView inherits Rectangle {
     property <int> idx: AppState.launcher-index;
     property <AppLauncherItem> current: root.total > 0 ? AppState.launcher-apps[root.idx] : { name: "No Apps", path: "", icon-kind: "app" };
 
-    property <length> slide-y: AppState.launcher-direction > 0 ? 0px : -1px;
-    property <float> item-opacity: 1.0;
-    animate slide-y { duration: 160ms; easing: cubic-bezier(0.16, 1, 0.3, 1); }
-    animate item-opacity { duration: 140ms; easing: ease-out; }
-
     VerticalLayout {
         alignment: center;
 
@@ -57,6 +52,7 @@ component AppLauncherView inherits Rectangle {
             // Click target covers ONLY the icon and the name
             launch-target := Rectangle {
                 border-radius: 8px;
+                clip: true;
                 background: target-touch.has-hover ? Theme.tile-hover : transparent;
                 animate background { duration: Theme.hover-duration; }
 
@@ -65,66 +61,94 @@ component AppLauncherView inherits Rectangle {
                     padding-right: 10px;
                     padding-top: 3px;
                     padding-bottom: 3px;
-                    spacing: 8px;
                     alignment: center;
 
-                    // App Icon directly - NO bubble/border/tile wrapper
-                    VerticalLayout {
+                    for _ in [AppState.launcher-anim-token] : HorizontalLayout {
+                        spacing: 8px;
                         alignment: center;
-                        y: root.slide-y;
-                        opacity: root.item-opacity;
+                        y: AppState.launcher-direction == 0 ? 0px : AppState.launcher-direction > 0 ? 10px : -10px;
+                        opacity: 0;
+                        animate y { duration: Theme.motion > 0 ? 160ms : 0ms; easing: cubic-bezier(0.16, 1, 0.3, 1); }
+                        animate opacity { duration: Theme.motion > 0 ? 140ms : 0ms; easing: ease-out; }
+                        init => {
+                            self.y = 0px;
+                            self.opacity = 1;
+                        }
 
-                        Rectangle {
-                            width: 18px;
-                            height: 18px;
+                        // App Icon directly - NO bubble/border/tile wrapper
+                        VerticalLayout {
+                            alignment: center;
 
-                            if root.current.has-icon : Image {
+                            Rectangle {
                                 width: 18px;
                                 height: 18px;
-                                source: root.current.icon;
-                            }
 
-                            if !root.current.has-icon : Icon {
-                                size: 16px;
-                                color: Theme.accent;
-                                data: root.current.icon-kind == "code" ? Icons.cpu
-                                    : root.current.icon-kind == "game" ? Icons.disc
-                                    : root.current.icon-kind == "art" ? Icons.picture
-                                    : root.current.icon-kind == "terminal" ? Icons.activity
-                                    : root.current.icon-kind == "browser" ? Icons.globe
-                                    : Icons.folder;
+                                if root.current.has-icon : Image {
+                                    width: 18px;
+                                    height: 18px;
+                                    source: root.current.icon;
+                                }
+
+                                if !root.current.has-icon : Icon {
+                                    size: 16px;
+                                    color: Theme.accent;
+                                    data: root.current.icon-kind == "code" ? Icons.cpu
+                                        : root.current.icon-kind == "game" ? Icons.disc
+                                        : root.current.icon-kind == "art" ? Icons.picture
+                                        : root.current.icon-kind == "terminal" ? Icons.activity
+                                        : root.current.icon-kind == "browser" ? Icons.globe
+                                        : Icons.folder;
+                                }
                             }
                         }
-                    }
 
-                    // App Name
-                    VerticalLayout {
-                        alignment: center;
-                        spacing: 1px;
-                        y: root.slide-y;
-                        opacity: root.item-opacity;
+                        // App Name
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 1px;
 
-                        Text {
-                            text: root.current.name;
-                            font-size: 11.5px;
-                            font-weight: 600;
-                            color: Theme.text;
-                            overflow: elide;
-                        }
+                            Text {
+                                text: root.current.name;
+                                font-size: 11.5px;
+                                font-weight: 600;
+                                color: Theme.text;
+                                overflow: elide;
+                            }
 
-                        Text {
-                            text: root.total > 0 ? ((root.idx + 1) + " of " + root.total) : "Configure in Settings";
-                            font-size: 8.5px;
-                            color: Theme.text-tertiary;
-                            overflow: elide;
+                            Text {
+                                text: root.total > 0 ? ((root.idx + 1) + " of " + root.total) : "Configure in Settings";
+                                font-size: 8.5px;
+                                color: Theme.text-tertiary;
+                                overflow: elide;
+                            }
                         }
                     }
                 }
 
                 target-touch := TouchArea {
+                    property <bool> dragged: false;
                     mouse-cursor: pointer;
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.down {
+                            self.dragged = false;
+                            if event.button == PointerEventButton.middle && !AppState.expanded {
+                                AppActions.toggle-launcher();
+                            }
+                        }
+                    }
+                    moved => {
+                        if self.pressed && !self.dragged && AppState.allow-drag && !AppState.expanded
+                            && (abs(self.mouse-x - self.pressed-x) > 4px || abs(self.mouse-y - self.pressed-y) > 4px) {
+                            self.dragged = true;
+                            AppActions.start-drag();
+                        }
+                    }
                     clicked => {
-                        AppActions.launch-app(AppState.launcher-index);
+                        if self.dragged {
+                            self.dragged = false;
+                        } else {
+                            AppActions.launch-app(AppState.launcher-index);
+                        }
                     }
                 }
             }
@@ -154,18 +178,20 @@ export component CompactView inherits Rectangle {
         }
     }
 
-    if AppState.launcher-active : AppLauncherView {
+    property <bool> show-launcher: AppState.launcher-enabled && AppState.launcher-active;
+
+    if root.show-launcher : AppLauncherView {
         width: parent.width;
         height: parent.height;
     }
 
     Rectangle {
-        visible: !AppState.launcher-active;
+        visible: !root.show-launcher;
         opacity: root.media-mode ? 0 : 1;
         animate opacity { duration: Theme.fade-duration; }
 
         MarqueeText {
-            live: !root.media-mode && !AppState.expanded && !AppState.launcher-active;
+            live: !root.media-mode && !AppState.expanded && !root.show-launcher;
             centered: true;
             x: 12px;
             width: parent.width - 24px;
@@ -181,7 +207,7 @@ export component CompactView inherits Rectangle {
         }
     }
 
-    if root.media-mode && !AppState.launcher-active : HorizontalLayout {
+    if root.media-mode && !root.show-launcher : HorizontalLayout {
         padding-left: 7px;
         padding-right: 15px;
         spacing: 10px;
@@ -210,7 +236,30 @@ export component CompactView inherits Rectangle {
 
             // Sits behind the buttons and covers the 2 px gap between them.
             controls-hover := TouchArea {
+                property <bool> dragged: false;
                 changed has-hover => { root.strip-hovered = self.has-hover; }
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.down {
+                        self.dragged = false;
+                        if event.button == PointerEventButton.middle && !AppState.expanded && AppState.launcher-enabled {
+                            AppActions.toggle-launcher();
+                        }
+                    }
+                }
+                moved => {
+                    if self.pressed && !self.dragged && AppState.allow-drag && !AppState.expanded
+                        && (abs(self.mouse-x - self.pressed-x) > 4px || abs(self.mouse-y - self.pressed-y) > 4px) {
+                        self.dragged = true;
+                        AppActions.start-drag();
+                    }
+                }
+                clicked => {
+                    if self.dragged {
+                        self.dragged = false;
+                    } else {
+                        AppActions.toggle-expanded();
+                    }
+                }
             }
 
             PlayingGlyph {
@@ -237,8 +286,10 @@ export component CompactView inherits Rectangle {
                     icon-size: 13px;
                     filled: true;
                     enabled: root.show-controls && AppState.media.can-play-pause;
+                    draggable: AppState.allow-drag && !AppState.expanded;
                     tooltip: AppState.media.playing ? "Pause" : "Play";
                     hover-changed(hovered) => { root.play-hovered = hovered; }
+                    drag-started => { AppActions.start-drag(); }
                     clicked => { AppActions.toggle-play(); }
                 }
 
@@ -249,8 +300,10 @@ export component CompactView inherits Rectangle {
                     icon-size: 14px;
                     filled: true;
                     enabled: root.show-controls && AppState.media.can-next;
+                    draggable: AppState.allow-drag && !AppState.expanded;
                     tooltip: "Next track";
                     hover-changed(hovered) => { root.next-hovered = hovered; }
+                    drag-started => { AppActions.start-drag(); }
                     clicked => { AppActions.next-track(); }
                 }
             }

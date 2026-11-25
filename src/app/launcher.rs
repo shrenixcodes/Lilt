@@ -189,12 +189,23 @@ impl LauncherController {
     pub fn toggle(&self, island: &Island) {
         let state = island.global::<AppState>();
         let active = !state.get_launcher_active();
-        state.set_launcher_active(active);
         if active {
+            state.set_launcher_direction(0);
+            state.set_launcher_anim_token(state.get_launcher_anim_token() + 1);
+            state.set_launcher_active(true);
             self.restart_revert_timer(island);
         } else {
-            self.revert_timer.stop();
+            self.reset(island);
         }
+    }
+
+    /// Resets the compact launcher back to the default clock/media view.
+    pub fn reset(&self, island: &Island) {
+        let state = island.global::<AppState>();
+        if state.get_launcher_active() {
+            state.set_launcher_active(false);
+        }
+        self.revert_timer.stop();
     }
 
     /// Launches the selected app and closes the launcher view.
@@ -203,9 +214,7 @@ impl LauncherController {
         if let Some(app) = usize::try_from(index).ok().and_then(|i| apps.get(i)) {
             launch_process(&app.path);
         }
-        let state = island.global::<AppState>();
-        state.set_launcher_active(false);
-        self.revert_timer.stop();
+        self.reset(island);
     }
 
     /// Starts or restarts the auto-revert timer.
@@ -221,11 +230,7 @@ impl LauncherController {
 
     /// Invoked when pointer leaves the island; resets the launcher back to default tool view.
     pub fn on_pointer_left(&self, island: &Island) {
-        let state = island.global::<AppState>();
-        if state.get_launcher_active() {
-            state.set_launcher_active(false);
-            self.revert_timer.stop();
-        }
+        self.reset(island);
     }
 }
 

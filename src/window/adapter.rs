@@ -472,10 +472,13 @@ impl Win32Window {
             self.drag_top.set(None);
             self.drag_origin.set(None);
         }
-        // The release happened inside the system loop; tell Slint the press is over.
+        // The release happened inside the system loop; reset mouse tracking and hover
+        // state so re-entering the pill immediately updates hover and auto-hide timers.
         let position = self.last_pointer.get();
+        self.tracking_mouse.set(false);
         self.window.dispatch_event(WindowEvent::PointerReleased { position, button: PointerEventButton::Left });
         self.window.dispatch_event(WindowEvent::PointerExited);
+        self.notify(Notice::Pointer(false));
     }
 
     fn logical_point(&self, lparam: LPARAM) -> LogicalPosition {

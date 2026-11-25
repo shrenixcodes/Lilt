@@ -325,6 +325,108 @@ fn compact_transport_buttons_click_while_hovered() {
 }
 
 #[test]
+fn compact_launcher_and_drag_interactions() {
+    let h = Harness::new(1.0);
+    h.state().set_media(playing("Blue Hours"));
+    h.state().set_pointer_inside(true);
+    h.state().set_launcher_apps(slint::ModelRc::new(slint::VecModel::from(vec![crate::ui::AppLauncherItem {
+        name: "Notepad".into(),
+        ..Default::default()
+    }])));
+    h.render();
+
+    let toggled = Rc::new(Cell::new(0));
+    let scrolled = Rc::new(Cell::new(0));
+    let dragged = Rc::new(Cell::new(0));
+    let launched = Rc::new(Cell::new(0));
+    let t = toggled.clone();
+    let s = scrolled.clone();
+    let d = dragged.clone();
+    let l = launched.clone();
+    h.island.global::<AppActions>().on_toggle_launcher(move || t.set(t.get() + 1));
+    h.island.global::<AppActions>().on_scroll_launcher(move |dir| s.set(s.get() + dir));
+    h.island.global::<AppActions>().on_start_drag(move || d.set(d.get() + 1));
+    h.island.global::<AppActions>().on_launch_app(move |_| l.set(l.get() + 1));
+
+    // Dragging starting over the hover play button starts a window drag without toggling playback.
+    let play_count = Rc::new(Cell::new(0));
+    let p = play_count.clone();
+    h.island.global::<AppActions>().on_toggle_play(move || p.set(p.get() + 1));
+    let right = h.island.get_body_x() + h.island.get_body_width();
+    let start = LogicalPosition::new(right - 56.0, 20.0);
+    let end = LogicalPosition::new(right - 44.0, 20.0);
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerMoved { position: start });
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerPressed {
+        position: start,
+        button: PointerEventButton::Left,
+    });
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerMoved { position: end });
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerReleased {
+        position: end,
+        button: PointerEventButton::Left,
+    });
+    assert_eq!(dragged.get(), 1);
+    assert_eq!(play_count.get(), 0);
+
+    // Tiny trackpad deltas accumulate rather than skipping apps per event.
+    let center = LogicalPosition::new(h.island.get_body_x() + h.island.get_body_width() / 2.0, 20.0);
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerMoved { position: center });
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerScrolled {
+        position: center,
+        delta_x: 0.0,
+        delta_y: -15.0,
+    });
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerScrolled {
+        position: center,
+        delta_x: 0.0,
+        delta_y: -15.0,
+    });
+    assert_eq!(scrolled.get(), 0);
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerScrolled {
+        position: center,
+        delta_x: 0.0,
+        delta_y: -20.0,
+    });
+    assert_eq!(scrolled.get(), 1);
+
+    // Launcher off blocks scroll and middle-click activation in the UI.
+    h.state().set_launcher_enabled(false);
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerScrolled {
+        position: center,
+        delta_x: 0.0,
+        delta_y: -60.0,
+    });
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerPressed {
+        position: center,
+        button: PointerEventButton::Middle,
+    });
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerReleased {
+        position: center,
+        button: PointerEventButton::Middle,
+    });
+    assert_eq!(scrolled.get(), 1);
+    assert_eq!(toggled.get(), 0);
+
+    // Clicking outside the centered launch pill dismisses launcher instead of expanding.
+    h.state().set_launcher_enabled(true);
+    h.state().set_launcher_active(true);
+    h.render();
+    let edge = LogicalPosition::new(h.island.get_body_x() + 10.0, 20.0);
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerMoved { position: edge });
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerPressed {
+        position: edge,
+        button: PointerEventButton::Left,
+    });
+    h.window.dispatch_event(slint::platform::WindowEvent::PointerReleased {
+        position: edge,
+        button: PointerEventButton::Left,
+    });
+    assert_eq!(toggled.get(), 1);
+    assert!(!h.state().get_expanded());
+    assert_eq!(launched.get(), 0);
+}
+
+#[test]
 fn artwork_is_drawn_in_the_player() {
     let h = Harness::new(1.0);
     h.state().set_media(playing("Amber Hours"));

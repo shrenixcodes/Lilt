@@ -109,6 +109,10 @@ impl App {
         state.set_show_artwork(settings.music.show_artwork);
         state.set_show_progress(settings.music.show_progress);
         state.set_hover_controls(settings.music.hover_controls);
+        state.set_launcher_enabled(settings.launcher.enabled);
+        if !settings.launcher.enabled {
+            app.launcher.reset(&app.island);
+        }
 
         let theme = app.island.global::<Theme>();
         let ambient = settings.ambient.enabled && !settings.performance.low_power;

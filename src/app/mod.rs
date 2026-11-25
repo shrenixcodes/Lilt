@@ -333,19 +333,25 @@ impl App {
 
         let weak_launch = weak.clone();
         actions.on_toggle_launcher(move || {
-            if let Some(app) = weak_launch.upgrade() {
+            if let Some(app) = weak_launch.upgrade()
+                && app.settings.borrow().launcher.enabled
+            {
                 app.launcher.toggle(&app.island);
             }
         });
         let weak_scroll = weak.clone();
         actions.on_scroll_launcher(move |delta| {
-            if let Some(app) = weak_scroll.upgrade() {
+            if let Some(app) = weak_scroll.upgrade()
+                && app.settings.borrow().launcher.enabled
+            {
                 app.launcher.scroll(delta, &app.island);
             }
         });
         let weak_exec = weak.clone();
         actions.on_launch_app(move |index| {
-            if let Some(app) = weak_exec.upgrade() {
+            if let Some(app) = weak_exec.upgrade()
+                && app.settings.borrow().launcher.enabled
+            {
                 app.launcher.launch(index, &app.island);
             }
         });
@@ -514,8 +520,10 @@ impl App {
         state.set_expanded(expanded);
         state.set_activity(false);
         app.collapse_timer.stop();
-        // Expanding reveals an auto-hidden island; collapsing lets it tuck away again.
+        // Expanding reveals an auto-hidden island and exits the compact launcher;
+        // collapsing lets auto-hide tuck away again.
         if expanded {
+            app.launcher.reset(&app.island);
             app.auto_hide_revealed.set(true);
         }
         App::apply_peek(app);
