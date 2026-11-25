@@ -167,7 +167,7 @@ Tasks are stored in SQLite on this PC. The tasks panel starts only when you firs
 
 ### Clipboard shelf
 
-Copied text you can search and copy again, pinned entries and hand-saved snippets — all stored locally. Capture is opt-in and off by default; password-manager copies and likely secrets are never kept.
+Copied text and full-resolution images you can search, preview, and copy again, pinned entries, and hand-saved snippets with scrollable multiline editing — all stored locally. Capture (*Remember copied text and images*) is opt-in and off by default; password-manager copies and likely secrets are never kept.
 
 <p align="center">
   <img src="docs/screenshots/clipboard-liquid.png" alt="Clipboard shelf — Liquid Glass" width="600">
@@ -205,7 +205,7 @@ The first row of the quick-actions tile opens focused pop-ups for sound, brightn
 </tr>
 </table>
 
-The second row opens Windows Settings, the Snipping Tool, Task Manager and File Explorer.
+The remaining quick actions open the Snipping Tool, the Tasks & Clipboard shelf, the auto-hide toggle (*Hide until pointed at*), and Lilt Settings.
 
 ---
 
