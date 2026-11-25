@@ -141,8 +141,32 @@ pub fn from_key_event(text: &str, ctrl: bool, alt: bool, shift: bool, win: bool)
 
 fn function_key(text: &str) -> Option<u16> {
     use slint::platform::Key;
-    let keys =
-        [Key::F1, Key::F2, Key::F3, Key::F4, Key::F5, Key::F6, Key::F7, Key::F8, Key::F9, Key::F10, Key::F11, Key::F12];
+    let keys = [
+        Key::F1,
+        Key::F2,
+        Key::F3,
+        Key::F4,
+        Key::F5,
+        Key::F6,
+        Key::F7,
+        Key::F8,
+        Key::F9,
+        Key::F10,
+        Key::F11,
+        Key::F12,
+        Key::F13,
+        Key::F14,
+        Key::F15,
+        Key::F16,
+        Key::F17,
+        Key::F18,
+        Key::F19,
+        Key::F20,
+        Key::F21,
+        Key::F22,
+        Key::F23,
+        Key::F24,
+    ];
     keys.iter().position(|k| slint::SharedString::from(*k).as_str() == text).map(|i| i as u16 + 1)
 }
 
@@ -185,6 +209,8 @@ mod tests {
         assert_eq!(from_key_event(" ", false, true, false, true).unwrap().to_string(), "Alt+Win+Space");
         let f5 = slint::SharedString::from(slint::platform::Key::F5);
         assert_eq!(from_key_event(&f5, true, false, false, false).unwrap().to_string(), "Ctrl+F5");
+        let f16 = slint::SharedString::from(slint::platform::Key::F16);
+        assert_eq!(from_key_event(&f16, false, true, false, false).unwrap().to_string(), "Alt+F16");
         assert_eq!(from_key_event("k", false, false, true, false), None);
     }
 }

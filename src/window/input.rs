@@ -37,6 +37,18 @@ pub fn special_key(vk: VIRTUAL_KEY) -> Option<SharedString> {
         VK_F10 => Key::F10,
         VK_F11 => Key::F11,
         VK_F12 => Key::F12,
+        VK_F13 => Key::F13,
+        VK_F14 => Key::F14,
+        VK_F15 => Key::F15,
+        VK_F16 => Key::F16,
+        VK_F17 => Key::F17,
+        VK_F18 => Key::F18,
+        VK_F19 => Key::F19,
+        VK_F20 => Key::F20,
+        VK_F21 => Key::F21,
+        VK_F22 => Key::F22,
+        VK_F23 => Key::F23,
+        VK_F24 => Key::F24,
         _ => return None,
     };
     Some(key.into())
@@ -70,6 +82,8 @@ mod tests {
     fn maps_navigation_keys() {
         assert_eq!(special_key(VK_ESCAPE), Some(SharedString::from(Key::Escape)));
         assert_eq!(special_key(VK_LCONTROL), Some(SharedString::from(Key::Control)));
+        assert_eq!(special_key(VK_F13), Some(SharedString::from(Key::F13)));
+        assert_eq!(special_key(VK_F24), Some(SharedString::from(Key::F24)));
         assert_eq!(special_key(VIRTUAL_KEY(b'A' as u16)), None);
     }
 

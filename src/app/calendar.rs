@@ -10,6 +10,7 @@ use super::App;
 use crate::calendar::{self, AgendaStatus, CalendarFile};
 use crate::dialogs;
 use crate::ui::{AgendaEntry, AppActions, AppState, CalendarState, Page};
+use crate::window;
 
 /// Events shown in the agenda page.
 const AGENDA_LIMIT: usize = 6;
@@ -29,8 +30,9 @@ impl App {
     }
 
     fn choose_calendar(app: &Rc<Self>) {
+        let owner = window::find(app.island.window()).and_then(|native| native.hwnd());
         App::set_expanded(app, false);
-        let Some(path) = dialogs::pick_calendar_file() else { return };
+        let Some(path) = dialogs::pick_calendar_file(owner) else { return };
         App::open_calendar(app, &path);
         App::set_expanded(app, true);
         app.island.global::<AppState>().set_page(Page::Calendar);

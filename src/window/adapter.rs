@@ -18,7 +18,8 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VIRTUAL_KEY, VK_CONTROL, VK_MENU,
+    ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VIRTUAL_KEY, VK_CONTROL, VK_LMENU,
+    VK_MENU, VK_RMENU,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{HSTRING, w};
@@ -81,6 +82,10 @@ pub struct Win32Window {
     shape_source: RefCell<Option<ShapeSource>>,
     /// Whether an ordinary window shows the system acrylic behind its content.
     system_backdrop: Cell<bool>,
+    /// Intercepts Alt/F10 system keys instead of letting Windows handle them (e.g. while recording shortcuts).
+    consume_sys_keys: Cell<bool>,
+    /// Consumes the trailing `WM_SYSKEYUP` after a system key press was intercepted.
+    suppress_sys_keyup: Cell<bool>,
 }
 
 thread_local! {
@@ -147,6 +152,8 @@ impl Win32Window {
             refraction: Cell::new(0.0),
             shape_source: RefCell::new(None),
             system_backdrop: Cell::new(false),
+            consume_sys_keys: Cell::new(false),
+            suppress_sys_keyup: Cell::new(false),
         });
         WINDOWS.with(|w| w.borrow_mut().push(Rc::downgrade(&window)));
         // Slint draws at a scale of 1 until told otherwise. Without this, at any display
@@ -238,6 +245,17 @@ impl Win32Window {
         match self.hwnd.get() {
             Some(hwnd) => apply_system_backdrop(hwnd, enabled),
             None => enabled,
+        }
+    }
+
+    /// Intercepts system key chords (`Alt+*`, `F10`) instead of passing them to `DefWindowProcW`.
+    pub fn set_consume_sys_keys(&self, enabled: bool) {
+        self.consume_sys_keys.set(enabled);
+        if !enabled {
+            // Keep `suppress_sys_keyup` armed only if Alt is currently still down from a suppressed chord.
+            if !input::modifier_held(VK_MENU) {
+                self.suppress_sys_keyup.set(false);
+            }
         }
     }
 
@@ -565,6 +583,7 @@ impl Win32Window {
             WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP => {
                 let vk = VIRTUAL_KEY(wparam.0 as u16);
                 let pressed = matches!(msg, WM_KEYDOWN | WM_SYSKEYDOWN);
+                let consume_sys = self.consume_sys_keys.get();
                 let repeat = pressed && (lparam.0 >> 30) & 1 == 1;
                 let text = input::special_key(vk).or_else(|| {
                     // With Ctrl or Alt held, WM_CHAR carries control codes; report the base
@@ -575,8 +594,20 @@ impl Win32Window {
                 if let Some(text) = text {
                     self.key(pressed, repeat, text);
                 }
-                // Let DefWindowProc see Alt combinations (e.g. Alt+F4) and system keys.
-                if matches!(msg, WM_SYSKEYDOWN | WM_SYSKEYUP) { None } else { Some(LRESULT(0)) }
+                if msg == WM_SYSKEYDOWN && consume_sys {
+                    self.suppress_sys_keyup.set(true);
+                    Some(LRESULT(0))
+                } else if msg == WM_SYSKEYUP && (consume_sys || self.suppress_sys_keyup.get()) {
+                    if matches!(vk, VK_MENU | VK_LMENU | VK_RMENU) || !input::modifier_held(VK_MENU) {
+                        self.suppress_sys_keyup.set(false);
+                    }
+                    Some(LRESULT(0))
+                } else if matches!(msg, WM_SYSKEYDOWN | WM_SYSKEYUP) {
+                    // Let DefWindowProc see normal Alt combinations (e.g. Alt+F4) and system keys.
+                    None
+                } else {
+                    Some(LRESULT(0))
+                }
             }
             WM_CHAR => {
                 let chord = input::modifier_held(VK_CONTROL) || input::modifier_held(VK_MENU);
