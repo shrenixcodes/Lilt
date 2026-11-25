@@ -82,6 +82,7 @@ export component Island inherits Window {
     changed idle-active => { AppActions.idle-changed(root.idle-active); }
     property <bool> showing-activity: AppState.activity && !AppState.expanded && root.media-mode;
     property <bool> compact-progress: root.media-mode && !AppState.expanded && !root.showing-activity
+        && !(AppState.launcher-enabled && AppState.launcher-active)
         && AppState.show-progress && AppState.media.has-timeline;
     property <bool> hovering: AppState.pointer-inside && !AppState.expanded;
     property <length> target-width: AppState.expanded ? AppState.expanded-width
