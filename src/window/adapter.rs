@@ -414,26 +414,26 @@ impl Win32Window {
             right: origin.x + extent.width as i32,
             bottom: origin.y + extent.height as i32,
         };
-        let area = (
-            dirty.left.max(0) as usize,
-            dirty.top.max(0) as usize,
-            dirty.right.max(0) as usize,
-            dirty.bottom.max(0) as usize,
-        );
+        let backdrop = self.backdrop.borrow();
         let shapes = self.physical_shapes();
-        // The glass blur, beneath what was just drawn.
-        if let Some(backdrop) = self.backdrop.borrow().as_ref() {
-            super::glass::compose(
-                surface.pixels(),
-                size.width as usize,
-                area,
-                &shapes,
-                backdrop,
-                self.refraction.get(),
-            );
+        let refraction = self.refraction.get();
+        // Iterate exact repainted rectangles (`region.iter()`), never the outer bounding box,
+        // so ReusedBuffer pixels sitting between two dirty strips are never re-blended.
+        for (pos, rect_size) in region.iter() {
+            let x0 = pos.x.max(0) as usize;
+            let y0 = pos.y.max(0) as usize;
+            let x1 = (pos.x + rect_size.width as i32).max(0) as usize;
+            let y1 = (pos.y + rect_size.height as i32).max(0) as usize;
+            if x0 >= x1 || y0 >= y1 {
+                continue;
+            }
+            let area = (x0, y0, x1, y1);
+            if let Some(backdrop) = backdrop.as_ref() {
+                super::glass::compose(surface.pixels(), size.width as usize, area, &shapes, backdrop, refraction);
+            }
+            // Always composite smooth SDF outer borders so rounded corners stay crisp in every theme.
+            super::glass::compose_borders(surface.pixels(), size.width as usize, area, &shapes);
         }
-        // Always composite smooth SDF outer borders so rounded corners stay crisp in every theme.
-        super::glass::compose_borders(surface.pixels(), size.width as usize, area, &shapes);
         match self.kind {
             WindowKind::Island => surface.present_layered(hwnd, Some(dirty)),
             WindowKind::Standard => unsafe {

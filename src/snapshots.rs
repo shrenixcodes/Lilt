@@ -71,6 +71,9 @@ impl Harness {
         crate::fonts::register();
         window.dispatch_event(slint::platform::WindowEvent::ScaleFactorChanged { scale_factor: scale });
         let island = Island::new().expect("create island");
+        let theme = island.global::<Theme>();
+        theme.set_scale(scale);
+        crate::app::install_border_callback(&theme);
         let state = island.global::<AppState>();
         state.set_time("14:05".into());
         state.set_weekday("Sat".into());
@@ -2267,6 +2270,7 @@ fn smooth_corners_have_no_diagonal_beads_in_liquid_glass_or_high_dpi() {
     // Check 2x (4K) scale using the same platform thread or fresh Harness at 2.0 in glass unit test;
     // Dispatching ScaleFactorChanged verifies live high-DPI corner smoothness as well.
     h.window.dispatch_event(slint::platform::WindowEvent::ScaleFactorChanged { scale_factor: 2.0 });
+    h.theme().set_scale(2.0);
     let h2 = Harness { scale: 2.0, ..h };
     let img_2x = h2.render();
     save(&img_2x, "liquid-expanded-smooth-2x");
@@ -2275,5 +2279,102 @@ fn smooth_corners_have_no_diagonal_beads_in_liquid_glass_or_high_dpi() {
         (8..28).map(|y| (bx2..bx2 + 36).map(|x| img_2x.get_pixel(x, y)[0]).max().unwrap()).collect();
     for w in peaks_2x.windows(2) {
         assert!(w[0].abs_diff(w[1]) <= 6, "2x (4K) Liquid Glass corner beaded across rows: {peaks_2x:?}");
+    }
+}
+
+#[test]
+fn reused_buffer_partial_repaints_never_accumulate_tile_or_island_borders() {
+    use slint::platform::WindowEvent;
+
+    let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
+    let clock = Rc::new(Cell::new(Duration::ZERO));
+    slint::platform::set_platform(Box::new(TestPlatform { window: window.clone(), clock: clock.clone() }))
+        .expect("one platform per test thread");
+    crate::fonts::register();
+    window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: 1.0 });
+    let island = Island::new().expect("create island");
+    let theme = island.global::<Theme>();
+    theme.set_scale(1.0);
+    crate::app::install_border_callback(&theme);
+    theme.set_appearance(Appearance::LiquidGlass);
+    theme.set_live_blur(true);
+    let state = island.global::<AppState>();
+    state.set_time("18:22".into());
+    state.set_weekday("Wed".into());
+    state.set_date("25 Nov".into());
+    state.set_media(playing("Self Aware"));
+    state.set_expanded(true);
+    island.show().expect("show island");
+
+    let settle = || {
+        for _ in 0..4 {
+            clock.set(clock.get() + Duration::from_millis(500));
+            slint::platform::update_timers_and_animations();
+        }
+    };
+    settle();
+    let (w, h) = (island.get_window_width(), island.get_window_height());
+    let size = PhysicalSize::new(w.round() as u32, h.round() as u32);
+    window.set_size(size);
+    let mut buffer = vec![PremultipliedRgbaColor::default(); (size.width * size.height) as usize];
+
+    let paint_step = |buffer: &mut [PremultipliedRgbaColor]| {
+        window.request_redraw();
+        window.draw_if_needed(|renderer| {
+            let region = renderer.render(buffer, size.width as usize);
+            let shapes: Vec<crate::window::Shape> =
+                crate::app::island_shapes(&island).into_iter().map(|s| s.scaled(1.0)).collect();
+            for (pos, rect_size) in region.iter() {
+                let x0 = pos.x.max(0) as usize;
+                let y0 = pos.y.max(0) as usize;
+                let x1 = (pos.x + rect_size.width as i32).max(0) as usize;
+                let y1 = (pos.y + rect_size.height as i32).max(0) as usize;
+                if x0 < x1 && y0 < y1 {
+                    crate::window::glass::compose_borders(buffer, size.width as usize, (x0, y0, x1, y1), &shapes);
+                }
+            }
+        });
+    };
+
+    // Initial settled frame + baseline sample on ControlDeck's top, bottom, and left borders.
+    paint_step(&mut buffer);
+    settle();
+    paint_step(&mut buffer);
+    let baseline = buffer.clone();
+
+    // Update CPU/RAM meters and media timeline across 12 ReusedBuffer frames without clearing `buffer`.
+    for i in 1..=12 {
+        let f = (i as f32) / 12.0;
+        island.global::<AppState>().set_progress(f);
+        island.global::<AppState>().set_system(SystemInfo {
+            ready: true,
+            cpu: f,
+            cpu_text: format!("{}%", (f * 100.0) as u32).into(),
+            memory: 1.0 - f * 0.5,
+            memory_text: "80%".into(),
+            memory_detail: "6.0 GB of 7.7 GB in use".into(),
+            down_text: format!("{:.1} KB/s", f * 12.0).into(),
+            up_text: format!("{:.1} KB/s", f * 4.0).into(),
+        });
+        clock.set(clock.get() + Duration::from_millis(80));
+        slint::platform::update_timers_and_animations();
+        paint_step(&mut buffer);
+    }
+
+    // No border pixel anywhere inside the tiles (y=120..240) or island outline may grow brighter across partial repaints.
+    for y in 0..size.height as usize {
+        for x in 0..size.width as usize {
+            // Skip regions that legitimately change (media progress bar, CPU/RAM meters and numbers, clock area).
+            let on_tile_edge = (122..=236).contains(&y)
+                && ((y <= 128 || y >= 228) || (155..=170).contains(&x) || (445..=462).contains(&x));
+            if on_tile_edge {
+                let b = baseline[y * size.width as usize + x];
+                let n = buffer[y * size.width as usize + x];
+                assert!(
+                    n.red.abs_diff(b.red) <= 2 && n.alpha.abs_diff(b.alpha) <= 2,
+                    "partial repaint accumulated on ControlDeck border at ({x},{y}): before={b:?} after={n:?}"
+                );
+            }
+        }
     }
 }

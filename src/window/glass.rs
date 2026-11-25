@@ -347,6 +347,69 @@ pub fn compose_borders<P: PremulPixel>(
     }
 }
 
+/// Rasterizes a smooth `1 px` logical rounded-rectangle border into straight RGBA bytes for `scale`.
+pub fn rounded_border_pixels(
+    width: f32,
+    height: f32,
+    radius: f32,
+    color: [u8; 4],
+    scale: f32,
+) -> Option<(u32, u32, Vec<u8>)> {
+    let scale = scale.max(1.0);
+    let pw = (width * scale).round().max(0.0) as usize;
+    let ph = (height * scale).round().max(0.0) as usize;
+    if pw == 0 || ph == 0 || color[3] == 0 {
+        return None;
+    }
+    let bw = scale;
+    let shape = Shape {
+        x: 0.0,
+        y: 0.0,
+        width: pw as f32,
+        height: ph as f32,
+        radius: radius.max(0.0) * scale,
+        opacity: 1.0,
+        border_width: bw,
+        border_color: color,
+    };
+    let mut pixels = vec![0u8; pw * ph * 4];
+    let edge_band = (bw + 1.5).ceil() as usize;
+    let corner_band = (shape.radius.min(pw as f32 / 2.0).min(ph as f32 / 2.0) + 1.5).ceil() as usize;
+    let write_pixel = |pixels: &mut [u8], x: usize, y: usize| {
+        let (cx, cy) = (x as f32 + 0.5, y as f32 + 0.5);
+        let (distance, _, _) = outline(&shape, cx, cy);
+        if distance > 1.0 || distance < -(bw + 1.0) {
+            return;
+        }
+        let (_, border_cov) = edge_coverage(&shape, cx, cy, distance);
+        if border_cov <= 0.0 {
+            return;
+        }
+        let idx = (y * pw + x) * 4;
+        pixels[idx] = color[0];
+        pixels[idx + 1] = color[1];
+        pixels[idx + 2] = color[2];
+        pixels[idx + 3] = (color[3] as f32 * border_cov).round().clamp(0.0, 255.0) as u8;
+    };
+    for y in 0..ph {
+        if y < corner_band || y >= ph.saturating_sub(corner_band) {
+            for x in 0..pw {
+                write_pixel(&mut pixels, x, y);
+            }
+        } else {
+            let left_end = edge_band.min(pw);
+            for x in 0..left_end {
+                write_pixel(&mut pixels, x, y);
+            }
+            let right_start = pw.saturating_sub(edge_band).max(left_end);
+            for x in right_start..pw {
+                write_pixel(&mut pixels, x, y);
+            }
+        }
+    }
+    Some((pw as u32, ph as u32, pixels))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
