@@ -1,4 +1,4 @@
-import { ListView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { ClipboardState, ClipboardActions } from "state.slint";
 import { ClipFilter, ClipRow, ClipRowKind, SidePanel, SnippetForm } from "types.slint";
@@ -406,6 +406,11 @@ component SnippetEditor inherits Rectangle {
             border-color: content.has-focus ? Theme.text-secondary : Theme.border;
             clip: true;
 
+            TouchArea {
+                mouse-cursor: text;
+                clicked => { content.focus(); }
+            }
+
             if content.text == "" : Text {
                 x: 8px;
                 y: 6px;
@@ -414,20 +419,50 @@ component SnippetEditor inherits Rectangle {
                 color: Theme.text-tertiary;
             }
 
-            content := TextInput {
-                x: 8px;
-                y: 6px;
-                width: parent.width - 16px;
-                height: parent.height - 12px;
-                text: root.form.content;
-                single-line: false;
-                wrap: word-wrap;
-                font-family: Theme.code-font;
-                font-size: 11.5px;
-                color: Theme.text;
-                selection-background-color: Theme.text.with-alpha(0.25);
-                selection-foreground-color: Theme.text;
-                accessible-label: "Snippet text";
+            VerticalLayout {
+                padding-left: 8px;
+                padding-right: 2px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                min-height: 0px;
+
+                editor-scroll := ScrollView {
+                    min-height: 0px;
+                    vertical-stretch: 1;
+                    horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+                    content-width: self.visible-width;
+                    content-height: max(self.visible-height, content.preferred-height);
+
+                    content := TextInput {
+                        width: max(0px, editor-scroll.visible-width - 6px);
+                        height: editor-scroll.content-height;
+                        text: root.form.content;
+                        single-line: false;
+                        wrap: word-wrap;
+                        font-family: Theme.code-font;
+                        font-size: 11.5px;
+                        color: Theme.text;
+                        page-height: editor-scroll.visible-height;
+                        selection-background-color: Theme.text.with-alpha(0.25);
+                        selection-foreground-color: Theme.text;
+                        accessible-label: "Snippet text";
+
+                        cursor-position-changed(cpos) => {
+                            if cpos.y + editor-scroll.content-y < 0px {
+                                editor-scroll.content-y = min(
+                                    0px,
+                                    editor-scroll.visible-height - cpos.y - 18px,
+                                    max(editor-scroll.visible-height - self.height, -cpos.y),
+                                );
+                            } else if cpos.y + editor-scroll.content-y > editor-scroll.visible-height - 18px {
+                                editor-scroll.content-y = min(
+                                    0px,
+                                    max(editor-scroll.visible-height - self.height, editor-scroll.visible-height - cpos.y - 18px),
+                                );
+                            }
+                        }
+                    }
+                }
             }
         }
 

@@ -21,6 +21,21 @@ use crate::ui::{
     TasksLayout, TasksState, Theme,
 };
 
+impl crate::window::glass::PremulPixel for PremultipliedRgbaColor {
+    #[inline]
+    fn channels(&self) -> (u8, u8, u8, u8) {
+        (self.red, self.green, self.blue, self.alpha)
+    }
+
+    #[inline]
+    fn set_channels(&mut self, r: u8, g: u8, b: u8, a: u8) {
+        self.red = r;
+        self.green = g;
+        self.blue = b;
+        self.alpha = a;
+    }
+}
+
 /// Desktop-like backdrop the transparent island is composited onto.
 const BACKDROP: [u8; 3] = [214, 219, 228];
 
@@ -101,6 +116,14 @@ impl Harness {
                 renderer.render(&mut buffer, size.width as usize);
             });
         }
+        let shapes: Vec<crate::window::Shape> =
+            crate::app::island_shapes(&self.island).into_iter().map(|s| s.scaled(self.scale)).collect();
+        crate::window::glass::compose_borders(
+            &mut buffer,
+            size.width as usize,
+            (0, 0, size.width as usize, size.height as usize),
+            &shapes,
+        );
         RgbaImage::from_fn(size.width, size.height, |x, y| {
             let p = buffer[(y * size.width + x) as usize];
             let inverse = 255 - p.alpha as u16;
@@ -2144,4 +2167,113 @@ fn controls_and_focus_interactions() {
     h.window.dispatch_event(WindowEvent::KeyPressed { text: down.clone() });
     h.window.dispatch_event(WindowEvent::KeyReleased { text: down });
     assert_eq!(moved.get(), 1);
+}
+
+#[test]
+fn snippet_editor_and_task_notes_scroll_with_cursor_below_fold() {
+    use crate::ui::{ClipboardState, SnippetForm};
+    use slint::platform::{Key, WindowEvent};
+
+    let h = clipboard_harness(Appearance::Midnight);
+    let clip = h.island.global::<ClipboardState>();
+    let lines = (1..=30).map(|i| format!("Snippet line {i:02}")).collect::<Vec<_>>().join("\n");
+    clip.set_form(SnippetForm { id: 1, title: "Long".into(), content: lines.into(), description: "".into() });
+    clip.set_editing(true);
+    let before = h.render();
+    save(&before, "clipboard-editor-top");
+
+    // Focus the multiline editor and move the cursor down past the visible bottom.
+    let editor_pos = LogicalPosition::new(h.island.get_tasks_x() + 40.0, h.island.get_tasks_y() + 130.0);
+    h.window.dispatch_event(WindowEvent::PointerPressed { position: editor_pos, button: PointerEventButton::Left });
+    h.window.dispatch_event(WindowEvent::PointerReleased { position: editor_pos, button: PointerEventButton::Left });
+    let down = slint::SharedString::from(Key::DownArrow);
+    for _ in 0..28 {
+        h.window.dispatch_event(WindowEvent::KeyPressed { text: down.clone() });
+        h.window.dispatch_event(WindowEvent::KeyReleased { text: down.clone() });
+    }
+    let after = h.render();
+    save(&after, "clipboard-editor-scrolled");
+    assert_ne!(before, after, "moving the cursor past the bottom should scroll the snippet editor");
+
+    // Verify TaskEditor's notes field also scrolls cleanly without overflowing its box.
+    clip.set_editing(false);
+    h.state().set_side_panel(crate::ui::SidePanel::Tasks);
+    let tasks = h.island.global::<TasksState>();
+    let notes = (1..=12).map(|i| format!("Task note line {i:02}")).collect::<Vec<_>>().join("\n");
+    tasks.set_form(TaskForm { id: 1, notes: notes.into(), title: "Check notes".into(), ..TaskForm::default() });
+    tasks.set_editing(true);
+    let notes_before = h.render();
+    let notes_pos = LogicalPosition::new(h.island.get_tasks_x() + 40.0, h.island.get_tasks_y() + 115.0);
+    h.window.dispatch_event(WindowEvent::PointerPressed { position: notes_pos, button: PointerEventButton::Left });
+    h.window.dispatch_event(WindowEvent::PointerReleased { position: notes_pos, button: PointerEventButton::Left });
+    for _ in 0..10 {
+        h.window.dispatch_event(WindowEvent::KeyPressed { text: down.clone() });
+        h.window.dispatch_event(WindowEvent::KeyReleased { text: down.clone() });
+    }
+    let notes_after = h.render();
+    save(&notes_after, "task-notes-scrolled");
+    assert_ne!(notes_before, notes_after, "moving the cursor past the bottom should scroll task notes");
+}
+
+#[test]
+fn narrow_expanded_dashboard_fits_control_deck_at_min_width() {
+    let h = Harness::new(1.0);
+    h.theme().set_appearance(Appearance::LiquidGlass);
+    h.state().set_expanded_width(400.0);
+    h.state().set_system(SystemInfo {
+        ready: true,
+        cpu: 0.33,
+        cpu_text: "33%".into(),
+        memory: 0.98,
+        memory_text: "98%".into(),
+        memory_detail: "7.5 GB of 7.7 GB in use".into(),
+        down_text: "13.0 KB/s".into(),
+        up_text: "3.7 KB/s".into(),
+    });
+    h.state().set_media(playing("Movies & TV Shows Online"));
+    h.state().set_expanded(true);
+    let image = h.render_on(wallpaper);
+    save(&image, "expanded-narrow-400");
+    assert_eq!(h.island.get_body_width(), 400.0);
+
+    // The rightmost action pill (Settings gear) sits cleanly inside ControlDeck rather than
+    // spilling into the outer 14 px ExpandedView margin.
+    let bx = h.island.get_body_x() as u32;
+    let margin_x = bx + 400 - 12;
+    let max_margin_luma = (195..225).map(|y| image.get_pixel(margin_x, y)[0]).max().unwrap();
+    let gear_max =
+        (200..226).map(|y| ((bx + 356)..(bx + 384)).map(|x| image.get_pixel(x, y)[0]).max().unwrap()).max().unwrap();
+    assert!(
+        gear_max > max_margin_luma + 30,
+        "rightmost Settings pill should render brightly inside ControlDeck ({gear_max}) with clear outer margin ({max_margin_luma})"
+    );
+}
+
+#[test]
+fn smooth_corners_have_no_diagonal_beads_in_liquid_glass_or_high_dpi() {
+    let h = Harness::new(1.0);
+    set_appearance(&h, Appearance::LiquidGlass);
+    h.theme().set_live_blur(true);
+    h.state().set_expanded(true);
+    let img_1x = h.render();
+    save(&img_1x, "liquid-expanded-smooth-1x");
+
+    let bx = h.island.get_body_x() as u32;
+    let peaks_1x: Vec<u8> = (4..14).map(|y| (bx..bx + 18).map(|x| img_1x.get_pixel(x, y)[0]).max().unwrap()).collect();
+    for w in peaks_1x.windows(2) {
+        assert!(w[0].abs_diff(w[1]) <= 6, "1x Liquid Glass corner beaded across rows: {peaks_1x:?}");
+    }
+
+    // Check 2x (4K) scale using the same platform thread or fresh Harness at 2.0 in glass unit test;
+    // Dispatching ScaleFactorChanged verifies live high-DPI corner smoothness as well.
+    h.window.dispatch_event(slint::platform::WindowEvent::ScaleFactorChanged { scale_factor: 2.0 });
+    let h2 = Harness { scale: 2.0, ..h };
+    let img_2x = h2.render();
+    save(&img_2x, "liquid-expanded-smooth-2x");
+    let bx2 = (h2.island.get_body_x() * 2.0) as u32;
+    let peaks_2x: Vec<u8> =
+        (8..28).map(|y| (bx2..bx2 + 36).map(|x| img_2x.get_pixel(x, y)[0]).max().unwrap()).collect();
+    for w in peaks_2x.windows(2) {
+        assert!(w[0].abs_diff(w[1]) <= 6, "2x (4K) Liquid Glass corner beaded across rows: {peaks_2x:?}");
+    }
 }

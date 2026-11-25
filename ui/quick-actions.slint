@@ -15,11 +15,12 @@ export component ActionPill inherits Rectangle {
     in property <string> tooltip;
     in property <color> tint: Theme.text-secondary;
     in property <bool> active: false;
+    in property <length> size: 29px;
     callback clicked();
 
-    width: 29px;
-    height: 29px;
-    border-radius: 8px;
+    width: root.size;
+    height: root.size;
+    border-radius: root.size < 27px ? 7px : 8px;
     background: root.active ? Theme.accent.with-alpha(0.25) : touch.pressed ? Theme.control-pressed : touch.has-hover ? Theme.control-hover : Theme.tile;
     animate background { duration: Theme.hover-duration; }
     accessible-role: button;
@@ -27,7 +28,7 @@ export component ActionPill inherits Rectangle {
 
     Icon {
         data: root.icon;
-        size: 14px;
+        size: root.size < 27px ? 13px : 14px;
         color: root.active ? Theme.accent : touch.has-hover ? Theme.text : root.tint;
     }
 
@@ -42,10 +43,12 @@ component DeckMeter inherits HorizontalLayout {
     in property <float> value;
     in property <string> value-text;
     in property <color> fill-color: Theme.accent;
+    in property <length> item-spacing: 8px;
+    in property <length> value-width: 32px;
     property <color> shown-fill: root.fill-color;
     animate shown-fill { duration: Theme.ambient-duration; easing: ease-in-out; }
 
-    spacing: 8px;
+    spacing: root.item-spacing;
     height: 16px;
 
     Text {
@@ -79,7 +82,7 @@ component DeckMeter inherits HorizontalLayout {
     }
 
     Text {
-        width: 32px;
+        width: root.value-width;
         vertical-alignment: center;
         horizontal-alignment: right;
         text: root.value-text;
@@ -92,7 +95,9 @@ component DeckMeter inherits HorizontalLayout {
 component DeckRate inherits HorizontalLayout {
     in property <string> icon;
     in property <string> text;
-    spacing: 5px;
+    in property <length> item-spacing: 5px;
+    in property <length> font-size: 11.5px;
+    spacing: root.item-spacing;
     height: 16px;
 
     VerticalLayout {
@@ -108,7 +113,7 @@ component DeckRate inherits HorizontalLayout {
         vertical-alignment: center;
         text: root.text;
         color: Theme.text;
-        font-size: 11.5px;
+        font-size: root.font-size;
         font-weight: 500;
         overflow: elide;
     }
@@ -119,9 +124,15 @@ export component ControlDeck inherits Tile {
     in property <SystemInfo> info;
     in property <bool> show-system: true;
     in property <bool> show-actions: true;
+    in property <length> deck-width: 296px;
     callback activate(int);
     callback open-system();
     label: "Control deck";
+
+    property <bool> tight: root.deck-width < 275px;
+    property <length> h-pad: root.tight ? 10px : 14px;
+    property <length> strip-gap: root.tight ? 3px : 5px;
+    property <length> pill-size: clamp(1px * floor(((root.deck-width - 2 * root.h-pad - 7 * root.strip-gap) / 1px) / 8), 20px, 29px);
 
     property <[Action]> actions: [
         { icon: Icons.volume, tooltip: "Volume" },
@@ -138,8 +149,8 @@ export component ControlDeck inherits Tile {
     ];
 
     VerticalLayout {
-        padding-left: 14px;
-        padding-right: 14px;
+        padding-left: root.h-pad;
+        padding-right: root.h-pad;
         padding-top: 10px;
         padding-bottom: 10px;
         spacing: 6px;
@@ -157,7 +168,7 @@ export component ControlDeck inherits Tile {
             HorizontalLayout {
                 width: 100%;
                 height: 100%;
-                spacing: 14px;
+                spacing: root.tight ? 8px : 14px;
 
                 // CPU and RAM meters
                 VerticalLayout {
@@ -169,29 +180,37 @@ export component ControlDeck inherits Tile {
                         label: "CPU";
                         value: root.info.cpu;
                         value-text: root.info.ready ? root.info.cpu-text : "–";
+                        item-spacing: root.tight ? 5px : 8px;
+                        value-width: root.tight ? 28px : 32px;
                     }
 
                     DeckMeter {
                         label: "RAM";
                         value: root.info.memory;
                         value-text: root.info.ready ? root.info.memory-text : "–";
+                        item-spacing: root.tight ? 5px : 8px;
+                        value-width: root.tight ? 28px : 32px;
                     }
                 }
 
                 // Up / Down network rates
                 VerticalLayout {
-                    width: 72px;
+                    width: root.tight ? 64px : 72px;
                     spacing: 6px;
                     alignment: center;
 
                     DeckRate {
                         icon: Icons.up;
                         text: root.info.ready ? root.info.up-text : "–";
+                        item-spacing: root.tight ? 4px : 5px;
+                        font-size: root.tight ? 10.5px : 11.5px;
                     }
 
                     DeckRate {
                         icon: Icons.down;
                         text: root.info.ready ? root.info.down-text : "–";
+                        item-spacing: root.tight ? 4px : 5px;
+                        font-size: root.tight ? 10.5px : 11.5px;
                     }
                 }
             }
@@ -199,11 +218,12 @@ export component ControlDeck inherits Tile {
 
         // Horizontal Action Strip (8 icons)
         if root.show-actions : HorizontalLayout {
-            spacing: 5px;
+            spacing: root.strip-gap;
             alignment: center;
             height: 30px;
 
             for action[i] in root.actions : ActionPill {
+                size: root.pill-size;
                 icon: action.icon;
                 tooltip: action.tooltip;
                 active: i == 6 && AppState.auto-hide;

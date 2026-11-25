@@ -178,17 +178,7 @@ impl Win32Window {
         let source = self.shape_source.borrow();
         let Some(source) = source.as_ref() else { return Vec::new() };
         let k = self.scale.get();
-        source()
-            .into_iter()
-            .map(|s| Shape {
-                x: s.x * k,
-                y: s.y * k,
-                width: s.width * k,
-                height: s.height * k,
-                radius: s.radius * k,
-                opacity: s.opacity,
-            })
-            .collect()
+        source().into_iter().map(|s| s.scaled(k)).collect()
     }
 
     /// Turns the glass blur behind the island's surfaces on or off. Returns whether it is
@@ -424,15 +414,15 @@ impl Win32Window {
             right: origin.x + extent.width as i32,
             bottom: origin.y + extent.height as i32,
         };
+        let area = (
+            dirty.left.max(0) as usize,
+            dirty.top.max(0) as usize,
+            dirty.right.max(0) as usize,
+            dirty.bottom.max(0) as usize,
+        );
+        let shapes = self.physical_shapes();
         // The glass blur, beneath what was just drawn.
         if let Some(backdrop) = self.backdrop.borrow().as_ref() {
-            let area = (
-                dirty.left.max(0) as usize,
-                dirty.top.max(0) as usize,
-                dirty.right.max(0) as usize,
-                dirty.bottom.max(0) as usize,
-            );
-            let shapes = self.physical_shapes();
             super::glass::compose(
                 surface.pixels(),
                 size.width as usize,
@@ -442,6 +432,8 @@ impl Win32Window {
                 self.refraction.get(),
             );
         }
+        // Always composite smooth SDF outer borders so rounded corners stay crisp in every theme.
+        super::glass::compose_borders(surface.pixels(), size.width as usize, area, &shapes);
         match self.kind {
             WindowKind::Island => surface.present_layered(hwnd, Some(dirty)),
             WindowKind::Standard => unsafe {

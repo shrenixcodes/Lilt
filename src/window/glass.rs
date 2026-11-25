@@ -14,6 +14,27 @@
 
 use super::surface::Bgra;
 
+/// Premultiplied pixel target shared between the Win32 layered surface and test buffers.
+pub trait PremulPixel: Copy {
+    fn channels(&self) -> (u8, u8, u8, u8);
+    fn set_channels(&mut self, r: u8, g: u8, b: u8, a: u8);
+}
+
+impl PremulPixel for Bgra {
+    #[inline]
+    fn channels(&self) -> (u8, u8, u8, u8) {
+        (self.r, self.g, self.b, self.a)
+    }
+
+    #[inline]
+    fn set_channels(&mut self, r: u8, g: u8, b: u8, a: u8) {
+        self.r = r;
+        self.g = g;
+        self.b = b;
+        self.a = a;
+    }
+}
+
 /// The outline of one glass surface in physical pixels, relative to the island window.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shape {
@@ -23,6 +44,24 @@ pub struct Shape {
     pub height: f32,
     pub radius: f32,
     pub opacity: f32,
+    pub border_width: f32,
+    pub border_color: [u8; 4],
+}
+
+impl Shape {
+    /// Scales a logical surface shape into physical pixels for display scale `scale`.
+    pub fn scaled(self, scale: f32) -> Self {
+        Self {
+            x: self.x * scale,
+            y: self.y * scale,
+            width: self.width * scale,
+            height: self.height * scale,
+            radius: self.radius * scale,
+            opacity: self.opacity,
+            border_width: self.border_width * scale,
+            border_color: self.border_color,
+        }
+    }
 }
 
 /// A copy of what lies behind the island window, possibly reduced and blurred.
@@ -149,6 +188,49 @@ fn coverage(shape: &Shape, x: f32, y: f32) -> f32 {
     (0.5 - outline(shape, x, y).0).clamp(0.0, 1.0)
 }
 
+/// Subpixel coverage `(outer, border)` in `0..1` for the pixel square centred at (`x`, `y`):
+/// `outer` covers `distance <= 0`, and `border` covers `-border_width <= distance <= 0`.
+fn edge_coverage(shape: &Shape, x: f32, y: f32, distance: f32) -> (f32, f32) {
+    let bw = shape.border_width.max(0.0);
+    let near_outer = distance.abs() <= 1.0;
+    let near_inner = bw > 0.0 && (distance + bw).abs() <= 1.0;
+    if !near_outer && !near_inner {
+        let outer = if distance < 0.0 { 1.0 } else { 0.0 };
+        let border = if bw > 0.0 && distance < 0.0 && distance >= -bw { 1.0 } else { 0.0 };
+        return (outer, border);
+    }
+    let (hw, hh) = (shape.width / 2.0, shape.height / 2.0);
+    let r = shape.radius.min(hw).min(hh).max(0.0);
+    let on_corner = (x - shape.x - hw).abs() > hw - r - 1.0 && (y - shape.y - hh).abs() > hh - r - 1.0;
+    if !on_corner {
+        // Straight segments keep exact 1D analytic coverage so horizontal/vertical borders stay
+        // sharp at integer scales and scale linearly at fractional DPI factors.
+        let outer = (0.5 - distance).clamp(0.0, 1.0);
+        let hole = if bw > 0.0 { (0.5 - (distance + bw)).clamp(0.0, 1.0) } else { 0.0 };
+        return (outer, (outer - hole).max(0.0));
+    }
+    // 8x8 subpixel integration eliminates diagonal staircase steps and corner beads at 1x–2x DPI.
+    const SAMPLES: usize = 8;
+    const STEP: f32 = 1.0 / SAMPLES as f32;
+    let mut outer_hits = 0u32;
+    let mut border_hits = 0u32;
+    for sy in 0..SAMPLES {
+        let py = y - 0.5 + (sy as f32 + 0.5) * STEP;
+        for sx in 0..SAMPLES {
+            let px = x - 0.5 + (sx as f32 + 0.5) * STEP;
+            let (d, _, _) = outline(shape, px, py);
+            if d <= 0.0 {
+                outer_hits += 1;
+                if bw > 0.0 && d >= -bw {
+                    border_hits += 1;
+                }
+            }
+        }
+    }
+    let total = (SAMPLES * SAMPLES) as f32;
+    (outer_hits as f32 / total, border_hits as f32 / total)
+}
+
 /// Blends `backdrop`, stretched over the whole window, beneath the pixels of `buffer`
 /// (premultiplied BGRA, `width` pixels per row) inside `shapes`, within the given region.
 ///
@@ -176,18 +258,18 @@ pub fn compose(
         }
         let target_alpha = opacity * 255.0;
         let band = (shape.radius.min(shape.width / 2.0).min(shape.height / 2.0) * 0.9).max(1.0);
-        // Only rows and columns the shape can touch.
-        let x0 = left.max(shape.x.floor().max(0.0) as usize);
-        let x1 = right.min((shape.x + shape.width).ceil().max(0.0) as usize);
-        let y0 = top.max(shape.y.floor().max(0.0) as usize);
-        let y1 = bottom.min((shape.y + shape.height).ceil().max(0.0) as usize);
+        // Only rows and columns the shape (plus 1 px AA fringe) can touch.
+        let x0 = left.max((shape.x - 1.0).floor().max(0.0) as usize);
+        let x1 = right.min((shape.x + shape.width + 1.0).ceil().max(0.0) as usize);
+        let y0 = top.max((shape.y - 1.0).floor().max(0.0) as usize);
+        let y1 = bottom.min((shape.y + shape.height + 1.0).ceil().max(0.0) as usize);
         for y in y0..y1 {
             let row = &mut buffer[y * width..(y + 1) * width];
             let cy = y as f32 + 0.5;
             for (x, pixel) in row.iter_mut().enumerate().take(x1).skip(x0) {
                 let cx = x as f32 + 0.5;
                 let (distance, nx, ny) = outline(shape, cx, cy);
-                let cover = (0.5 - distance).clamp(0.0, 1.0);
+                let (cover, _) = edge_coverage(shape, cx, cy, distance);
                 if cover <= 0.0 || pixel.a as f32 >= target_alpha {
                     continue;
                 }
@@ -213,12 +295,64 @@ pub fn compose(
     }
 }
 
+/// Composites each shape's smooth SDF border over premultiplied `buffer` within `region`.
+pub fn compose_borders<P: PremulPixel>(
+    buffer: &mut [P],
+    width: usize,
+    region: (usize, usize, usize, usize),
+    shapes: &[Shape],
+) {
+    let height = buffer.len() / width.max(1);
+    if width == 0 || height == 0 {
+        return;
+    }
+    let (left, top, right, bottom) = (region.0, region.1, region.2.min(width), region.3.min(height));
+    for shape in shapes {
+        let opacity = shape.opacity.clamp(0.0, 1.0);
+        let bw = shape.border_width.max(0.0);
+        let [br, bg, bb, ba] = shape.border_color;
+        if opacity <= 0.0 || bw <= 0.0 || ba == 0 {
+            continue;
+        }
+        let base_alpha = (ba as f32 / 255.0) * opacity;
+        let x0 = left.max((shape.x - 1.0).floor().max(0.0) as usize);
+        let x1 = right.min((shape.x + shape.width + 1.0).ceil().max(0.0) as usize);
+        let y0 = top.max((shape.y - 1.0).floor().max(0.0) as usize);
+        let y1 = bottom.min((shape.y + shape.height + 1.0).ceil().max(0.0) as usize);
+        for y in y0..y1 {
+            let row = &mut buffer[y * width..(y + 1) * width];
+            let cy = y as f32 + 0.5;
+            for (x, pixel) in row.iter_mut().enumerate().take(x1).skip(x0) {
+                let cx = x as f32 + 0.5;
+                let (distance, _, _) = outline(shape, cx, cy);
+                if distance > 1.0 || distance < -(bw + 1.0) {
+                    continue;
+                }
+                let (_, border_cov) = edge_coverage(shape, cx, cy, distance);
+                if border_cov <= 0.0 {
+                    continue;
+                }
+                let src_a = base_alpha * border_cov;
+                let inv = 1.0 - src_a;
+                let (dr, dg, db, da) = pixel.channels();
+                let blend = |src: u8, dst: u8| (src as f32 * src_a + dst as f32 * inv).round().min(255.0) as u8;
+                pixel.set_channels(
+                    blend(br, dr),
+                    blend(bg, dg),
+                    blend(bb, db),
+                    (255.0 * src_a + da as f32 * inv).round().min(255.0) as u8,
+                );
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn shape(x: f32, y: f32, width: f32, height: f32, radius: f32) -> Shape {
-        Shape { x, y, width, height, radius, opacity: 1.0 }
+        Shape { x, y, width, height, radius, opacity: 1.0, border_width: 0.0, border_color: [0; 4] }
     }
 
     #[test]
@@ -353,5 +487,33 @@ mod tests {
         let pixel = half[5 * width + 10];
         assert!(pixel.a >= 127 && pixel.a <= 129, "half opacity target alpha: {pixel:?}");
         assert!(pixel.r > 10 && pixel.r < 120, "half backdrop contribution: {pixel:?}");
+    }
+
+    #[test]
+    fn corner_borders_stay_uniform_along_diagonal_arcs() {
+        let (width, height) = (96, 96);
+        let mut buffer = vec![Bgra { b: 15, g: 15, r: 15, a: 255 }; width * height];
+        let bordered = Shape {
+            x: 8.0,
+            y: 8.0,
+            width: 80.0,
+            height: 80.0,
+            radius: 32.0,
+            opacity: 1.0,
+            border_width: 1.0,
+            border_color: [255, 255, 255, 51],
+        };
+        compose_borders(&mut buffer, width, (0, 0, width, height), &[bordered]);
+        // Every pixel must remain within single-layer border coverage (no 2x overlapping beads),
+        // and integrated row energy along the 45-degree corner arc must vary monotonically without gaps.
+        let max_corner = (10..28).map(|y| (8..32).map(|x| buffer[y * width + x].r).max().unwrap()).max().unwrap();
+        assert!(max_corner <= 63, "border pixel exceeded single-layer blend ceiling: {max_corner}");
+        let row_sums: Vec<u32> =
+            (10..26).map(|y| (8..32).map(|x| u32::from(buffer[y * width + x].r - 15)).sum()).collect();
+        for w in row_sums.windows(2) {
+            assert!(w[0] + 6 >= w[1], "integrated corner stroke rose unexpectedly instead of tapering: {row_sums:?}");
+        }
+        assert_eq!(buffer[8 * width + 48].r, 63, "top straight edge keeps exact 1 px border");
+        assert_eq!(buffer[9 * width + 48].r, 15, "row below top straight edge stays clean");
     }
 }
