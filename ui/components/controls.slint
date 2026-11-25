@@ -9,11 +9,14 @@ export component IconButton inherits Rectangle {
     in property <bool> enabled: true;
     in property <color> tint: Theme.text;
     in property <string> tooltip;
+    in property <bool> draggable: false;
     // Exposed so a containing control strip can remain open while its buttons own
     // pointer input.
     out property <bool> hovered: touch.has-hover;
+    property <bool> dragged: false;
     callback clicked();
     callback hover-changed(bool);
+    callback drag-started();
     changed hovered => { root.hover-changed(root.hovered); }
 
     width: 30px;
@@ -34,7 +37,25 @@ export component IconButton inherits Rectangle {
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                root.dragged = false;
+            }
+        }
+        moved => {
+            if root.draggable && self.pressed && !root.dragged
+                && (abs(self.mouse-x - self.pressed-x) > 4px || abs(self.mouse-y - self.pressed-y) > 4px) {
+                root.dragged = true;
+                root.drag-started();
+            }
+        }
+        clicked => {
+            if root.dragged {
+                root.dragged = false;
+            } else {
+                root.clicked();
+            }
+        }
     }
 }
 

@@ -86,7 +86,7 @@ export component Island inherits Window {
     property <bool> hovering: AppState.pointer-inside && !AppState.expanded;
     property <length> target-width: AppState.expanded ? AppState.expanded-width
         : root.showing-activity ? root.activity-width
-        : AppState.launcher-active ? max(AppState.compact-width + 50px, 230px)
+        : (AppState.launcher-enabled && AppState.launcher-active) ? max(AppState.compact-width + 50px, 230px)
         : root.media-mode ? AppState.compact-width + 58px + (root.hovering ? 37px : 0px)
         : AppState.compact-width;
     property <length> target-height: AppState.expanded ? root.expanded-height
@@ -97,6 +97,8 @@ export component Island inherits Window {
         : (root.width - root.target-width - (root.hovering ? 8px : 0)) / 2;
     // Set while the pointer drags the island so that the release is not a click.
     property <bool> dragging: false;
+    // Accumulates smooth trackpad wheel deltas before advancing the compact launcher.
+    property <length> launcher-wheel: 0px;
 
     // The outlines of the island and the tasks box, read by the application after each
     // frame to shape the live blur beneath them. The body follows the auto-hide slide so
@@ -251,14 +253,22 @@ export component Island inherits Window {
                 pointer-event(event) => {
                     if event.kind == PointerEventKind.down {
                         root.dragging = false;
-                        if event.button == PointerEventButton.middle && !AppState.expanded {
+                        if event.button == PointerEventButton.middle && !AppState.expanded && AppState.launcher-enabled {
                             AppActions.toggle-launcher();
                         }
                     }
                 }
                 scroll-event(event) => {
-                    if !AppState.expanded {
-                        AppActions.scroll-launcher(event.delta-y > 0 ? -1 : 1);
+                    if !AppState.expanded && AppState.launcher-enabled {
+                        if (event.delta-y > 0px && root.launcher-wheel < 0px)
+                            || (event.delta-y < 0px && root.launcher-wheel > 0px) {
+                            root.launcher-wheel = 0px;
+                        }
+                        root.launcher-wheel += event.delta-y;
+                        if abs(root.launcher-wheel) >= 45px {
+                            AppActions.scroll-launcher(root.launcher-wheel > 0px ? -1 : 1);
+                            root.launcher-wheel = 0px;
+                        }
                         return accept;
                     }
                     return reject;
@@ -273,6 +283,8 @@ export component Island inherits Window {
                 clicked => {
                     if root.dragging {
                         root.dragging = false;
+                    } else if AppState.launcher-enabled && AppState.launcher-active {
+                        AppActions.toggle-launcher();
                     } else {
                         AppActions.toggle-expanded();
                     }
@@ -284,6 +296,7 @@ export component Island inherits Window {
                 y: 0;
                 width: parent.width;
                 height: AppState.expanded ? Theme.compact-height : parent.height;
+                visible: self.opacity > 0;
                 media-mode: root.media-mode;
                 hovered: root.hovering && !root.showing-activity;
                 opacity: AppState.expanded || root.showing-activity ? 0 : 1;

@@ -83,6 +83,7 @@ export global AppState {
     out property <bool> effective-clipboard: show-clipboard || force-side-panel;
 
     // Collapsed island App Launcher
+    in property <bool> launcher-enabled: true;
     in-out property <bool> launcher-active: false;
     in property <[AppLauncherItem]> launcher-apps;
     in-out property <int> launcher-index: 0;
