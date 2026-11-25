@@ -156,7 +156,7 @@ impl App {
         let state = app.island.global::<AppState>();
         let moving = bars_move(
             state.get_media().playing,
-            app.island_visible(),
+            app.is_on_screen(),
             app.expanded(),
             app.island.global::<Theme>().get_motion() > 0.0,
         );
@@ -183,7 +183,7 @@ impl App {
             .borrow()
             .as_ref()
             .is_some_and(|m| m.status == PlaybackStatus::Playing && m.timeline.is_some());
-        let visible = app.island_visible() && {
+        let visible = app.is_on_screen() && {
             let settings = app.settings.borrow();
             settings.widgets.media && settings.music.show_progress
         };

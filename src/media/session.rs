@@ -132,6 +132,8 @@ pub struct Tracker {
     properties: Option<Properties>,
     /// Source chosen explicitly by the user; overrides automatic selection while it exists.
     pinned: Option<String>,
+    /// Specific COM session identity chosen by [`Command::CycleSession`] (distinguishes browser tabs).
+    pinned_identity: Option<usize>,
     /// Sessions that were playing at the last selection, to detect sessions that start.
     playing: Vec<String>,
     watches: Vec<Watch>,
@@ -167,6 +169,7 @@ impl Tracker {
             current: None,
             properties: None,
             pinned: None,
+            pinned_identity: None,
             playing: Vec::new(),
             watches: Vec::new(),
             session_count: 0,
@@ -200,6 +203,9 @@ impl Tracker {
         if self.pinned.as_ref().is_some_and(|p| !ids.contains(p)) {
             self.pinned = None;
         }
+        if self.pinned_identity.is_some_and(|id| !identities.contains(&id)) {
+            self.pinned_identity = None;
+        }
         let system_current = self.manager.GetCurrentSession().ok();
         let chosen_id = choose(&Selection {
             ids: &ids,
@@ -216,7 +222,13 @@ impl Tracker {
             .map(|i| Candidate { identity: identities[i], playing: statuses[i] == PlaybackStatus::Playing })
             .collect();
         let chosen_identity =
-            pick_session(&candidates, self.current.as_ref().map(|c| c.identity), system_current.as_ref().map(identity));
+            self.pinned_identity.filter(|id| candidates.iter().any(|c| c.identity == *id)).or_else(|| {
+                pick_session(
+                    &candidates,
+                    self.current.as_ref().map(|c| c.identity),
+                    system_current.as_ref().map(identity),
+                )
+            });
         let chosen = chosen_identity.and_then(|wanted| identities.iter().position(|&i| i == wanted));
 
         if self.current.as_ref().map(|c| c.identity) == chosen_identity {
@@ -336,10 +348,12 @@ impl Tracker {
         if let Command::CycleSession = command {
             let sessions = self.sessions();
             let ids: Vec<String> = sessions.iter().map(source_id).collect();
-            let current = self.current.as_ref().map(|c| c.source_id.clone());
-            let next =
-                current.and_then(|c| ids.iter().position(|id| *id == c)).map_or(0, |i| (i + 1) % ids.len().max(1));
-            self.pinned = ids.get(next).cloned();
+            let identities: Vec<usize> = sessions.iter().map(identity).collect();
+            let target = cycle_target(&identities, self.current.as_ref().map(|c| c.identity));
+            self.pinned_identity = target;
+            self.pinned = target
+                .and_then(|wanted| identities.iter().position(|&id| id == wanted))
+                .and_then(|i| ids.get(i).cloned());
             return Ok(());
         }
         let Some(current) = &self.current else { return Ok(()) };
@@ -419,6 +433,16 @@ fn pick_session(candidates: &[Candidate], followed: Option<usize>, system_curren
         .or(find(followed, false))
         .or(find(system_current, false))
         .or(candidates.first().map(|c| c.identity))
+}
+
+fn cycle_target(identities: &[usize], current: Option<usize>) -> Option<usize> {
+    if identities.is_empty() {
+        return None;
+    }
+    let next = current
+        .and_then(|id| identities.iter().position(|&candidate| candidate == id))
+        .map_or(0, |i| (i + 1) % identities.len());
+    identities.get(next).copied()
 }
 
 /// A session's COM identity. Browsers publish one session per tab under the same source
@@ -557,6 +581,16 @@ mod tests {
         // The followed session was replaced: its identity is gone, so the new one is used.
         assert_eq!(pick_session(&[tab(3, true)], Some(1), None), Some(3));
         assert_eq!(pick_session(&[], Some(1), None), None);
+    }
+
+    #[test]
+    fn cycle_target_switches_between_distinct_identities_including_same_source() {
+        let tabs = [101usize, 102, 203];
+        assert_eq!(cycle_target(&tabs, Some(101)), Some(102));
+        assert_eq!(cycle_target(&tabs, Some(102)), Some(203));
+        assert_eq!(cycle_target(&tabs, Some(203)), Some(101));
+        assert_eq!(cycle_target(&tabs, Some(999)), Some(101));
+        assert_eq!(cycle_target(&[], Some(101)), None);
     }
 
     /// The same session keeps its identity across lookups, so the followed session is not

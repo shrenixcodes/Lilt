@@ -20,11 +20,14 @@ impl App {
     /// metric that becomes visible is sampled immediately; the first CPU reading after a
     /// pause is the average over the pause, and the next follows within the interval.
     pub(super) fn update_sampling(app: &Rc<Self>) {
+        let settings = app.settings.borrow();
+        let active = settings.widgets.system && app.island_visible();
         let policy = if app.system_monitor.borrow().is_some() {
-            SamplingPolicy::for_state(app.island_visible(), app.expanded(), app.settings.borrow().performance.low_power)
+            SamplingPolicy::for_state(active, app.expanded(), settings.performance.low_power)
         } else {
             SamplingPolicy::OFF
         };
+        drop(settings);
         let previous = app.sampling.replace(policy);
         for (metric, interval, before) in [
             (Metric::Cpu, policy.cpu, previous.cpu),

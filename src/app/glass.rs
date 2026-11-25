@@ -75,7 +75,7 @@ impl App {
     /// Whether the glass shows the blurred backdrop now.
     fn glass_follows_backdrop(&self) -> bool {
         let theme = self.island.global::<Theme>();
-        theme.get_appearance() != Appearance::Midnight && theme.get_live_blur() && self.island_visible()
+        theme.get_appearance() != Appearance::Midnight && theme.get_live_blur() && self.is_on_screen()
     }
 
     /// Starts or stops sampling for the current appearance, visibility and state. Called

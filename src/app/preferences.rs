@@ -134,6 +134,7 @@ impl App {
 
         App::apply_clipboard(app);
         app.register_shortcuts();
+        app.refresh_fullscreen_state();
         App::update_visibility(app);
         App::update_sampling(app);
     }
