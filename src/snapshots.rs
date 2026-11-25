@@ -2074,3 +2074,67 @@ fn sound_mixer_row_contents_share_vertical_center() {
         assert!((actual - knob).abs() <= 3.0, "{name} center {actual} must match slider center {knob}");
     }
 }
+
+#[test]
+fn controls_and_focus_interactions() {
+    use crate::ui::{AppActions, ClipboardActions, ControlsState, Page};
+    use slint::platform::{Key, PointerEventButton, WindowEvent};
+
+    let h = clipboard_harness(Appearance::Midnight);
+    fill_controls(&h);
+    let collapsed = Rc::new(Cell::new(false));
+    let toggle_expanded_called = Rc::new(Cell::new(false));
+    let copied = Rc::new(Cell::new(false));
+    let moved = Rc::new(Cell::new(0i32));
+
+    let c1 = collapsed.clone();
+    h.island.global::<AppActions>().on_collapse(move || c1.set(true));
+    let t1 = toggle_expanded_called.clone();
+    h.island.global::<AppActions>().on_toggle_expanded(move || t1.set(true));
+    let cp = copied.clone();
+    h.island.global::<ClipboardActions>().on_copy_selected(move || cp.set(true));
+    let mv = moved.clone();
+    h.island.global::<ClipboardActions>().on_move_selection(move |d| mv.set(d));
+
+    // Clicking blank padding on an expanded panel must not toggle/collapse the island.
+    h.state().set_page(Page::Wifi);
+    h.render();
+    let click_pos = LogicalPosition::new(h.island.get_body_x() + 18.0, h.island.get_body_y() + 230.0);
+    h.window.dispatch_event(WindowEvent::PointerPressed { position: click_pos, button: PointerEventButton::Left });
+    h.window.dispatch_event(WindowEvent::PointerReleased { position: click_pos, button: PointerEventButton::Left });
+    assert!(!toggle_expanded_called.get(), "blank-area click inside ExpandedView must not toggle/collapse");
+    assert!(!collapsed.get());
+
+    // Pressing Down/Return on a controls subpage must not hijack into the side clipboard shelf.
+    let down = slint::SharedString::from(Key::DownArrow);
+    let ret = slint::SharedString::from(Key::Return);
+    let esc = slint::SharedString::from(Key::Escape);
+    for text in [down.clone(), ret] {
+        h.window.dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+        h.window.dispatch_event(WindowEvent::KeyReleased { text });
+    }
+    assert_eq!(moved.get(), 0, "clipboard arrows must not hijack controls subpages");
+    assert!(!copied.get(), "clipboard Enter must not hijack controls subpages");
+
+    // Escape closes the Wi-Fi password drawer first, then collapses on the second press.
+    let controls = h.island.global::<ControlsState>();
+    controls.set_wifi_password_for("Neighbour".into());
+    controls.set_wifi_password("secret".into());
+    h.render();
+    h.window.dispatch_event(WindowEvent::KeyPressed { text: esc.clone() });
+    h.window.dispatch_event(WindowEvent::KeyReleased { text: esc.clone() });
+    assert_eq!(controls.get_wifi_password_for().as_str(), "");
+    assert_eq!(controls.get_wifi_password().as_str(), "");
+    assert!(!collapsed.get(), "first Escape should dismiss the Wi-Fi password prompt");
+
+    h.window.dispatch_event(WindowEvent::KeyPressed { text: esc.clone() });
+    h.window.dispatch_event(WindowEvent::KeyReleased { text: esc });
+    assert!(collapsed.get(), "second Escape should collapse the island");
+
+    // On Dashboard with clipboard side panel open, Down arrow still navigates clipboard rows.
+    h.state().set_page(Page::Dashboard);
+    h.render();
+    h.window.dispatch_event(WindowEvent::KeyPressed { text: down.clone() });
+    h.window.dispatch_event(WindowEvent::KeyReleased { text: down });
+    assert_eq!(moved.get(), 1);
+}

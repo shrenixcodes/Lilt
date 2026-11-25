@@ -251,9 +251,10 @@ component PercentInput inherits Rectangle {
         accessible-label: root.label + " percent";
         changed has-focus => {
             if !self.has-focus { root.commit(); }
+            ControlsState.input-busy = self.has-focus;
             ControlsActions.busy(self.has-focus);
         }
-        accepted => { root.commit(); ControlsActions.busy(false); }
+        accepted => { root.commit(); }
     }
 }
 
@@ -506,6 +507,7 @@ export component BrightnessPanel inherits Panel {
     title: "Brightness";
     settings-label: "Display settings";
     kind: 1;
+    property <float> saved-brightness: 0.75;
 
     init => { ControlsActions.opened(1); }
 
@@ -522,6 +524,14 @@ export component BrightnessPanel inherits Panel {
             value: ControlsState.brightness;
             // The sun turns live as the brightness slider is moved.
             dynamic-sun: true;
+            icon-clicked => {
+                if ControlsState.brightness > 0.25 {
+                    root.saved-brightness = ControlsState.brightness;
+                    ControlsActions.set-brightness(0.15);
+                } else {
+                    ControlsActions.set-brightness(root.saved-brightness);
+                }
+            }
             changed(v) => { ControlsActions.set-brightness(v); }
         }
     }
@@ -565,7 +575,10 @@ component NetworkItem inherits Rectangle {
             return;
         }
         if root.network.joinable && root.network.secured && !root.network.saved {
-            ControlsState.wifi-password-for = root.network.ssid;
+            if ControlsState.wifi-password-for != root.network.ssid {
+                ControlsState.wifi-password = "";
+                ControlsState.wifi-password-for = root.network.ssid;
+            }
         } else if root.network.joinable || root.network.saved {
             ControlsActions.join(root.network.ssid, "");
         } else {
@@ -662,6 +675,7 @@ component NetworkItem inherits Rectangle {
             password := TextInput {
                 x: 8px;
                 width: parent.width - 16px;
+                text <=> ControlsState.wifi-password;
                 input-type: InputType.password;
                 single-line: true;
                 font-size: 11.5px;
@@ -669,11 +683,16 @@ component NetworkItem inherits Rectangle {
                 vertical-alignment: center;
                 accessible-label: "Password for " + root.network.ssid;
                 init => { self.focus(); }
-                changed has-focus => { ControlsActions.busy(self.has-focus); }
+                changed has-focus => {
+                    ControlsState.input-busy = self.has-focus;
+                    ControlsActions.busy(self.has-focus);
+                }
                 accepted => {
                     ControlsActions.join(root.network.ssid, self.text);
-                    self.text = "";
+                    ControlsState.wifi-password = "";
                     ControlsState.wifi-password-for = "";
+                    ControlsState.input-busy = false;
+                    ControlsActions.busy(false);
                 }
             }
         }
@@ -682,8 +701,10 @@ component NetworkItem inherits Rectangle {
             height: 28px;
             text: "Cancel";
             clicked => {
-                password.text = "";
+                ControlsState.wifi-password = "";
                 ControlsState.wifi-password-for = "";
+                ControlsState.input-busy = false;
+                ControlsActions.busy(false);
             }
         }
 
@@ -691,9 +712,11 @@ component NetworkItem inherits Rectangle {
             height: 28px;
             text: "Connect";
             clicked => {
-                ControlsActions.join(root.network.ssid, password.text);
-                password.text = "";
+                ControlsActions.join(root.network.ssid, ControlsState.wifi-password);
+                ControlsState.wifi-password = "";
                 ControlsState.wifi-password-for = "";
+                ControlsState.input-busy = false;
+                ControlsActions.busy(false);
             }
         }
     }

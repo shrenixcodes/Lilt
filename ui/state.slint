@@ -243,8 +243,11 @@ export global ControlsState {
     in property <[NetworkRow]> networks;
     // The network being joined.
     in property <string> wifi-connecting;
-    // The network whose password field is open.
+    // The network whose password field is open, and the typed draft preserved across refreshes.
     in-out property <string> wifi-password-for;
+    in-out property <string> wifi-password;
+    // Focus state for numeric inputs or password boxes so island-wide shortcuts stand down.
+    in-out property <bool> input-busy;
 
     in property <int> bluetooth-radio: -1;
     in property <[DeviceRow]> devices;

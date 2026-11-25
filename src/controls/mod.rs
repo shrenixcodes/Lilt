@@ -13,6 +13,7 @@ pub mod radio;
 pub mod wifi;
 
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -87,39 +88,75 @@ enum Message {
     Shutdown,
 }
 
+type PublishFn = Arc<Mutex<Box<dyn Fn(Update) + Send>>>;
+
+fn is_audio_command(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Refresh(Panel::Sound)
+            | Command::SelectEndpoint(_)
+            | Command::SetInputVolume(_)
+            | Command::SetInputMuted(_)
+            | Command::SetVolume(_)
+            | Command::SetMuted(_)
+            | Command::SetSessionVolume(_, _)
+            | Command::SetSessionMuted(_, _)
+    )
+}
+
 pub struct ControlsService {
     sender: Sender<Message>,
+    audio_sender: Sender<Message>,
     worker: Option<JoinHandle<()>>,
+    audio_worker: Option<JoinHandle<()>>,
 }
 
 impl ControlsService {
-    /// Starts the worker. `publish` is called on the worker thread.
+    /// Starts the quick-controls and dedicated audio workers. `publish` may be called from either worker thread.
     pub fn start(publish: impl Fn(Update) + Send + 'static) -> Self {
+        let publish: PublishFn = Arc::new(Mutex::new(Box::new(publish)));
         let (sender, receiver) = mpsc::channel();
-        let events = sender.clone();
-        let worker = std::thread::Builder::new()
-            .name("lilt-controls".into())
-            .spawn(move || {
-                let com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
-                Worker::new(events, &publish).run(&receiver);
-                if com.is_ok() {
-                    unsafe { CoUninitialize() };
-                }
-            })
-            .map_err(|err| tracing::error!(%err, "failed to start the controls worker"))
-            .ok();
-        Self { sender, worker }
+        let (audio_sender, audio_receiver) = mpsc::channel();
+
+        let worker = spawn_worker("lilt-controls", sender.clone(), receiver, Arc::clone(&publish));
+        let audio_worker = spawn_worker("lilt-audio", audio_sender.clone(), audio_receiver, publish);
+
+        Self { sender, audio_sender, worker, audio_worker }
     }
 
     pub fn send(&self, command: Command) {
-        let _ = self.sender.send(Message::Command(command));
+        let target = if is_audio_command(&command) { &self.audio_sender } else { &self.sender };
+        let _ = target.send(Message::Command(command));
     }
+}
+
+fn spawn_worker(
+    name: &str,
+    events: Sender<Message>,
+    receiver: Receiver<Message>,
+    publish: PublishFn,
+) -> Option<JoinHandle<()>> {
+    std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || {
+            let com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+            Worker::new(events, publish).run(&receiver);
+            if com.is_ok() {
+                unsafe { CoUninitialize() };
+            }
+        })
+        .map_err(|err| tracing::error!(%err, worker = name, "failed to start worker"))
+        .ok()
 }
 
 impl Drop for ControlsService {
     fn drop(&mut self) {
         let _ = self.sender.send(Message::Shutdown);
+        let _ = self.audio_sender.send(Message::Shutdown);
         if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+        if let Some(worker) = self.audio_worker.take() {
             let _ = worker.join();
         }
     }
@@ -128,18 +165,32 @@ impl Drop for ControlsService {
 /// How long a Wi-Fi connection may take before Lilt reports it failed.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(25);
 
-struct Worker<'a> {
+struct Worker {
     events: Sender<Message>,
-    publish: &'a dyn Fn(Update),
+    publish: PublishFn,
     wlan: Option<wifi::Wlan>,
     wlan_tried: bool,
     /// The network being joined, the profile Lilt created for it, and since when.
     connecting: Option<(String, Option<String>, Instant)>,
 }
 
-impl<'a> Worker<'a> {
-    fn new(events: Sender<Message>, publish: &'a dyn Fn(Update)) -> Self {
+impl Worker {
+    fn new(events: Sender<Message>, publish: PublishFn) -> Self {
         Self { events, publish, wlan: None, wlan_tried: false, connecting: None }
+    }
+
+    fn emit(&self, update: Update) {
+        if let Ok(publish) = self.publish.lock() {
+            (publish)(update);
+        }
+    }
+
+    fn clear_pending_profile(&mut self) -> Option<(String, Option<String>, Instant)> {
+        let pending = self.connecting.take()?;
+        if let (Some(profile), Some(wlan)) = (&pending.1, self.wlan.as_ref()) {
+            wlan.delete_profile(profile);
+        }
+        Some(pending)
     }
 
     fn run(&mut self, receiver: &Receiver<Message>) {
@@ -213,7 +264,7 @@ impl<'a> Worker<'a> {
     }
 
     fn message(&self, panel: Panel, text: impl Into<String>) {
-        (self.publish)(Update::Message(panel, text.into()));
+        self.emit(Update::Message(panel, text.into()));
     }
 
     fn handle(&mut self, command: Command, refresh: &mut Vec<Panel>) {
@@ -235,6 +286,8 @@ impl<'a> Worker<'a> {
             }
             Command::WifiConnect { ssid, password } => {
                 refresh.push(Panel::Wifi);
+                // Clean up any unfinished prior temporary profile before starting a new connection.
+                self.clear_pending_profile();
                 let Some(wlan) = self.wlan() else { return };
                 let Some(network) = wlan.networks().into_iter().find(|n| n.ssid == ssid) else {
                     self.message(Panel::Wifi, format!("{ssid} is no longer in range."));
@@ -334,10 +387,7 @@ impl<'a> Worker<'a> {
     /// Reports a failed connection and removes the profile Lilt made for it, so a
     /// mistyped password is not kept.
     fn connect_failed(&mut self, ssid: &str) {
-        if let Some((_, created, _)) = self.connecting.take() {
-            if let (Some(profile), Some(wlan)) = (created, self.wlan.as_ref()) {
-                wlan.delete_profile(&profile);
-            }
+        if self.clear_pending_profile().is_some() {
             self.message(Panel::Wifi, format!("Could not connect to {ssid}. Check the password and try again."));
         }
     }
@@ -371,12 +421,12 @@ impl<'a> Worker<'a> {
                 Update::Bluetooth(BluetoothView { radio, devices })
             }
             Panel::Sound => {
-                (self.publish)(Update::Endpoints(audio::endpoints()));
+                self.emit(Update::Endpoints(audio::endpoints()));
                 Update::Sound(audio::output(), audio::sessions())
             }
             Panel::Display => Update::Display(display::brightness()),
         };
-        (self.publish)(update);
+        self.emit(update);
     }
 }
 

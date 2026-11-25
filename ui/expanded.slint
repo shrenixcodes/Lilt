@@ -12,6 +12,9 @@ export component ExpandedView inherits Rectangle {
     property <bool> tiles: AppState.show-calendar || AppState.show-system || AppState.show-actions;
     property <bool> show-deck: AppState.show-system || AppState.show-actions;
 
+    // Swallows clicks on padding and empty areas so they don't collapse the island.
+    TouchArea { }
+
     if AppState.page == Page.dashboard: VerticalLayout {
         padding: Theme.padding;
         spacing: 10px;
