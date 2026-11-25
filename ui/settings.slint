@@ -268,11 +268,11 @@ component AppearancePreview inherits Rectangle {
         height: 20px;
         border-radius: 10px;
         background: root.panel;
-        border-width: 1px;
+        border-width: Theme.hue-gradient > 0 && root.tokens.rim.alpha > 0 && root.tokens.reflections ? 0px : 1px;
         border-color: root.tokens.border;
         clip: true;
 
-        if (root.tokens.reflections || Theme.hue-gradient > 0) && root.tokens.sheen.alpha > 0 && Theme.hue-gradient > 0 : GlassSheen {
+        if Theme.hue-gradient > 0 && root.tokens.sheen.alpha > 0 : GlassSheen {
             width: parent.width;
             height: parent.height;
             radius: parent.border-radius;
@@ -287,7 +287,7 @@ component AppearancePreview inherits Rectangle {
             font-weight: 600;
         }
 
-        if (root.tokens.reflections || Theme.hue-gradient > 0) && root.tokens.rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
+        if Theme.hue-gradient > 0 && root.tokens.rim.alpha > 0 : GlassRim {
             width: parent.width;
             height: parent.height;
             radius: parent.border-radius;
@@ -303,11 +303,11 @@ component AppearancePreview inherits Rectangle {
         height: parent.height - 46px;
         border-radius: 14px;
         background: root.panel;
-        border-width: 1px;
+        border-width: Theme.hue-gradient > 0 && root.tokens.rim.alpha > 0 && root.tokens.reflections ? 0px : 1px;
         border-color: root.tokens.border;
         clip: true;
 
-        if (root.tokens.reflections || Theme.hue-gradient > 0) && root.tokens.sheen.alpha > 0 && Theme.hue-gradient > 0 : GlassSheen {
+        if Theme.hue-gradient > 0 && root.tokens.sheen.alpha > 0 : GlassSheen {
             width: parent.width;
             height: parent.height;
             radius: parent.border-radius;
@@ -368,7 +368,7 @@ component AppearancePreview inherits Rectangle {
             background: root.tokens.tile;
         }
 
-        if (root.tokens.reflections || Theme.hue-gradient > 0) && root.tokens.rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
+        if Theme.hue-gradient > 0 && root.tokens.rim.alpha > 0 : GlassRim {
             width: parent.width;
             height: parent.height;
             radius: parent.border-radius;

@@ -791,11 +791,16 @@ fn ui_hue_gradient_lights_edges() {
         brightness(image.get_pixel(240, 0).0) as i32 - brightness(image.get_pixel(240, 135).0) as i32
     };
 
-    // By default, hue gradient is 0: edge is unlit by gradient hues.
+    // By default, hue gradient is 0: the 1 px card border still outlines the glass edge,
+    // without the extra gradient sheen inside it.
     h.theme().set_hue_gradient(0.0);
     let zero = h.render_on(wallpaper);
     save(&zero, "hue-gradient-zero");
     let zero_lift = lift(&zero);
+    assert!(
+        brightness(zero.get_pixel(240, 0).0) > brightness(zero.get_pixel(240, 2).0),
+        "default glass should keep its 1 px border outline"
+    );
 
     // Tweaked hue gradient (> 0): rim and sheen gather light along the top edge.
     h.theme().set_hue_gradient(1.0);

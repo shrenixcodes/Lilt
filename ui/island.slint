@@ -106,13 +106,20 @@ export component Island inherits Window {
     out property <length> body-width: island.width;
     out property <length> body-height: island.height;
     out property <length> body-radius: island.border-radius;
+    out property <float> body-opacity: keys.opacity;
     out property <bool> tasks-shown: AppState.expanded && root.tasks-box;
+    property <float> tasks-fade: root.tasks-shown ? 1.0 : 0.0;
+    animate tasks-fade {
+        duration: root.tasks-shown ? Theme.fade-duration : 0ms;
+        delay: root.tasks-shown ? Theme.fade-duration : 0ms;
+    }
     out property <length> tasks-x: root.beside ? (root.width - root.pair-width) / 2 + AppState.expanded-width + root.gap
         : (root.width - root.tasks-width) / 2;
-    out property <length> tasks-y: root.beside ? 0px : island.height + root.gap;
+    out property <length> tasks-y: keys.y + (root.beside ? 0px : island.height + root.gap);
     out property <length> tasks-box-width: root.tasks-width;
     out property <length> tasks-box-height: root.tasks-height;
     out property <length> tasks-radius: Theme.expanded-radius;
+    out property <float> tasks-opacity: keys.opacity * root.tasks-fade;
 
     property <bool> expanded: AppState.expanded;
     changed expanded => {
@@ -207,15 +214,15 @@ export component Island inherits Window {
             // show outside the rounded corners; a solid tint keeps the shape exact.
             background: self.washed ? self.base.mix(self.wash, 1 - 0.16 * Theme.ambient) : self.base;
             animate background { duration: Theme.ambient-duration; easing: ease-in-out; }
-            // On glass appearances GlassRim draws the lit rounded edge; a second 1 px
-            // border stacked on top produced stepped corners during animation.
-            border-width: AppState.center-snapped ? 2px : Theme.reflections ? 0px : 1px;
+            // On glass appearances GlassRim draws the lit rounded edge when UI hue gradient is active;
+            // keep the subtle 1 px outline when hue gradient is zero.
+            border-width: AppState.center-snapped ? 2px : (Theme.reflections && Theme.hue-gradient > 0) ? 0px : 1px;
             border-color: AppState.center-snapped ? Theme.accent : Theme.border;
             animate border-color { duration: Theme.fade-duration; }
             clip: true;
             animate x, width, height, border-radius { duration: Theme.resize-duration; easing: cubic-bezier(0.32, 0.72, 0, 1); }
 
-            if (Theme.reflections || Theme.hue-gradient > 0) && Theme.sheen.alpha > 0 && Theme.hue-gradient > 0 : GlassSheen {
+            if Theme.hue-gradient > 0 && Theme.sheen.alpha > 0 : GlassSheen {
                 width: parent.width;
                 height: parent.height;
                 radius: island.border-radius;
@@ -224,14 +231,14 @@ export component Island inherits Window {
 
             // The lit edges: soft light gathering along the top and bottom and easing off
             // inward and around the corners. Drawn beneath the content so text stays crisp.
-            if (Theme.reflections || Theme.hue-gradient > 0) && Theme.rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
+            if Theme.hue-gradient > 0 && Theme.rim.alpha > 0 : GlassRim {
                 width: parent.width;
                 height: parent.height;
                 radius: island.border-radius;
                 strength: Theme.hue-gradient;
             }
 
-            if (Theme.reflections || Theme.hue-gradient > 0) && Theme.lower-rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
+            if Theme.hue-gradient > 0 && Theme.lower-rim.alpha > 0 : GlassRim {
                 width: parent.width;
                 height: parent.height;
                 radius: island.border-radius;
@@ -326,14 +333,10 @@ export component Island inherits Window {
         // island as the island opens.
         if root.tasks-shown : Rectangle {
             x: root.tasks-x;
-            y: root.tasks-y;
+            y: root.tasks-y - keys.y;
             width: root.tasks-width;
             height: root.tasks-height;
-            opacity: 0;
-            animate opacity { duration: Theme.fade-duration; delay: Theme.fade-duration; }
-            init => {
-                self.opacity = 1;
-            }
+            opacity: root.tasks-fade;
 
             Shadow {
                 width: parent.width;
@@ -344,26 +347,26 @@ export component Island inherits Window {
             Rectangle {
                 border-radius: Theme.expanded-radius;
                 background: Theme.surface;
-                // See the island surface: GlassRim draws the visible edge on glass.
-                border-width: Theme.reflections ? 0px : 1px;
+                // See the island surface: GlassRim draws the visible edge when UI hue gradient is active.
+                border-width: (Theme.reflections && Theme.hue-gradient > 0) ? 0px : 1px;
                 border-color: Theme.border;
                 clip: true;
 
-                if (Theme.reflections || Theme.hue-gradient > 0) && Theme.sheen.alpha > 0 && Theme.hue-gradient > 0 : GlassSheen {
+                if Theme.hue-gradient > 0 && Theme.sheen.alpha > 0 : GlassSheen {
                     width: parent.width;
                     height: parent.height;
                     radius: Theme.expanded-radius;
                     strength: Theme.hue-gradient;
                 }
 
-                if (Theme.reflections || Theme.hue-gradient > 0) && Theme.rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
+                if Theme.hue-gradient > 0 && Theme.rim.alpha > 0 : GlassRim {
                     width: parent.width;
                     height: parent.height;
                     radius: Theme.expanded-radius;
                     strength: Theme.hue-gradient;
                 }
 
-                if (Theme.reflections || Theme.hue-gradient > 0) && Theme.lower-rim.alpha > 0 && Theme.hue-gradient > 0 : GlassRim {
+                if Theme.hue-gradient > 0 && Theme.lower-rim.alpha > 0 : GlassRim {
                     width: parent.width;
                     height: parent.height;
                     radius: Theme.expanded-radius;

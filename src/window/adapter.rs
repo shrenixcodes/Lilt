@@ -173,7 +173,14 @@ impl Win32Window {
         let k = self.scale.get();
         source()
             .into_iter()
-            .map(|s| Shape { x: s.x * k, y: s.y * k, width: s.width * k, height: s.height * k, radius: s.radius * k })
+            .map(|s| Shape {
+                x: s.x * k,
+                y: s.y * k,
+                width: s.width * k,
+                height: s.height * k,
+                radius: s.radius * k,
+                opacity: s.opacity,
+            })
             .collect()
     }
 

@@ -22,6 +22,7 @@ pub struct Shape {
     pub width: f32,
     pub height: f32,
     pub radius: f32,
+    pub opacity: f32,
 }
 
 /// A copy of what lies behind the island window, possibly reduced and blurred.
@@ -169,6 +170,11 @@ pub fn compose(
     let (sx, sy) = (backdrop.width as f32 / width as f32, backdrop.height as f32 / height as f32);
     let (left, top, right, bottom) = (region.0, region.1, region.2.min(width), region.3.min(height));
     for shape in shapes {
+        let opacity = shape.opacity.clamp(0.0, 1.0);
+        if opacity <= 0.0 {
+            continue;
+        }
+        let target_alpha = opacity * 255.0;
         let band = (shape.radius.min(shape.width / 2.0).min(shape.height / 2.0) * 0.9).max(1.0);
         // Only rows and columns the shape can touch.
         let x0 = left.max(shape.x.floor().max(0.0) as usize);
@@ -182,7 +188,7 @@ pub fn compose(
                 let cx = x as f32 + 0.5;
                 let (distance, nx, ny) = outline(shape, cx, cy);
                 let cover = (0.5 - distance).clamp(0.0, 1.0);
-                if cover <= 0.0 || pixel.a == 255 {
+                if cover <= 0.0 || pixel.a as f32 >= target_alpha {
                     continue;
                 }
                 let (mut u, mut v) = (cx, cy);
@@ -193,8 +199,9 @@ pub fn compose(
                     u += nx * shift;
                     v += ny * shift;
                 }
-                // What the surface lets through, filled with the backdrop.
-                let through = (255 - pixel.a) as f32 / 255.0 * cover;
+                // What the surface lets through, scaled by the surface's fade opacity so
+                // fading glass never turns into a solid backdrop box mid-transition.
+                let through = ((target_alpha - pixel.a as f32) / 255.0) * cover;
                 let colour = backdrop.sample(u * sx, v * sy);
                 let add = |channel: u8, value: f32| (channel as f32 + value * through).round().min(255.0) as u8;
                 pixel.r = add(pixel.r, colour[0]);
@@ -211,7 +218,7 @@ mod tests {
     use super::*;
 
     fn shape(x: f32, y: f32, width: f32, height: f32, radius: f32) -> Shape {
-        Shape { x, y, width, height, radius }
+        Shape { x, y, width, height, radius, opacity: 1.0 }
     }
 
     #[test]
@@ -328,5 +335,23 @@ mod tests {
         compose(&mut buffer, width, (0, 0, 20, 20), &[shape(0.0, 0.0, 40.0, 20.0, 0.0)], &backdrop, 0.0);
         assert_eq!(buffer[5 * width + 10].a, 255);
         assert_eq!(buffer[5 * width + 30].a, 100, "outside the region");
+    }
+
+    #[test]
+    fn faded_glass_scales_backdrop_without_turning_opaque() {
+        let (width, height) = (40, 20);
+        let backdrop = Backdrop::new(1, 1, 40, vec![[200, 100, 0]], 0);
+
+        let mut hidden = vec![Bgra::default(); width * height];
+        let zero = Shape { opacity: 0.0, ..shape(0.0, 0.0, 40.0, 20.0, 0.0) };
+        compose(&mut hidden, width, (0, 0, width, height), &[zero], &backdrop, 0.0);
+        assert_eq!(hidden[5 * width + 10], Bgra::default());
+
+        let mut half = vec![Bgra { b: 10, g: 10, r: 10, a: 64 }; width * height];
+        let partial = Shape { opacity: 0.5, ..shape(0.0, 0.0, 40.0, 20.0, 0.0) };
+        compose(&mut half, width, (0, 0, width, height), &[partial], &backdrop, 0.0);
+        let pixel = half[5 * width + 10];
+        assert!(pixel.a >= 127 && pixel.a <= 129, "half opacity target alpha: {pixel:?}");
+        assert!(pixel.r > 10 && pixel.r < 120, "half backdrop contribution: {pixel:?}");
     }
 }

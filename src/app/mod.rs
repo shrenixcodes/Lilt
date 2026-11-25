@@ -392,6 +392,7 @@ impl App {
                     width: island.get_body_width(),
                     height: island.get_body_height(),
                     radius: island.get_body_radius(),
+                    opacity: island.get_body_opacity(),
                 }];
                 if island.get_tasks_shown() {
                     shapes.push(window::Shape {
@@ -400,6 +401,7 @@ impl App {
                         width: island.get_tasks_box_width(),
                         height: island.get_tasks_box_height(),
                         radius: island.get_tasks_radius(),
+                        opacity: island.get_tasks_opacity(),
                     });
                 }
                 shapes
