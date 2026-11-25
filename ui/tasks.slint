@@ -1,4 +1,4 @@
-import { ListView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState, TasksState, TasksActions } from "state.slint";
 import { ArchiveRow, ArchiveRowKind, SyncStatus, TaskForm, TaskRow, TaskRowKind, TaskView, TasksLayout } from "types.slint";
@@ -622,6 +622,12 @@ component TaskEditor inherits Rectangle {
                 background: Theme.tile;
                 border-width: 1px;
                 border-color: notes.has-focus ? Theme.text-secondary : Theme.border;
+                clip: true;
+
+                TouchArea {
+                    mouse-cursor: text;
+                    clicked => { notes.focus(); }
+                }
 
                 if notes.text == "" : Text {
                     x: 8px;
@@ -631,19 +637,49 @@ component TaskEditor inherits Rectangle {
                     color: Theme.text-tertiary;
                 }
 
-                notes := TextInput {
-                    x: 8px;
-                    y: 6px;
-                    width: parent.width - 16px;
-                    height: parent.height - 12px;
-                    text: TasksState.form.notes;
-                    font-size: 11.5px;
-                    color: Theme.text;
-                    single-line: false;
-                    wrap: word-wrap;
-                    selection-background-color: Theme.text.with-alpha(0.25);
-                    selection-foreground-color: Theme.text;
-                    accessible-label: "Notes";
+                VerticalLayout {
+                    padding-left: 8px;
+                    padding-right: 2px;
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+                    min-height: 0px;
+
+                    notes-scroll := ScrollView {
+                        min-height: 0px;
+                        vertical-stretch: 1;
+                        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+                        content-width: self.visible-width;
+                        content-height: max(self.visible-height, notes.preferred-height);
+
+                        notes := TextInput {
+                            width: max(0px, notes-scroll.visible-width - 6px);
+                            height: notes-scroll.content-height;
+                            text: TasksState.form.notes;
+                            font-size: 11.5px;
+                            color: Theme.text;
+                            single-line: false;
+                            wrap: word-wrap;
+                            page-height: notes-scroll.visible-height;
+                            selection-background-color: Theme.text.with-alpha(0.25);
+                            selection-foreground-color: Theme.text;
+                            accessible-label: "Notes";
+
+                            cursor-position-changed(cpos) => {
+                                if cpos.y + notes-scroll.content-y < 0px {
+                                    notes-scroll.content-y = min(
+                                        0px,
+                                        notes-scroll.visible-height - cpos.y - 18px,
+                                        max(notes-scroll.visible-height - self.height, -cpos.y),
+                                    );
+                                } else if cpos.y + notes-scroll.content-y > notes-scroll.visible-height - 18px {
+                                    notes-scroll.content-y = min(
+                                        0px,
+                                        max(notes-scroll.visible-height - self.height, notes-scroll.visible-height - cpos.y - 18px),
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

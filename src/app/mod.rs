@@ -390,28 +390,7 @@ impl App {
 
         if let Some(native) = window::find(app.island.window()) {
             let island = app.island.as_weak();
-            native.set_shape_source(move || {
-                let Some(island) = island.upgrade() else { return Vec::new() };
-                let mut shapes = vec![window::Shape {
-                    x: island.get_body_x(),
-                    y: island.get_body_y(),
-                    width: island.get_body_width(),
-                    height: island.get_body_height(),
-                    radius: island.get_body_radius(),
-                    opacity: island.get_body_opacity(),
-                }];
-                if island.get_tasks_shown() {
-                    shapes.push(window::Shape {
-                        x: island.get_tasks_x(),
-                        y: island.get_tasks_y(),
-                        width: island.get_tasks_box_width(),
-                        height: island.get_tasks_box_height(),
-                        radius: island.get_tasks_radius(),
-                        opacity: island.get_tasks_opacity(),
-                    });
-                }
-                shapes
-            });
+            native.set_shape_source(move || island.upgrade().map(|i| island_shapes(&i)).unwrap_or_default());
             let weak = weak.clone();
             native.set_notice_handler(move |notice| {
                 let Some(app) = weak.upgrade() else { return };
@@ -882,6 +861,34 @@ fn with_close(weak: &Weak<App>) -> impl Fn() -> slint::CloseRequestResponse + 's
         }
         slint::CloseRequestResponse::HideWindow
     }
+}
+
+/// Logical surface outlines and borders of the island body and side box.
+pub(crate) fn island_shapes(island: &crate::ui::Island) -> Vec<window::Shape> {
+    let rgba = |c: slint::Color| [c.red(), c.green(), c.blue(), c.alpha()];
+    let mut shapes = vec![window::Shape {
+        x: island.get_body_x(),
+        y: island.get_body_y(),
+        width: island.get_body_width(),
+        height: island.get_body_height(),
+        radius: island.get_body_radius(),
+        opacity: island.get_body_opacity(),
+        border_width: island.get_body_border_width(),
+        border_color: rgba(island.get_body_border_color()),
+    }];
+    if island.get_tasks_shown() {
+        shapes.push(window::Shape {
+            x: island.get_tasks_x(),
+            y: island.get_tasks_y(),
+            width: island.get_tasks_box_width(),
+            height: island.get_tasks_box_height(),
+            radius: island.get_tasks_radius(),
+            opacity: island.get_tasks_opacity(),
+            border_width: island.get_tasks_border_width(),
+            border_color: rgba(island.get_tasks_border_color()),
+        });
+    }
+    shapes
 }
 
 /// Wraps a method call on a weakly held `App` as a callback.

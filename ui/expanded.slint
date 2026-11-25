@@ -11,6 +11,9 @@ import { SoundPanel, BrightnessPanel, BluetoothPanel, WifiPanel } from "quick-pa
 export component ExpandedView inherits Rectangle {
     property <bool> tiles: AppState.show-calendar || AppState.show-system || AppState.show-actions;
     property <bool> show-deck: AppState.show-system || AppState.show-actions;
+    property <length> calendar-width: min(128px, max(100px, AppState.expanded-width - 304px));
+    property <length> deck-width: AppState.expanded-width - 2 * Theme.padding
+        - (AppState.show-calendar ? root.calendar-width + Theme.gap : 0px);
 
     // Swallows clicks on padding and empty areas so they don't collapse the island.
     TouchArea { }
@@ -29,7 +32,8 @@ export component ExpandedView inherits Rectangle {
             spacing: Theme.gap;
 
             if AppState.show-calendar: CalendarTile {
-                width: root.show-deck ? 128px : parent.width;
+                width: root.show-deck ? root.calendar-width : parent.width;
+                compact: root.show-deck && root.calendar-width < 112px;
                 horizontal-stretch: root.show-deck ? 0 : 1;
                 clicked => {
                     AppState.page = Page.calendar;
@@ -38,6 +42,7 @@ export component ExpandedView inherits Rectangle {
 
             if root.show-deck: ControlDeck {
                 horizontal-stretch: 1;
+                deck-width: root.deck-width;
                 info: AppState.system;
                 show-system: AppState.show-system;
                 show-actions: AppState.show-actions;

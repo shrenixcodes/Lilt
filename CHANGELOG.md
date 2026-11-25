@@ -15,7 +15,8 @@ All notable changes to Lilt are documented here. The format follows
 
 ### Fixed
 
-- Preserved `1 px` glass borders when UI hue gradient is disabled and scaled live backdrop compositing with window fade opacity to eliminate opaque fade pops.
+- Preserved `1 px` glass borders when UI hue gradient is disabled, scaled live backdrop compositing with window fade opacity to eliminate opaque fade pops, and replaced jagged software rounded-border rasterization with smooth subpixel SDF outer borders and vector tile strokes across `1x`–`2x` displays.
+- Added vertical scrolling with cursor tracking to multiline snippet and task notes editors, and scaled dashboard calendar and control deck layouts cleanly down to minimum expanded width (`400 px`).
 - Enforced the Compact App Launcher toggle across middle-clicks, wheel scrolling, and launches; hid the compact media progress bar while the launcher is open; resolved `Code.exe` and quoted launch targets cleanly; smoothed precision touchpad launcher scrolling; and allowed dragging across the compact pill without inner targets swallowing gestures.
 - Fixed Settings drag-and-drop shortcut reordering breaking mid-drag, blocked `Alt`/`F10` system-key activation during shortcut capture alongside `F13..F24` and punctuation support, aligned Settings label text contrast tokens, and made native file pickers modal to Settings.
 - Preserved full-resolution PNG captures for clipboard image re-pasting, cached decoded thumbnails, corrected `CF_DIBV5` pixel data offsets, prevented snippet editor activation on images, debounced clipboard search filtering, and updated clipboard privacy copy in Settings, intro, and `SECURITY.md`.
